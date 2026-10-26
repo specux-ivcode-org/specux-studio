@@ -34,25 +34,25 @@ export class TemplateMarkupRenderer {
     if (template.data.slots) {
       const editorStyle = document.createElement("style");
       editorStyle.textContent = `
-        .openux-drop-slot {
+        .specux-drop-slot {
           display: flex;
           flex-direction: column;
           gap: 14px;
           min-height: 48px;
           border-radius: 8px;
         }
-        .openux-drop-slot > .asset-instance,
-        .openux-render-slot > .asset-instance {
+        .specux-drop-slot > .asset-instance,
+        .specux-render-slot > .asset-instance {
           box-sizing: border-box;
           width: 100%;
           min-width: 0;
         }
-        .openux-drop-slot.drop-target {
+        .specux-drop-slot.drop-target {
           outline: 2px dashed var(--studio-primary);
           outline-offset: 3px;
           background: color-mix(in srgb, var(--studio-primary) 7%, transparent);
         }
-        .openux-drop-slot:empty::before {
+        .specux-drop-slot:empty::before {
           content: attr(data-placeholder);
           padding: 12px;
           border: 1px dashed var(--studio-border);

@@ -203,7 +203,7 @@ export class WorkspaceViewRenderer {
         `${state.specSources.size} attached`
       ),
       services.element("div", "project-overview-config-label", "Project manifest"),
-      services.element("div", "project-overview-config-value", "openux/project.yml"),
+      services.element("div", "project-overview-config-value", "specux/project.yml"),
       services.element("div", "project-overview-config-label", "Source of truth"),
       services.element(
         "p",

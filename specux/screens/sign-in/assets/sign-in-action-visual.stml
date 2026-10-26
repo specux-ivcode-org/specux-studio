@@ -21,7 +21,7 @@ attributes:
     overridable: true
 ---
 <style>
-  .openux-sign-in-action {
+  .specux-sign-in-action {
     box-sizing: border-box;
     display: flex;
     align-items: center;
@@ -33,13 +33,13 @@ attributes:
     font: 700 12px/1.4 Inter, "Segoe UI", Arial, sans-serif;
     text-align: center;
   }
-  .openux-sign-in-action--primary {
+  .specux-sign-in-action--primary {
     background: var(--theme-primary, #4569e8);
     box-shadow: 0 8px 16px color-mix(in srgb, var(--theme-primary, #4569e8) 23%, transparent);
     color: var(--theme-on-primary, #fff);
     letter-spacing: .01em;
   }
-  .openux-sign-in-action--secondary {
+  .specux-sign-in-action--secondary {
     min-height: 44px;
     margin-top: 0;
     border: 1px solid var(--theme-border, #dfe4ed);
@@ -48,16 +48,16 @@ attributes:
     font-size: 11px;
     font-weight: 650;
   }
-  .openux-sign-in-action__mark:empty { display: none; }
-  .openux-sign-in-action--secondary .openux-sign-in-action__mark {
+  .specux-sign-in-action__mark:empty { display: none; }
+  .specux-sign-in-action--secondary .specux-sign-in-action__mark {
     color: #4285f4;
     font-size: 16px;
     font-weight: 750;
   }
-  .openux-sign-in-action--primary .openux-sign-in-action__arrow::before { content: "→"; }
+  .specux-sign-in-action--primary .specux-sign-in-action__arrow::before { content: "→"; }
 </style>
-<div class="openux-sign-in-action openux-sign-in-action--${attributes.variant}" aria-label="Decorative ${attributes.label} preview">
-  <span class="openux-sign-in-action__mark" aria-hidden="true">${attributes.mark}</span>
+<div class="specux-sign-in-action specux-sign-in-action--${attributes.variant}" aria-label="Decorative ${attributes.label} preview">
+  <span class="specux-sign-in-action__mark" aria-hidden="true">${attributes.mark}</span>
   <span>${attributes.label}</span>
-  <span class="openux-sign-in-action__arrow" aria-hidden="true"></span>
+  <span class="specux-sign-in-action__arrow" aria-hidden="true"></span>
 </div>

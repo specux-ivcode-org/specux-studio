@@ -5,7 +5,7 @@ description: A branded header with a search affordance and account profile.
 category: Dashboards/Components
 ---
 <style>
-  .openux-dashboard-brand {
+  .specux-dashboard-brand {
     display: flex;
     flex: none;
     align-items: center;
@@ -15,7 +15,7 @@ category: Dashboards/Components
     font-weight: 750;
     white-space: nowrap;
   }
-  .openux-dashboard-brand-mark {
+  .specux-dashboard-brand-mark {
     display: grid;
     width: 34px;
     height: 34px;
@@ -25,7 +25,7 @@ category: Dashboards/Components
     background: var(--theme-primary, #4569e8);
     font-size: 15px;
   }
-  .openux-dashboard-search {
+  .specux-dashboard-search {
     width: min(250px, 26vw);
     min-width: 0;
     margin-left: auto;
@@ -36,7 +36,7 @@ category: Dashboards/Components
     background: var(--theme-surface-muted, #f8f9fc);
     font-size: 12px;
   }
-  .openux-dashboard-profile {
+  .specux-dashboard-profile {
     display: flex;
     align-items: center;
     gap: 9px;
@@ -45,13 +45,13 @@ category: Dashboards/Components
     font-size: 12px;
     font-weight: 650;
   }
-  .openux-dashboard-header-inner {
+  .specux-dashboard-header-inner {
     display: flex;
     align-items: center;
     width: 100%;
     min-width: 0;
   }
-  .openux-dashboard-avatar {
+  .specux-dashboard-avatar {
     display: grid;
     width: 34px;
     height: 34px;
@@ -62,12 +62,12 @@ category: Dashboards/Components
     font-weight: 750;
   }
   @media (max-width: 520px) {
-    .openux-dashboard-search { display: none; }
-    .openux-dashboard-profile { margin-left: auto; }
+    .specux-dashboard-search { display: none; }
+    .specux-dashboard-profile { margin-left: auto; }
   }
 </style>
-<div class="openux-dashboard-header-inner">
-  <div class="openux-dashboard-brand"><span class="openux-dashboard-brand-mark">A</span> Acme Finance</div>
-  <div class="openux-dashboard-search">Search transactions, accounts, help...</div>
-  <div class="openux-dashboard-profile"><span class="openux-dashboard-avatar">JD</span><span>Jordan Davis</span></div>
+<div class="specux-dashboard-header-inner">
+  <div class="specux-dashboard-brand"><span class="specux-dashboard-brand-mark">A</span> Acme Finance</div>
+  <div class="specux-dashboard-search">Search transactions, accounts, help...</div>
+  <div class="specux-dashboard-profile"><span class="specux-dashboard-avatar">JD</span><span>Jordan Davis</span></div>
 </div>

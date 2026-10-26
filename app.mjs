@@ -20,17 +20,17 @@ import { ThemeEditor } from "./browser/ThemeEditor.mjs";
 import { TemplateMarkupRenderer } from "./browser/TemplateMarkupRenderer.mjs";
 import { WorkspaceViewRenderer } from "./browser/WorkspaceViewRenderer.mjs";
 
-const appRoot = new URL("./openux/", window.location.href);
-const sharedValidation = globalThis.OpenuxValidation;
-const parseOpenuxYaml = globalThis.OpenuxYamlParser;
+const appRoot = new URL("./specux/", window.location.href);
+const sharedValidation = globalThis.SpecuxValidation;
+const parseSpecuxYaml = globalThis.SpecuxYamlParser;
 const { TEMPLATE_FILE_EXTENSION, attributeTypes, numberFormats, themeModeNames } = sharedValidation;
 const systemThemeQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
 const renderParameters = new URLSearchParams(window.location.search);
 const renderRequestedScreen = renderParameters.get("render");
 const renderRequestedState = renderParameters.get("state");
 const isRenderOnly = renderRequestedScreen !== null;
-const assetDragType = "application/x-openux-asset-template";
-const assetInstanceDragType = "application/x-openux-asset-instance";
+const assetDragType = "application/x-specux-asset-template";
+const assetInstanceDragType = "application/x-specux-asset-instance";
 const byId = (id) => document.getElementById(id);
 
 let project;
@@ -95,7 +95,7 @@ const templateMarkupRenderer = new TemplateMarkupRenderer({
 const projectRepository = new ProjectRepository({
   appRoot,
   fetcher: (url, options) => fetch(url, options),
-  parseYaml: parseOpenuxYaml,
+  parseYaml: parseSpecuxYaml,
   validation: sharedValidation,
   templateFileExtension: TEMPLATE_FILE_EXTENSION
 });
@@ -883,16 +883,16 @@ async function loadProject(selectionToRestore = null) {
       if (byId("screen-preview").classList.contains("error")) {
         throw new Error(byId("screen-preview").textContent.trim() || "Screen render failed.");
       }
-      if (!document.body.dataset.openuxRenderHeight) {
-        document.body.dataset.openuxRenderHeight = String(Math.ceil(Math.max(
+      if (!document.body.dataset.specuxRenderHeight) {
+        document.body.dataset.specuxRenderHeight = String(Math.ceil(Math.max(
           document.documentElement.scrollHeight,
           document.body.scrollHeight,
           byId("screen-preview").scrollHeight
         )));
       }
-      document.body.dataset.openuxRenderReady = "true";
+      document.body.dataset.specuxRenderReady = "true";
       if (new URLSearchParams(window.location.search).get("format") === "html") {
-        document.body.dataset.openuxRenderHtml = encodeBase64(await standaloneScreenHtml());
+        document.body.dataset.specuxRenderHtml = encodeBase64(await standaloneScreenHtml());
       }
     } else if (selectionToRestore) {
       const wasHistoryUpdateSuppressed = historyUpdateSuppressed;
@@ -1118,9 +1118,9 @@ function clearDropIndicators() {
   screenStage.classList.remove("drop-target");
   for (const host of findAssetInstances(byId("screen-preview"))) {
     host.classList.remove("dragging", "drop-before", "drop-after");
-    host.querySelectorAll(".openux-drop-slot.drop-target")
+    host.querySelectorAll(".specux-drop-slot.drop-target")
       .forEach((slot) => slot.classList.remove("drop-target"));
-    host.shadowRoot?.querySelectorAll(".openux-drop-slot.drop-target")
+    host.shadowRoot?.querySelectorAll(".specux-drop-slot.drop-target")
       .forEach((slot) => slot.classList.remove("drop-target"));
   }
 }
@@ -1281,12 +1281,12 @@ function sameInstancePath(left, right) {
 function setScreenDomContext(node, screen) {
   if (!node) return;
   if (!screen) {
-    node.removeAttribute("data-openux-screen-id");
-    node.removeAttribute("data-openux-screen-name");
+    node.removeAttribute("data-specux-screen-id");
+    node.removeAttribute("data-specux-screen-name");
     return;
   }
-  node.dataset.openuxScreenId = screen.id;
-  node.dataset.openuxScreenName = screen.data.name || screen.id;
+  node.dataset.specuxScreenId = screen.id;
+  node.dataset.specuxScreenName = screen.data.name || screen.id;
 }
 
 function updateScreenDomContext(screen) {
@@ -1362,7 +1362,7 @@ function publishSelection() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ selection: publishedSelection })
-  }).catch((error) => console.warn("Could not publish the current OpenUX selection.", error));
+  }).catch((error) => console.warn("Could not publish the current SpecUX selection.", error));
 }
 
 function renderInspector() {
@@ -1552,7 +1552,7 @@ function showFatalError(error) {
   byId("inspector-content").replaceChildren(
     element("h2", "panel-heading", "Project load error"),
     element("div", "error-message", error.message || String(error)),
-    element("div", "readonly-label", "Serve the repository root over HTTP so the editor can fetch the openux/ example project.")
+    element("div", "readonly-label", "Serve the repository root over HTTP so the editor can fetch the specux/ example project.")
   );
 }
 

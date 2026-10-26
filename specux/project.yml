@@ -1,6 +1,6 @@
-name: OpenUX Example
-description: Example project for the OpenUX file-driven preview.
-openux: 0.1.0-SNAPSHOT
+name: SpecUX Example
+description: Example project for the SpecUX file-driven preview.
+specux: 0.1.0-SNAPSHOT
 screens:
   - id: home
     file: screens/home/screen.yml

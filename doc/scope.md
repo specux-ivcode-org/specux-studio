@@ -1,20 +1,20 @@
-# OpenUX: Scope and Core Concepts
+# SpecUX: Scope and Core Concepts
 
 **Status:** Working draft for background documentation
 
 ## 1. Purpose
 
-OpenUX is an open standard for specifying user interfaces, interactions, and intended behavior.
+SpecUX is an open standard for specifying user interfaces, interactions, and intended behavior.
 
 It defines a structured, machine-readable format that allows humans and AI agents to create, understand, validate, and modify interface specifications consistently.
 
-OpenUX is designed to complement software specification standards such as OpenSpec. OpenSpec describes what software should do; OpenUX describes how users experience and interact with that software.
+SpecUX is designed to complement software specification standards such as OpenSpec. OpenSpec describes what software should do; SpecUX describes how users experience and interact with that software.
 
 The standard is the core deliverable. Editors, validators, and other tools consume and implement the standard rather than defining its meaning independently.
 
 ## 2. Scope
  
-OpenUX should support specifications ranging from behavior-focused descriptions to highly detailed visual and behavioral specifications.
+SpecUX should support specifications ranging from behavior-focused descriptions to highly detailed visual and behavioral specifications.
 
 A project does not need to specify every aspect of its interface. The level of detail and constraint should emerge from what the user specifies, rather than from a single project-wide precision mode.
 

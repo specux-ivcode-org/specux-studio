@@ -15,7 +15,7 @@ slots:
     name: Account insights
 ---
 <style>
-  .openux-overview {
+  .specux-overview {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
@@ -27,23 +27,23 @@ slots:
     align-content: start;
     min-width: 0;
   }
-  .openux-overview__welcome { grid-area: welcome; }
-  .openux-overview__metrics {
+  .specux-overview__welcome { grid-area: welcome; }
+  .specux-overview__metrics {
     grid-area: metrics;
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px !important;
   }
-  .openux-overview__metrics > .asset-instance { min-width: 0; }
-  .openux-overview__activity { grid-area: activity; }
-  .openux-overview__insights { grid-area: insights; }
+  .specux-overview__metrics > .asset-instance { min-width: 0; }
+  .specux-overview__activity { grid-area: activity; }
+  .specux-overview__insights { grid-area: insights; }
   @media (max-width: 520px) {
-    .openux-overview__metrics { grid-template-columns: minmax(0, 1fr); }
+    .specux-overview__metrics { grid-template-columns: minmax(0, 1fr); }
   }
 </style>
-<section class="openux-overview" aria-label="Account overview">
-  <div class="openux-overview__welcome" data-openux-slot="welcome"></div>
-  <div class="openux-overview__metrics" data-openux-slot="metrics"></div>
-  <div class="openux-overview__activity" data-openux-slot="activity"></div>
-  <div class="openux-overview__insights" data-openux-slot="insights"></div>
+<section class="specux-overview" aria-label="Account overview">
+  <div class="specux-overview__welcome" data-specux-slot="welcome"></div>
+  <div class="specux-overview__metrics" data-specux-slot="metrics"></div>
+  <div class="specux-overview__activity" data-specux-slot="activity"></div>
+  <div class="specux-overview__insights" data-specux-slot="insights"></div>
 </section>

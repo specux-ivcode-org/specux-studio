@@ -1,6 +1,6 @@
 # Behavior Spec File
 
-A behavior spec is a Markdown file linked from `project.yml` or a Screen YAML file through its optional `spec` property, or linked to one Screen Element through YAML front matter. Element-specific specs are not stored with Asset definitions. A project-level spec covers requirements across multiple Screens or throughout the project and is saved under `openux/specs/`. A Screen-level spec covers page behavior and, when preview states exist, documents their activation conditions; save it as `openux/screens/<screen-id>/specs/screen.md`. Element specs cover behavior specific to one placed Element and are saved directly in `openux/screens/<screen-id>/specs/` as `element-<element-id>.md`. All paths are relative to `openux/`.
+A behavior spec is a Markdown file linked from `project.yml` or a Screen YAML file through its optional `spec` property, or linked to one Screen Element through YAML front matter. Element-specific specs are not stored with Asset definitions. A project-level spec covers requirements across multiple Screens or throughout the project and is saved under `specux/specs/`. A Screen-level spec covers page behavior and, when preview states exist, documents their activation conditions; save it as `specux/screens/<screen-id>/specs/screen.md`. Element specs cover behavior specific to one placed Element and are saved directly in `specux/screens/<screen-id>/specs/` as `element-<element-id>.md`. All paths are relative to `specux/`.
 
 Every Screen Element mapping has a unique `id`. Link an Element spec by placing that ID in the Markdown file's YAML front matter as `element-id`; Element specs do not use a `spec` property in Screen YAML.
 
@@ -15,7 +15,7 @@ Every spec must contain a non-empty `## Purpose` section followed by a `## Requi
 
 Keep requirements focused on behavior, outcomes, constraints, and edge cases. Do not repeat visual details already clear from the Screen mockup unless needed to explain behavior. Avoid implementation details such as libraries, internal functions, or step-by-step coding plans.
 
-When creating a new draft, the editor may prefill the example purpose, requirement, and scenario below. Treat that content as a placeholder, not as specified behavior. Do not save a new draft unless its content has been changed. Consult this schema and derive the final requirements from the user's intent and relevant OpenUX context.
+When creating a new draft, the editor may prefill the example purpose, requirement, and scenario below. Treat that content as a placeholder, not as specified behavior. Do not save a new draft unless its content has been changed. Consult this schema and derive the final requirements from the user's intent and relevant SpecUX context.
 
 ```yaml
 # In project.yml:

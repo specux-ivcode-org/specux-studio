@@ -1,8 +1,8 @@
-# OpenUX Glossary
+# SpecUX Glossary
 
-This glossary defines the terminology used by the OpenUX standard. These definitions establish a shared vocabulary for specification authors, AI agents, editors, validators, and other compatible tools.
+This glossary defines the terminology used by the SpecUX standard. These definitions establish a shared vocabulary for specification authors, AI agents, editors, validators, and other compatible tools.
 
-Terms defined here should be used consistently throughout the standard. Where a term has a specific meaning in OpenUX, that meaning takes precedence over its informal use.
+Terms defined here should be used consistently throughout the standard. Where a term has a specific meaning in SpecUX, that meaning takes precedence over its informal use.
 
 ## Core Concepts
 
@@ -16,7 +16,7 @@ A reusable file discovered under the project's shared `assets/` directory or a S
 
 ### Element
 
-A placed occurrence on a Screen or inside a template slot. OpenUX directly supports text, image, and template Elements. Each Element has a unique Screen-local `id`; template Elements reference a template Asset by path and may define attributes, slots, visibility, and a Behavior Spec.
+A placed occurrence on a Screen or inside a template slot. SpecUX directly supports text, image, and template Elements. Each Element has a unique Screen-local `id`; template Elements reference a template Asset by path and may define attributes, slots, visibility, and a Behavior Spec.
 
 ### Template Asset
 
@@ -58,11 +58,11 @@ A statement describing a condition, capability, or behavior that the software is
 
 ### Artifact
 
-A structured piece of information defined by the OpenUX standard, such as a Screen, Asset, Element, Theme, behavior spec, requirement, or change definition.
+A structured piece of information defined by the SpecUX standard, such as a Screen, Asset, Element, Theme, behavior spec, requirement, or change definition.
 
 ### Project
 
-A collection of OpenUX artifacts that together describe a user interface and its expected behavior.
+A collection of SpecUX artifacts that together describe a user interface and its expected behavior.
 
 ### Change
 
@@ -70,11 +70,11 @@ A named, identifiable proposal to add, modify, or remove project artifacts. A ch
 
 ### Validation
 
-The process of checking artifacts against the structural, semantic, and other applicable rules defined by the OpenUX standard.
+The process of checking artifacts against the structural, semantic, and other applicable rules defined by the SpecUX standard.
 
 ### Conformance
 
-The degree to which an artifact, project, or tool satisfies the applicable requirements of the OpenUX standard.
+The degree to which an artifact, project, or tool satisfies the applicable requirements of the SpecUX standard.
 
 ### Validator
 
@@ -82,7 +82,7 @@ A tool that evaluates artifacts or projects for conformance and reports detected
 
 ### Editor
 
-A tool that loads, presents, and modifies OpenUX artifacts while preserving their defined meaning and ensuring that saved output remains compatible with the standard.
+A tool that loads, presents, and modifies SpecUX artifacts while preserving their defined meaning and ensuring that saved output remains compatible with the standard.
 
 ### Traceability
 
@@ -104,7 +104,7 @@ A result that can be inspected or verified, such as a displayed message, a navig
 
 ### Conformance Test
 
-A defined test case used to determine whether an artifact or tool satisfies a requirement of the OpenUX standard.
+A defined test case used to determine whether an artifact or tool satisfies a requirement of the SpecUX standard.
 
 ### Reference Implementation
 
@@ -112,7 +112,7 @@ An implementation intended to demonstrate the standard's requirements and provid
 
 ### Interoperability
 
-The ability of independently developed tools and agents to read, interpret, validate, and modify OpenUX artifacts consistently.
+The ability of independently developed tools and agents to read, interpret, validate, and modify SpecUX artifacts consistently.
 
 ## Terminology Rules
 

@@ -1,9 +1,9 @@
 # Asset File Schema
 
-An Asset is a reusable file discovered under the shared `openux/assets/` directory or a Screen-owned `openux/screens/<screen-id>/assets/` directory. The project manifest does not list Assets; filesystem discovery is the source of truth. Asset paths referenced by Screen Elements are relative to `openux/`.
+An Asset is a reusable file discovered under the shared `specux/assets/` directory or a Screen-owned `specux/screens/<screen-id>/assets/` directory. The project manifest does not list Assets; filesystem discovery is the source of truth. Asset paths referenced by Screen Elements are relative to `specux/`.
 
 ```text
-openux/screens/home/assets/
+specux/screens/home/assets/
 ├── brand-mark.stml
 ├── logo.svg
 └── images/
@@ -24,7 +24,7 @@ description: Displays the product brand.
 attributes:
   label:
     type: string
-    default: OpenUX
+    default: SpecUX
     overridable: true
 ---
 <div class="brand-mark">${attributes.label}</div>
@@ -92,7 +92,7 @@ Each item in `slots` is a mapping:
 | `id` | string | Yes | Unique slot identifier within this template. |
 | `name` | string | No | Human-readable slot name. |
 
-When `slots` is present, it must contain at least one slot. Each slot ID must appear on exactly one element in the HTML body as `data-openux-slot="<id>"`. The HTML must not declare undeclared slot IDs.
+When `slots` is present, it must contain at least one slot. Each slot ID must appear on exactly one element in the HTML body as `data-specux-slot="<id>"`. The HTML must not declare undeclared slot IDs.
 
 ```yaml
 slots:
@@ -110,7 +110,7 @@ For a template with slots, the HTML body must contain exactly one element for ea
 
 ```html
 <section class="form-layout">
-  <div data-openux-slot="content"></div>
+  <div data-specux-slot="content"></div>
 </section>
 ```
 

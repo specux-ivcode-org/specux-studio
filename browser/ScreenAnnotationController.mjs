@@ -247,8 +247,8 @@ export class ScreenAnnotationController {
         method: "POST",
         headers: {
           "Content-Type": "image/png",
-          "X-OpenUX-Selection-Updated-At": selectionState.updatedAt,
-          "X-OpenUX-Annotation-Updated-At": annotationUpdatedAt
+          "X-SpecUX-Selection-Updated-At": selectionState.updatedAt,
+          "X-SpecUX-Annotation-Updated-At": annotationUpdatedAt
         },
         body: image
       }
@@ -500,7 +500,7 @@ export class ScreenAnnotationController {
       if (node.classList?.contains("asset-instance")) {
         let instancePath;
         try {
-          instancePath = JSON.parse(node.dataset.openuxInstancePath || node.dataset.instancePath || "[]");
+          instancePath = JSON.parse(node.dataset.specuxInstancePath || node.dataset.instancePath || "[]");
         } catch {
           return null;
         }
@@ -518,9 +518,9 @@ export class ScreenAnnotationController {
         }
         return {
           instancePath,
-          ...(node.dataset.openuxElementId ? { elementId: node.dataset.openuxElementId } : {}),
-          ...(node.dataset.openuxInstanceName ? { name: node.dataset.openuxInstanceName } : {}),
-          ...(node.dataset.openuxAssetId ? { assetId: node.dataset.openuxAssetId } : {}),
+          ...(node.dataset.specuxElementId ? { elementId: node.dataset.specuxElementId } : {}),
+          ...(node.dataset.specuxInstanceName ? { name: node.dataset.specuxInstanceName } : {}),
+          ...(node.dataset.specuxAssetId ? { assetId: node.dataset.specuxAssetId } : {}),
           ...(contextText ? { text: contextText } : {})
         };
       }

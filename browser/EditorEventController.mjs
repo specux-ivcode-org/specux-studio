@@ -154,7 +154,7 @@ export class EditorEventController {
     const { state, services } = this;
     services.window.addEventListener("popstate", (event) => {
       if (services.isRenderOnly) return;
-      const savedSelection = event.state?.openuxEditor?.selection;
+      const savedSelection = event.state?.specuxEditor?.selection;
       const selection = savedSelection && typeof savedSelection === "object"
         ? savedSelection
         : services.selectionFromLocation();

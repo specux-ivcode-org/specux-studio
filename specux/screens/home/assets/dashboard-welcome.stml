@@ -5,7 +5,7 @@ description: A welcome banner introducing the account overview.
 category: Dashboards/Components
 ---
 <style>
-  .openux-welcome {
+  .specux-welcome {
     position: relative;
     overflow: hidden;
     padding: 24px 27px;
@@ -18,7 +18,7 @@ category: Dashboards/Components
       var(--theme-primary, #617ce4)
     );
   }
-  .openux-welcome::after {
+  .specux-welcome::after {
     position: absolute;
     top: -48px;
     right: 7%;
@@ -31,12 +31,12 @@ category: Dashboards/Components
       0 0 0 48px color-mix(in srgb, var(--theme-on-primary, #fff) 5%, transparent);
     content: "";
   }
-  .openux-welcome-eyebrow { margin: 0 0 5px; color: var(--theme-on-primary, #fff); font-size: 11px; }
-  .openux-welcome-title { margin: 0 0 5px; font-size: 21px; font-weight: 750; letter-spacing: -.35px; }
-  .openux-welcome-copy { margin: 0; color: var(--theme-on-primary, #fff); font-size: 12px; }
+  .specux-welcome-eyebrow { margin: 0 0 5px; color: var(--theme-on-primary, #fff); font-size: 11px; }
+  .specux-welcome-title { margin: 0 0 5px; font-size: 21px; font-weight: 750; letter-spacing: -.35px; }
+  .specux-welcome-copy { margin: 0; color: var(--theme-on-primary, #fff); font-size: 12px; }
 </style>
-<section class="openux-welcome">
-  <p class="openux-welcome-eyebrow">MONDAY, OCTOBER 19, 2026</p>
-  <h1 class="openux-welcome-title">Good morning, Jordan</h1>
-  <p class="openux-welcome-copy">Here is your financial snapshot for this month.</p>
+<section class="specux-welcome">
+  <p class="specux-welcome-eyebrow">MONDAY, OCTOBER 19, 2026</p>
+  <h1 class="specux-welcome-title">Good morning, Jordan</h1>
+  <p class="specux-welcome-copy">Here is your financial snapshot for this month.</p>
 </section>

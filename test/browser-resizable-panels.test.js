@@ -26,7 +26,7 @@ function createHandle() {
 }
 
 function createHarness(savedLayout) {
-  const values = new Map(savedLayout ? [["openux-studio.layout.v1", savedLayout]] : []);
+  const values = new Map(savedLayout ? [["specux-studio.layout.v1", savedLayout]] : []);
   const properties = new Map();
   const handles = new Map([
     ["sidebar-resizer", createHandle()],
@@ -84,7 +84,7 @@ test("restores clamped panel sizes and persists keyboard and pointer resizing", 
   });
   assert.equal(prevented, true);
   assert.equal(harness.properties.get("--inspector-width"), "232px");
-  assert.deepEqual(JSON.parse(harness.values.get("openux-studio.layout.v1")), {
+  assert.deepEqual(JSON.parse(harness.values.get("specux-studio.layout.v1")), {
     sidebar: 420,
     inspector: 232
   });
@@ -100,7 +100,7 @@ test("restores clamped panel sizes and persists keyboard and pointer resizing", 
   sidebar.listeners.get("pointermove")({ pointerId: 5, clientX: 80 });
   sidebar.listeners.get("pointerup")({ pointerId: 5 });
   assert.equal(harness.properties.get("--sidebar-width"), "400px");
-  assert.deepEqual(JSON.parse(harness.values.get("openux-studio.layout.v1")), {
+  assert.deepEqual(JSON.parse(harness.values.get("specux-studio.layout.v1")), {
     sidebar: 400,
     inspector: 232
   });

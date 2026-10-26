@@ -1,4 +1,4 @@
-function parseOpenuxYaml(source) {
+function parseSpecuxYaml(source) {
   const lines = [];
 
   source.split(/\r?\n/).forEach((raw, index) => {
@@ -158,8 +158,8 @@ function stripYamlComment(text) {
   return text;
 }
 
-globalThis.OpenuxYamlParser = parseOpenuxYaml;
+globalThis.SpecuxYamlParser = parseSpecuxYaml;
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = parseOpenuxYaml;
+  module.exports = parseSpecuxYaml;
 }

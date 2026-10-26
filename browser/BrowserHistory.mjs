@@ -75,7 +75,7 @@ export class BrowserHistory {
     const state = this.window.history.state && typeof this.window.history.state === "object"
       ? { ...this.window.history.state }
       : {};
-    state.openuxEditor = {
+    state.specuxEditor = {
       file: filePath,
       selection: this.createHistorySelection(selection)
     };

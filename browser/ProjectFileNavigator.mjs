@@ -117,8 +117,8 @@ export class ProjectFileNavigator {
     button.append(services.element("span", "file-tree-name", file.name));
     if (action?.kind === "screen") {
       const screen = state.screens[action.screenIndex];
-      button.dataset.openuxScreenId = screen.id;
-      button.dataset.openuxScreenName = screen.data.name || screen.id;
+      button.dataset.specuxScreenId = screen.id;
+      button.dataset.specuxScreenName = screen.data.name || screen.id;
       button.setAttribute(
         "aria-label",
         `Open Screen ${screen.data.name || screen.id} (${file.path})`

@@ -7,7 +7,7 @@ const { spawn, spawnSync } = require("node:child_process");
 const YAML = require("yaml");
 const { createServer } = require("./server");
 const { readBrowserSnapshot } = require("./browserSnapshotCache");
-const { OPENUX_VERSION, isWithin, resolveProjectPath, validateProject } = require("./project");
+const { SPECUX_VERSION, isWithin, resolveProjectPath, validateProject } = require("./project");
 const validation = require("./validation");
 
 const studioRoot = __dirname;
@@ -22,20 +22,20 @@ const schemaFiles = new Map([
 
 function usage() {
   return [
-    "OpenUX CLI",
+    "SpecUX CLI",
     "",
     "Usage:",
-    "  openux server start [--port <port>] [--project <directory>]",
-    "  openux server status [--port <port>]",
-    "  openux server selected [--port <port>]",
-    "  openux server annotations [clear] [--port <port>] [--screen <id>]",
-    "  openux server update [--port <port>]",
-    "  openux init [--project <directory>]",
-    "  openux validate [--project <directory>]",
-    "  openux version",
-    "  openux schema [project|screen|asset|theme|spec|reference]",
-    "  openux render <screen> --format <html|image> [--state <id>] [--output <file>] [--annotations] [--project <directory>]",
-    "  openux prune [--apply] [--project <directory>]"
+    "  specux server start [--port <port>] [--project <directory>]",
+    "  specux server status [--port <port>]",
+    "  specux server selected [--port <port>]",
+    "  specux server annotations [clear] [--port <port>] [--screen <id>]",
+    "  specux server update [--port <port>]",
+    "  specux init [--project <directory>]",
+    "  specux validate [--project <directory>]",
+    "  specux version",
+    "  specux schema [project|screen|asset|theme|spec|reference]",
+    "  specux render <screen> --format <html|image> [--state <id>] [--output <file>] [--annotations] [--project <directory>]",
+    "  specux prune [--apply] [--project <directory>]"
   ].join("\n");
 }
 
@@ -97,29 +97,29 @@ async function locateProjectRoot(startDirectory = process.cwd(), projectOption) 
   if (projectOption) {
     const selected = path.resolve(startDirectory, projectOption);
     if (await isFile(path.join(selected, "project.yml"))) return selected;
-    if (await isFile(path.join(selected, "openux", "project.yml"))) return path.join(selected, "openux");
-    throw new Error(`No project.yml found in "${selected}" or its openux/ subdirectory.`);
+    if (await isFile(path.join(selected, "specux", "project.yml"))) return path.join(selected, "specux");
+    throw new Error(`No project.yml found in "${selected}" or its specux/ subdirectory.`);
   }
 
   let directory = path.resolve(startDirectory);
   while (true) {
     if (await isFile(path.join(directory, "project.yml"))) return directory;
-    if (await isFile(path.join(directory, "openux", "project.yml"))) return path.join(directory, "openux");
+    if (await isFile(path.join(directory, "specux", "project.yml"))) return path.join(directory, "specux");
     const parent = path.dirname(directory);
     if (parent === directory) break;
     directory = parent;
   }
 
   if (isWithin(studioRoot, path.resolve(startDirectory)) &&
-      await isFile(path.join(studioRoot, "openux", "project.yml"))) {
-    return path.join(studioRoot, "openux");
+      await isFile(path.join(studioRoot, "specux", "project.yml"))) {
+    return path.join(studioRoot, "specux");
   }
-  throw new Error("Could not find project.yml. Run this command inside an OpenUX project or use --project <directory>.");
+  throw new Error("Could not find project.yml. Run this command inside a SpecUX project or use --project <directory>.");
 }
 
 function printValidationResult(result) {
   if (!result.errors.length) {
-    console.log("OpenUX project is valid.");
+    console.log("SpecUX project is valid.");
     return 0;
   }
   console.error(`Found ${result.errors.length} validation error${result.errors.length === 1 ? "" : "s"}:`);
@@ -128,7 +128,7 @@ function printValidationResult(result) {
 }
 
 function resolveServerPort(options) {
-  const port = options.port ?? Number(process.env.OPENUX_PORT || process.env.PORT || 3000);
+  const port = options.port ?? Number(process.env.SPECUX_PORT || process.env.PORT || 3000);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`Invalid server port "${port}".`);
   }
@@ -144,7 +144,7 @@ async function startServer(options) {
     server.listen(port, "127.0.0.1", resolve);
   });
   const address = server.address();
-  console.log(`OpenUX editor available at http://127.0.0.1:${address.port}/`);
+  console.log(`SpecUX editor available at http://127.0.0.1:${address.port}/`);
   console.log("Press Ctrl+C to stop the server.");
   process.once("SIGINT", () => {
     server.closeAllConnections?.();
@@ -163,12 +163,12 @@ async function requestServer(port, pathname, options = {}) {
       signal: AbortSignal.timeout(2000)
     });
   } catch (error) {
-    throw new Error(`Could not reach the OpenUX server at http://127.0.0.1:${port}/. Run "openux server start" first.`, {
+    throw new Error(`Could not reach the SpecUX server at http://127.0.0.1:${port}/. Run "specux server start" first.`, {
       cause: error
     });
   }
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || `OpenUX server returned HTTP ${response.status}.`);
+  if (!response.ok) throw new Error(body.error || `SpecUX server returned HTTP ${response.status}.`);
   return body;
 }
 
@@ -181,7 +181,7 @@ async function runServerCommand(command, args) {
   const { positional, options } = parseOptions(args, allowedFlags);
   if (command === "annotations") {
     if (positional.length > 1 || (positional.length === 1 && positional[0] !== "clear")) {
-      throw new Error('Usage: openux server annotations [clear] [--port <port>] [--screen <id>]');
+      throw new Error('Usage: specux server annotations [clear] [--port <port>] [--screen <id>]');
     }
     const port = resolveServerPort(options);
     if (positional[0] === "clear") {
@@ -215,7 +215,7 @@ async function runServerCommand(command, args) {
       console.log(JSON.stringify(status, null, 2));
       return;
     } catch (error) {
-      console.error(`OpenUX server is not reachable at http://127.0.0.1:${port}/.`);
+      console.error(`SpecUX server is not reachable at http://127.0.0.1:${port}/.`);
       return 1;
     }
   }
@@ -234,7 +234,7 @@ async function runServerCommand(command, args) {
 }
 
 async function runSchemaCommand(args) {
-  if (args.length > 1) throw new Error("Usage: openux schema [project|screen|asset|theme|spec|reference]");
+  if (args.length > 1) throw new Error("Usage: specux schema [project|screen|asset|theme|spec|reference]");
   const type = args[0];
   const docs = type ? [schemaFiles.get(type)] : [...schemaFiles.values()];
   if (type && !docs[0]) {
@@ -247,8 +247,8 @@ async function runSchemaCommand(args) {
 }
 
 function runVersionCommand(args) {
-  if (args.length) throw new Error("Usage: openux version");
-  console.log(OPENUX_VERSION);
+  if (args.length) throw new Error("Usage: specux version");
+  console.log(SPECUX_VERSION);
 }
 
 async function runValidateCommand(args) {
@@ -264,17 +264,17 @@ async function runInitCommand(args) {
   if (positional.length) throw new Error(`Unexpected argument "${positional[0]}".`);
 
   const workingDirectory = path.resolve(process.cwd(), options.project || ".");
-  const projectDirectory = path.join(workingDirectory, "openux");
+  const projectDirectory = path.join(workingDirectory, "specux");
   const files = [
     ["project.yml", YAML.stringify({
-      name: "OpenUX Project",
-      openux: OPENUX_VERSION,
+      name: "SpecUX Project",
+      specux: SPECUX_VERSION,
       screens: [{ id: "home", file: "screens/home/screen.yml" }],
       theme: "theme/theme.yml"
     })],
     ["screens/home/screen.yml", YAML.stringify({
       name: "Home",
-      description: "Starter Screen for the OpenUX project.",
+      description: "Starter Screen for the SpecUX project.",
       elements: [{
         id: "page-layout-instance",
         type: "template",
@@ -292,8 +292,8 @@ async function runInitCommand(args) {
       }),
       [
         '<main class="page-layout">',
-        "  <h1>Welcome to OpenUX</h1>",
-        '  <div data-openux-slot="content"></div>',
+        "  <h1>Welcome to SpecUX</h1>",
+        '  <div data-specux-slot="content"></div>',
         "</main>",
         "",
         "<style>",
@@ -331,7 +331,7 @@ async function runInitCommand(args) {
   }
   if (conflicts.length) {
     throw new Error(
-      `Cannot initialize OpenUX because these files already exist in "${projectDirectory}": ${conflicts.join(", ")}.`
+      `Cannot initialize SpecUX because these files already exist in "${projectDirectory}": ${conflicts.join(", ")}.`
     );
   }
 
@@ -355,19 +355,19 @@ async function runInitCommand(args) {
     if (cleanupErrors.length) {
       throw new AggregateError(
         [error, ...cleanupErrors],
-        "OpenUX initialization failed and some created files could not be removed."
+        "SpecUX initialization failed and some created files could not be removed."
       );
     }
     throw error;
   }
 
-  console.log(`Created OpenUX starter project in "${projectDirectory}".`);
-  console.log('Run "openux validate" to check the new project.');
+  console.log(`Created SpecUX starter project in "${projectDirectory}".`);
+  console.log('Run "specux validate" to check the new project.');
 }
 
 function findBrowserExecutable() {
   const candidates = [
-    process.env.OPENUX_BROWSER,
+    process.env.SPECUX_BROWSER,
     process.env.CHROME_PATH,
     process.env.EDGE_PATH,
     process.platform === "win32" && process.env.ProgramFiles
@@ -488,7 +488,7 @@ function browserFailure(result) {
 
 async function inlineProjectResources(html, origin, projectRoot) {
   const urls = new Set();
-  const prefix = `${origin}/openux/`;
+  const prefix = `${origin}/specux/`;
   for (const match of html.matchAll(/https?:\/\/[^"'()<>\s]+/g)) {
     if (match[0].startsWith(prefix)) urls.add(match[0]);
   }
@@ -532,7 +532,7 @@ async function runRenderCommand(args) {
     new Set(["--annotations", "--format", "--output", "--port", "--project", "--state"])
   );
   if (positional.length !== 1 || !options.format) {
-    throw new Error("Usage: openux render <screen> --format <html|image> [--state <id>] [--output <file>] [--annotations] [--project <directory>]");
+    throw new Error("Usage: specux render <screen> --format <html|image> [--state <id>] [--output <file>] [--annotations] [--project <directory>]");
   }
   if (options.port !== undefined && !options.annotations) {
     throw new Error('The "--port" option requires "--annotations".');
@@ -588,7 +588,7 @@ async function runRenderCommand(args) {
 
   const browser = findBrowserExecutable();
   if (!browser) {
-    throw new Error("A Chromium-based browser is required. Set OPENUX_BROWSER to its executable path.");
+    throw new Error("A Chromium-based browser is required. Set SPECUX_BROWSER to its executable path.");
   }
 
   const server = createServer({ rootDirectory: studioRoot, projectRoot });
@@ -596,7 +596,7 @@ async function runRenderCommand(args) {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);
   });
-  const temporaryDirectory = await fs.mkdtemp(path.join(require("node:os").tmpdir(), "openux-render-"));
+  const temporaryDirectory = await fs.mkdtemp(path.join(require("node:os").tmpdir(), "specux-render-"));
   const outputPath = options.output ? path.resolve(options.output) : null;
   try {
     if (outputPath) await fs.mkdir(path.dirname(outputPath), { recursive: true });
@@ -605,18 +605,18 @@ async function runRenderCommand(args) {
     url.searchParams.set("render", positional[0]);
     url.searchParams.set("format", options.format);
     if (options.state !== undefined) url.searchParams.set("state", options.state);
-    const timeoutMs = Number(process.env.OPENUX_RENDER_TIMEOUT_MS) || 60000;
+    const timeoutMs = Number(process.env.SPECUX_RENDER_TIMEOUT_MS) || 60000;
     let result;
     let measurement;
     if (options.format === "image") {
       const measureArgs = createBrowserArgs(url, temporaryDirectory, 1440, 1000);
-      if (process.env.OPENUX_DEBUG_RENDER) {
+      if (process.env.SPECUX_DEBUG_RENDER) {
         console.error(`Using browser: ${browser}`);
         console.error(`Browser arguments: ${measureArgs.join(" ")}`);
       }
       measurement = await runBrowser(browser, measureArgs, timeoutMs);
       if (measurement.status !== 0) throw browserFailure(measurement);
-      const heightMatch = /data-openux-render-height="(\d+)"/.exec(measurement.stdout);
+      const heightMatch = /data-specux-render-height="(\d+)"/.exec(measurement.stdout);
       const viewportHeight = heightMatch ? Number(heightMatch[1]) : 0;
       if (!Number.isSafeInteger(viewportHeight) || viewportHeight < 1 || viewportHeight > 16384) {
         throw new Error(
@@ -632,13 +632,13 @@ async function runRenderCommand(args) {
         viewportHeight,
         outputPath
       );
-      if (process.env.OPENUX_DEBUG_RENDER) {
+      if (process.env.SPECUX_DEBUG_RENDER) {
         console.error(`Browser arguments: ${screenshotArgs.join(" ")}`);
       }
       result = await runBrowser(browser, screenshotArgs, timeoutMs);
     } else {
       const browserArgs = createBrowserArgs(url, temporaryDirectory, 1440, 1000);
-      if (process.env.OPENUX_DEBUG_RENDER) {
+      if (process.env.SPECUX_DEBUG_RENDER) {
         console.error(`Using browser: ${browser}`);
         console.error(`Browser arguments: ${browserArgs.join(" ")}`);
       }
@@ -653,8 +653,8 @@ async function runRenderCommand(args) {
       console.log(`Rendered Screen "${screen.id}" to ${outputPath}`);
       return;
     }
-    const match = /data-openux-render-ready="true"[^>]*data-openux-render-html="([A-Za-z0-9+/=]+)"/.exec(result.stdout) ||
-      /data-openux-render-html="([A-Za-z0-9+/=]+)"[^>]*data-openux-render-ready="true"/.exec(result.stdout);
+    const match = /data-specux-render-ready="true"[^>]*data-specux-render-html="([A-Za-z0-9+/=]+)"/.exec(result.stdout) ||
+      /data-specux-render-html="([A-Za-z0-9+/=]+)"[^>]*data-specux-render-ready="true"/.exec(result.stdout);
     const encodedHtml = match && (match[1] || match[2]);
     if (!encodedHtml) throw new Error("The browser could not render that Screen as HTML.");
     const renderedHtml = Buffer.from(encodedHtml, "base64").toString("utf8");
@@ -687,7 +687,7 @@ function pruneCandidates(result) {
 
 async function applyPrune(projectRoot, candidates) {
   if (!candidates.length) return;
-  const quarantine = path.join(projectRoot, `.openux-prune-${randomUUID()}`);
+  const quarantine = path.join(projectRoot, `.specux-prune-${randomUUID()}`);
   const moved = [];
   await fs.mkdir(quarantine);
   try {
@@ -765,7 +765,7 @@ async function main(args = process.argv.slice(2)) {
   const [command, ...rest] = args;
   if (command === "server") {
     const [subcommand, ...subArgs] = rest;
-    if (!subcommand) throw new Error("Usage: openux server <start|status|selected|annotations|update>");
+    if (!subcommand) throw new Error("Usage: specux server <start|status|selected|annotations|update>");
     return runServerCommand(subcommand, subArgs);
   }
   if (command === "init") return runInitCommand(rest);

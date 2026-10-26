@@ -60,7 +60,7 @@ test("does not expose asset selection interactions in render-only mode", async (
 test("does not expose drop-zone interactions in render-only mode", async () => {
   const { ScreenInstanceRenderer } = await import("../browser/ScreenInstanceRenderer.mjs");
   const target = createElement("div");
-  target.attributes["data-openux-slot"] = "content";
+  target.attributes["data-specux-slot"] = "content";
   const renderer = new ScreenInstanceRenderer({
     state: { isRenderOnly: true },
     services: {}
@@ -75,8 +75,8 @@ test("does not expose drop-zone interactions in render-only mode", async () => {
     "Home"
   );
 
-  assert.equal(target.classList.values.has("openux-drop-slot"), false);
-  assert.equal(target.classList.values.has("openux-render-slot"), true);
+  assert.equal(target.classList.values.has("specux-drop-slot"), false);
+  assert.equal(target.classList.values.has("specux-render-slot"), true);
   assert.equal(target.attributes.role, undefined);
   assert.equal(target.attributes["aria-label"], undefined);
   assert.equal(target.attributes["data-placeholder"], undefined);

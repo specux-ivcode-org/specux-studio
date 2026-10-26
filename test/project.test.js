@@ -7,7 +7,7 @@ const test = require("node:test");
 const YAML = require("yaml");
 const { inlineProjectResources } = require("../cli");
 const { clearBrowserSnapshot, writeBrowserSnapshot } = require("../browserSnapshotCache");
-const { OPENUX_VERSION, validateProject } = require("../project");
+const { SPECUX_VERSION, validateProject } = require("../project");
 const validation = require("../validation");
 
 const cliPath = path.join(__dirname, "..", "cli.js");
@@ -35,11 +35,11 @@ function assetDocument(data, body) {
 }
 
 async function createProject() {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "openux-project-test-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "specux-project-test-"));
   const files = {
     "project.yml": YAML.stringify({
       name: "Test project",
-      openux: OPENUX_VERSION,
+      specux: SPECUX_VERSION,
       screens: [{ id: "home", file: "screens/home/screen.yml" }],
       theme: "theme/theme.yml"
     }),
@@ -83,7 +83,7 @@ async function createProject() {
       name: "Layout",
       description: "A layout with a content slot.",
       slots: [{ id: "content", name: "Content" }]
-    }, "<main><div data-openux-slot=\"content\"></div></main>\n"),
+    }, "<main><div data-specux-slot=\"content\"></div></main>\n"),
     "screens/home/assets/unused.stml": assetDocument({
       id: "unused",
       name: "Unused",
@@ -186,9 +186,9 @@ test("validates template front matter, filename IDs, resources, and slot declara
       name: "Layout",
       description: "A layout.",
       slots: [{ id: "content" }]
-    }, "<main><div data-openux-slot=\"unknown\"></div></main>"));
+    }, "<main><div data-specux-slot=\"unknown\"></div></main>"));
     result = await validateProject(root);
-    assert.ok(result.errors.some((error) => error.includes('must contain exactly one element with data-openux-slot="content"')));
+    assert.ok(result.errors.some((error) => error.includes('must contain exactly one element with data-specux-slot="content"')));
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -228,22 +228,22 @@ test("validates Element spec front matter and direct specs directory paths", asy
 });
 
 test("CLI init creates a discoverable template Asset and an Element-based Screen", async () => {
-  const parent = await fs.mkdtemp(path.join(os.tmpdir(), "openux-init-test-"));
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), "specux-init-test-"));
   try {
     const result = spawnSync(process.execPath, [cliPath, "init", "--project", parent], {
       encoding: "utf8"
     });
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    const manifest = YAML.parse(await fs.readFile(path.join(parent, "openux", "project.yml"), "utf8"));
+    const manifest = YAML.parse(await fs.readFile(path.join(parent, "specux", "project.yml"), "utf8"));
     const screen = YAML.parse(await fs.readFile(
-      path.join(parent, "openux", "screens", "home", "screen.yml"),
+      path.join(parent, "specux", "screens", "home", "screen.yml"),
       "utf8"
     ));
     assert.equal(Object.hasOwn(manifest, "asset-templates"), false);
     assert.equal(screen.elements[0].type, "template");
     assert.equal(screen.elements[0].src, "screens/home/assets/page-layout.stml");
     assert.ok(await fs.readFile(
-      path.join(parent, "openux", "screens", "home", "assets", "page-layout.stml"),
+      path.join(parent, "specux", "screens", "home", "assets", "page-layout.stml"),
       "utf8"
     ));
   } finally {
@@ -252,8 +252,8 @@ test("CLI init creates a discoverable template Asset and an Element-based Screen
 });
 
 test("CLI renders an annotated image from the local snapshot without a running server", async () => {
-  const parent = await fs.mkdtemp(path.join(os.tmpdir(), "openux-snapshot-cli-test-"));
-  const projectRoot = path.join(parent, "openux");
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), "specux-snapshot-cli-test-"));
+  const projectRoot = path.join(parent, "specux");
   try {
     const initialized = spawnSync(process.execPath, [cliPath, "init", "--project", parent], {
       encoding: "utf8"
@@ -321,7 +321,7 @@ test("inlines local resources referenced by rendered Screen output", async () =>
   const root = await createProject();
   try {
     const html = await inlineProjectResources(
-      '<img src="http://127.0.0.1:3000/openux/assets/brand.png"><img src="http://127.0.0.1:3000/openux/screens/home/assets/images/chart.png">',
+      '<img src="http://127.0.0.1:3000/specux/assets/brand.png"><img src="http://127.0.0.1:3000/specux/screens/home/assets/images/chart.png">',
       "http://127.0.0.1:3000",
       root
     );

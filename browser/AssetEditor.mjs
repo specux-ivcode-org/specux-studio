@@ -238,9 +238,9 @@ export class AssetEditor {
           instance
         }
       };
-      const clipboardText = `OpenUX asset details:\n\`\`\`json\n${JSON.stringify(details, null, 2)}\n\`\`\``;
+      const clipboardText = `SpecUX asset details:\n\`\`\`json\n${JSON.stringify(details, null, 2)}\n\`\`\``;
       await this.services.clipboard.writeText(clipboardText);
-      this.services.showEditorMessage("Asset details copied", "Paste the OpenUX context into your prompt.");
+      this.services.showEditorMessage("Asset details copied", "Paste the SpecUX context into your prompt.");
     } catch (error) {
       this.services.showEditorMessage("Could not copy asset details", error.message || String(error));
     }

@@ -236,11 +236,11 @@ async function resolveProjectDirectory(projectRoot, relativePath, { create = fal
       details = await fs.lstat(current);
     }
     if (details.isSymbolicLink() || !details.isDirectory()) {
-      throw requestError("Project directories must be real directories inside the openux project.");
+      throw requestError("Project directories must be real directories inside the specux project.");
     }
   }
   if (!isWithin(realProjectRoot, current)) {
-    throw requestError("Project directory resolves outside the openux project.");
+    throw requestError("Project directory resolves outside the specux project.");
   }
   return current;
 }
@@ -264,7 +264,7 @@ async function resolveProjectFile(projectRoot, relativePath, { create = false, s
       relativePath.startsWith("/") || relativePath.split("/").some((segment) =>
         !segment || segment === "." || segment === ".." || segment.startsWith(".")
       )) {
-    throw requestError("Save paths must be relative paths inside the openux project.");
+    throw requestError("Save paths must be relative paths inside the specux project.");
   }
   const extension = path.extname(relativePath).toLowerCase();
   const specPath = isSpecPath(relativePath);
@@ -278,7 +278,7 @@ async function resolveProjectFile(projectRoot, relativePath, { create = false, s
 
   const target = path.resolve(projectRoot, ...relativePath.split("/"));
   if (!isWithin(projectRoot, target)) {
-    throw requestError("Save path is outside the openux project.");
+    throw requestError("Save path is outside the specux project.");
   }
 
   if (create) {
@@ -332,7 +332,7 @@ async function resolveProjectFile(projectRoot, relativePath, { create = false, s
     throw error;
   }
   if (!isWithin(projectRoot, realTarget)) {
-    throw requestError("Save path resolves outside the openux project.");
+    throw requestError("Save path resolves outside the specux project.");
   }
   const details = await fs.stat(realTarget);
   if (!details.isFile()) throw requestError(`Project path "${relativePath}" is not a file.`);
@@ -734,10 +734,10 @@ async function serveStatic(rootDirectory, projectRoot, pathname, response) {
     "/browser/WorkspaceViewRenderer.mjs"
   ].includes(pathname)) {
     relativePath = pathname.slice(1);
-  } else if (pathname.startsWith("/openux/")) {
+  } else if (pathname.startsWith("/specux/")) {
     let projectPath;
     try {
-      projectPath = decodeURIComponent(pathname.slice("/openux/".length));
+      projectPath = decodeURIComponent(pathname.slice("/specux/".length));
     } catch {
       sendJson(response, 404, { error: "File not found." });
       return;
@@ -787,7 +787,7 @@ async function serveStatic(rootDirectory, projectRoot, pathname, response) {
 
 function createServer(options = {}) {
   const rootDirectory = path.resolve(options.rootDirectory || __dirname);
-  const projectRoot = path.resolve(options.projectRoot || path.join(rootDirectory, "openux"));
+  const projectRoot = path.resolve(options.projectRoot || path.join(rootDirectory, "specux"));
   const eventClients = new Set();
   const selectionState = { selection: null, updatedAt: null };
   const annotationsByScreen = new Map();
@@ -881,11 +881,11 @@ function createServer(options = {}) {
         if (selection?.view !== "screen" || selection.screen?.id !== screenId) {
           throw requestError("The Screen must be selected before its browser snapshot can be saved.", 409);
         }
-        if (request.headers["x-openux-selection-updated-at"] !== selectionState.updatedAt) {
+        if (request.headers["x-specux-selection-updated-at"] !== selectionState.updatedAt) {
           throw requestError("The selected Screen preview changed before its snapshot could be saved.", 409);
         }
         if (!annotations?.updatedAt ||
-            request.headers["x-openux-annotation-updated-at"] !== annotations.updatedAt) {
+            request.headers["x-specux-annotation-updated-at"] !== annotations.updatedAt) {
           throw requestError("The annotations changed before the browser snapshot could be saved.", 409);
         }
         const contentType = String(request.headers["content-type"] || "").toLowerCase();
@@ -1009,7 +1009,7 @@ if (require.main === module) {
   const server = createServer();
   const port = Number(process.env.PORT) || 3000;
   server.listen(port, "127.0.0.1", () => {
-    console.log(`OpenUX editor available at http://127.0.0.1:${port}/`);
+    console.log(`SpecUX editor available at http://127.0.0.1:${port}/`);
   });
 }
 

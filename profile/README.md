@@ -1,8 +1,8 @@
-# OpenUX
+# SpecUX
 
 **An open standard for specifying user interfaces, interactions, and intended behavior.**
 
-OpenUX defines a structured, machine-readable format for describing how users interact with software. It enables humans and AI agents to collaboratively create, understand, validate, and modify interface specifications.
+SpecUX defines a structured, machine-readable format for describing how users interact with software. It enables humans and AI agents to collaboratively create, understand, validate, and modify interface specifications.
 
 The goal is to make user-facing software requirements precise and verifiable, helping AI agents implement not just what software does, but how people interact with it.
 
@@ -16,6 +16,6 @@ The goal is to make user-facing software requirements precise and verifiable, he
 - **Implementation guidance:** Connect interface definitions, Asset-linked behavior specs, and requirements so AI agents can use them as actionable guidance when implementing software.
 - **Tool interoperability:** Allow independent editors, validators, and AI agents to work with the same artifacts consistently.
 
-OpenUX is designed to complement software specification standards such as [OpenSpec](https://github.com/Fission-AI/OpenSpec).
+SpecUX is designed to complement software specification standards such as [OpenSpec](https://github.com/Fission-AI/OpenSpec).
 
-*OpenUX is in the early design stage. The specification and tooling are evolving.*
+*SpecUX is in the early design stage. The specification and tooling are evolving.*
