@@ -103,6 +103,7 @@ export class SpecEditor {
     const focusPath = Array.isArray(instancePath) && instancePath.length
       ? JSON.stringify(instancePath)
       : null;
+    const focusPrefix = focusPath?.slice(0, -1);
     const ancestorPaths = new Set();
     if (focusPath) {
       for (let length = 1; length < instancePath.length; length += 1) {
@@ -124,6 +125,8 @@ export class SpecEditor {
         element.style.setProperty("transition", "filter 180ms ease");
       } else if (ancestorPaths.has(path)) {
         element.classList.add("spec-focus-ancestor");
+      } else if (focusPrefix && path.startsWith(`${focusPrefix},`)) {
+        element.classList.add("spec-focus-descendant");
       } else {
         element.classList.add("spec-focus-dimmed");
         element.style.setProperty("filter", "blur(1.5px)");

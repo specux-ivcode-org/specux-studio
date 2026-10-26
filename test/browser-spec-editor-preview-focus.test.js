@@ -51,3 +51,29 @@ test("focuses an Element spec target and dims unrelated preview branches", async
   assert.equal(sibling.style.getPropertyValue("filter"), "");
   assert.equal(unrelated.style.getPropertyValue("filter"), "");
 });
+
+test("keeps all descendants clear when a container Element is focused", async () => {
+  const { SpecEditor } = await import("../browser/SpecEditor.mjs");
+  const nestedChild = createInstance([0, "navigation", 0]);
+  const nestedGrandchild = createInstance([0, "navigation", 0, "links", 0]);
+  const selectedContainer = createInstance(
+    [0],
+    [],
+    { children: [nestedChild, nestedGrandchild] }
+  );
+  const unrelated = createInstance([1]);
+  const preview = { children: [selectedContainer, unrelated] };
+  const editor = new SpecEditor({
+    state: {},
+    services: { byId: () => preview }
+  });
+
+  editor.updatePreviewFocus([0]);
+
+  assert.equal(selectedContainer.classList.contains("spec-focus-target"), true);
+  assert.equal(nestedChild.classList.contains("spec-focus-descendant"), true);
+  assert.equal(nestedChild.style.getPropertyValue("filter"), "");
+  assert.equal(nestedGrandchild.classList.contains("spec-focus-descendant"), true);
+  assert.equal(nestedGrandchild.style.getPropertyValue("filter"), "");
+  assert.equal(unrelated.style.getPropertyValue("filter"), "blur(1.5px)");
+});
