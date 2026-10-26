@@ -91,11 +91,13 @@ export class SpecEditor {
   updatePreviewFocus(instancePath) {
     const preview = this.services.byId("screen-preview");
     const instances = [];
-    const visit = (root) => {
+    const visit = (root, parentInstance = null) => {
       for (const element of root.children || []) {
-        if (element.classList?.contains("asset-instance")) instances.push(element);
-        if (element.shadowRoot) visit(element.shadowRoot);
-        visit(element);
+        const isInstance = element.classList?.contains("asset-instance") === true;
+        if (isInstance) instances.push({ element, parentInstance });
+        const nextParent = isInstance ? element : parentInstance;
+        if (element.shadowRoot) visit(element.shadowRoot, nextParent);
+        visit(element, nextParent);
       }
     };
     visit(preview);
@@ -111,8 +113,14 @@ export class SpecEditor {
       }
     }
 
-    for (const element of instances) {
-      element.classList.remove("spec-focus-target", "spec-focus-ancestor", "spec-focus-dimmed");
+    const dimmedBranches = new Set();
+    for (const { element, parentInstance } of instances) {
+      element.classList.remove(
+        "spec-focus-target",
+        "spec-focus-ancestor",
+        "spec-focus-descendant",
+        "spec-focus-dimmed"
+      );
       element.style.removeProperty("filter");
       element.style.removeProperty("transition");
       element.style.removeProperty("z-index");
@@ -127,10 +135,11 @@ export class SpecEditor {
         element.classList.add("spec-focus-ancestor");
       } else if (focusPrefix && path.startsWith(`${focusPrefix},`)) {
         element.classList.add("spec-focus-descendant");
-      } else {
+      } else if (!parentInstance || !dimmedBranches.has(parentInstance)) {
         element.classList.add("spec-focus-dimmed");
         element.style.setProperty("filter", "blur(1.5px) brightness(0.2)");
         element.style.setProperty("transition", "filter 180ms ease");
+        dimmedBranches.add(element);
       }
     }
   }

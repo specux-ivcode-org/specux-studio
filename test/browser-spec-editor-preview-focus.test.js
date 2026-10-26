@@ -23,10 +23,21 @@ function createInstance(path, children = [], shadowRoot = null) {
 
 test("focuses an Element spec target and dims unrelated preview branches", async () => {
   const { SpecEditor } = await import("../browser/SpecEditor.mjs");
-  const selected = createInstance([0, "navigation", 0]);
-  const sibling = createInstance([0, "header", 0]);
+  const selectedChild = createInstance([0, "navigation", 0, "links", 0]);
+  const selected = createInstance(
+    [0, "navigation", 0],
+    [],
+    { children: [selectedChild] }
+  );
+  const siblingDescendant = createInstance([0, "header", 0, "logo", 0]);
+  const sibling = createInstance(
+    [0, "header", 0],
+    [],
+    { children: [siblingDescendant] }
+  );
   const ancestor = createInstance([0], [], { children: [selected, sibling] });
-  const unrelated = createInstance([1]);
+  const unrelatedDescendant = createInstance([1, "content", 0]);
+  const unrelated = createInstance([1], [], { children: [unrelatedDescendant] });
   const preview = { children: [ancestor, unrelated] };
   const editor = new SpecEditor({
     state: {},
@@ -38,14 +49,20 @@ test("focuses an Element spec target and dims unrelated preview branches", async
   assert.equal(selected.classList.contains("spec-focus-target"), true);
   assert.equal(selected.style.getPropertyValue("filter"), "");
   assert.equal(selected.style.getPropertyValue("z-index"), "1");
+  assert.equal(selectedChild.classList.contains("spec-focus-descendant"), true);
+  assert.equal(selectedChild.style.getPropertyValue("filter"), "");
   assert.equal(ancestor.classList.contains("spec-focus-ancestor"), true);
   assert.equal(ancestor.style.getPropertyValue("filter"), "");
   assert.equal(sibling.style.getPropertyValue("filter"), "blur(1.5px) brightness(0.2)");
+  assert.equal(siblingDescendant.style.getPropertyValue("filter"), "");
+  assert.equal(siblingDescendant.classList.contains("spec-focus-dimmed"), false);
   assert.equal(unrelated.style.getPropertyValue("filter"), "blur(1.5px) brightness(0.2)");
+  assert.equal(unrelatedDescendant.style.getPropertyValue("filter"), "");
 
   editor.updatePreviewFocus(null);
 
   assert.equal(selected.classList.contains("spec-focus-target"), false);
+  assert.equal(selectedChild.classList.contains("spec-focus-descendant"), false);
   assert.equal(selected.style.getPropertyValue("z-index"), "");
   assert.equal(sibling.classList.contains("spec-focus-dimmed"), false);
   assert.equal(sibling.style.getPropertyValue("filter"), "");
