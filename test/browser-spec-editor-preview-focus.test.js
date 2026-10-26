@@ -53,10 +53,10 @@ test("focuses an Element spec target and dims unrelated preview branches", async
   assert.equal(selectedChild.style.getPropertyValue("filter"), "");
   assert.equal(ancestor.classList.contains("spec-focus-ancestor"), true);
   assert.equal(ancestor.style.getPropertyValue("filter"), "");
-  assert.equal(sibling.style.getPropertyValue("filter"), "blur(1.5px) brightness(0.2)");
+  assert.equal(sibling.style.getPropertyValue("filter"), "blur(1.5px)");
   assert.equal(siblingDescendant.style.getPropertyValue("filter"), "");
   assert.equal(siblingDescendant.classList.contains("spec-focus-dimmed"), false);
-  assert.equal(unrelated.style.getPropertyValue("filter"), "blur(1.5px) brightness(0.2)");
+  assert.equal(unrelated.style.getPropertyValue("filter"), "blur(1.5px)");
   assert.equal(unrelatedDescendant.style.getPropertyValue("filter"), "");
 
   editor.updatePreviewFocus(null);
@@ -92,5 +92,5 @@ test("keeps all descendants clear when a container Element is focused", async ()
   assert.equal(nestedChild.style.getPropertyValue("filter"), "");
   assert.equal(nestedGrandchild.classList.contains("spec-focus-descendant"), true);
   assert.equal(nestedGrandchild.style.getPropertyValue("filter"), "");
-  assert.equal(unrelated.style.getPropertyValue("filter"), "blur(1.5px) brightness(0.2)");
+  assert.equal(unrelated.style.getPropertyValue("filter"), "blur(1.5px)");
 });

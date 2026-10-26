@@ -137,7 +137,7 @@ export class SpecEditor {
         element.classList.add("spec-focus-descendant");
       } else if (!parentInstance || !dimmedBranches.has(parentInstance)) {
         element.classList.add("spec-focus-dimmed");
-        element.style.setProperty("filter", "blur(1.5px) brightness(0.2)");
+        element.style.setProperty("filter", "blur(1.5px)");
         element.style.setProperty("transition", "filter 180ms ease");
         dimmedBranches.add(element);
       }
