@@ -57,6 +57,7 @@ export class SpecEditor {
     state.activeSpecInstancePath = isProjectSpec || isScreenSpec ? [] : [...instancePath];
     state.activeAssetId = instance?.src || null;
     state.activeInstancePath = isProjectSpec || isScreenSpec ? [] : [...instancePath];
+    this.updatePreviewFocus(instance ? instancePath : null);
     services.hideEditorMessage();
     this.specValidationErrorFile = null;
     services.updateNavigationSelection();
@@ -84,6 +85,50 @@ export class SpecEditor {
           services.revealInstanceInPreview(instancePath);
         }
       });
+    }
+  }
+
+  updatePreviewFocus(instancePath) {
+    const preview = this.services.byId("screen-preview");
+    const instances = [];
+    const visit = (root) => {
+      for (const element of root.children || []) {
+        if (element.classList?.contains("asset-instance")) instances.push(element);
+        if (element.shadowRoot) visit(element.shadowRoot);
+        visit(element);
+      }
+    };
+    visit(preview);
+
+    const focusPath = Array.isArray(instancePath) && instancePath.length
+      ? JSON.stringify(instancePath)
+      : null;
+    const ancestorPaths = new Set();
+    if (focusPath) {
+      for (let length = 1; length < instancePath.length; length += 1) {
+        ancestorPaths.add(JSON.stringify(instancePath.slice(0, length)));
+      }
+    }
+
+    for (const element of instances) {
+      element.classList.remove("spec-focus-target", "spec-focus-ancestor", "spec-focus-dimmed");
+      element.style.removeProperty("filter");
+      element.style.removeProperty("transition");
+      element.style.removeProperty("z-index");
+      if (!focusPath) continue;
+
+      const path = element.dataset.instancePath;
+      if (path === focusPath) {
+        element.classList.add("spec-focus-target");
+        element.style.setProperty("z-index", "1");
+        element.style.setProperty("transition", "filter 180ms ease");
+      } else if (ancestorPaths.has(path)) {
+        element.classList.add("spec-focus-ancestor");
+      } else {
+        element.classList.add("spec-focus-dimmed");
+        element.style.setProperty("filter", "blur(1.5px) brightness(0.38)");
+        element.style.setProperty("transition", "filter 180ms ease");
+      }
     }
   }
 
