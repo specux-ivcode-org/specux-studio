@@ -262,9 +262,6 @@ export class ProjectPersistence {
             if (draft.owner === "screen" && screen) screen.data.spec = file.path;
           }
           state.createdSpecDrafts.delete(file.path);
-          if (state.activeSpecPath === file.path) {
-            services.byId("spec-status").textContent = "Saved.";
-          }
         }
         const savedCurrentVersion = state.dirtyFiles.get(file.path) === file.version;
         if (savedCurrentVersion) state.dirtyFiles.delete(file.path);

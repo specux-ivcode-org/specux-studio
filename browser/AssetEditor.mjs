@@ -37,6 +37,7 @@ export class AssetEditor {
     services.byId("breadcrumb").textContent = "Asset templates";
     services.byId("main").classList.add("asset-editing");
     services.byId("asset-document-editor-panel").hidden = false;
+    services.setAssetViewMode("split");
     services.byId("asset-document-editor-heading").textContent =
       `${template.data.name || assetId} — ${template.templateFile.split("/").pop()}`;
     const editor = services.byId("asset-document-source");

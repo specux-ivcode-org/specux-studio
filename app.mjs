@@ -16,6 +16,7 @@ import { ScreenAnnotationController } from "./browser/ScreenAnnotationController
 import { ScreenYamlEditor } from "./browser/ScreenYamlEditor.mjs";
 import { ScreenInstanceRenderer } from "./browser/ScreenInstanceRenderer.mjs";
 import { SpecEditor } from "./browser/SpecEditor.mjs";
+import { SplitViewLayout } from "./browser/SplitViewLayout.mjs";
 import { ThemeEditor } from "./browser/ThemeEditor.mjs";
 import { TemplateMarkupRenderer } from "./browser/TemplateMarkupRenderer.mjs";
 import { WorkspaceViewRenderer } from "./browser/WorkspaceViewRenderer.mjs";
@@ -118,6 +119,30 @@ const screenYamlEditor = new ScreenYamlEditor({
   updateSaveControls,
   validatePreviewStates: sharedValidation.validatePreviewStates
 });
+const specViewLayout = new SplitViewLayout({
+  windowObject: window,
+  documentObject: document,
+  modes: ["split", "preview", "markdown"],
+  viewIdPrefix: "spec-view",
+  viewAttribute: "data-spec-view",
+  headingId: "spec-view-heading",
+  headingLabels: { split: "Preview", preview: "Preview", markdown: "Markdown" },
+  resizerId: "spec-split-resizer",
+  previewTrackProperty: "--spec-preview-track",
+  editorTrackProperty: "--spec-markdown-track"
+});
+const assetViewLayout = new SplitViewLayout({
+  windowObject: window,
+  documentObject: document,
+  modes: ["split", "preview", "source"],
+  viewIdPrefix: "asset-view",
+  viewAttribute: "data-asset-view",
+  headingId: "asset-view-heading",
+  headingLabels: { split: "Preview", preview: "Preview", source: "Source" },
+  resizerId: "asset-split-resizer",
+  previewTrackProperty: "--asset-preview-track",
+  editorTrackProperty: "--asset-source-track"
+});
 const specEditor = new SpecEditor({
   state: {
     get project() { return project; },
@@ -154,11 +179,13 @@ const specEditor = new SpecEditor({
   services: {
     validation: sharedValidation,
     byId,
+    setSpecViewMode: (mode) => specViewLayout.setViewMode(mode),
     hidePreviewStateControls,
     getInstanceAtPath,
     sameInstancePath,
     loadText,
     hideEditorMessage,
+    showEditorMessage,
     updateNavigationSelection,
     refreshAssetSpecOwner,
     clearEdited,
@@ -411,6 +438,7 @@ const assetEditor = new AssetEditor({
     getInstanceAtPath,
     getTemplateByPath,
     getElementLabel,
+    setAssetViewMode: (mode) => assetViewLayout.setViewMode(mode),
     showEditorMessage
   }
 });
@@ -1576,5 +1604,7 @@ const resizablePanels = new ResizablePanels({
   showMessage: showEditorMessage
 });
 resizablePanels.bind();
+specViewLayout.bind();
+assetViewLayout.bind();
 
 loadProject(selectionFromLocation());

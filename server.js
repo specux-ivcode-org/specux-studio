@@ -729,6 +729,7 @@ async function serveStatic(rootDirectory, projectRoot, pathname, response) {
     "/browser/ScreenInstanceRenderer.mjs",
     "/browser/ScreenElementController.mjs",
     "/browser/SpecEditor.mjs",
+    "/browser/SplitViewLayout.mjs",
     "/browser/ThemeEditor.mjs",
     "/browser/TemplateMarkupRenderer.mjs",
     "/browser/WorkspaceViewRenderer.mjs"

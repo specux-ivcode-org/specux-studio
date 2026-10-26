@@ -91,6 +91,10 @@ async function withServer(run) {
     "export class SpecEditor {}\n"
   );
   await fs.writeFile(
+    path.join(rootDirectory, "browser", "SplitViewLayout.mjs"),
+    "export class SplitViewLayout {}\n"
+  );
+  await fs.writeFile(
     path.join(rootDirectory, "browser", "ThemeEditor.mjs"),
     "export class ThemeEditor {}\n"
   );
@@ -144,6 +148,7 @@ test("serves the editor root and the example project", async () => {
     const screenInstanceRendererModule = await fetch(`${baseUrl}/browser/ScreenInstanceRenderer.mjs`);
     const screenElementControllerModule = await fetch(`${baseUrl}/browser/ScreenElementController.mjs`);
     const specEditorModule = await fetch(`${baseUrl}/browser/SpecEditor.mjs`);
+    const splitViewLayoutModule = await fetch(`${baseUrl}/browser/SplitViewLayout.mjs`);
     const themeEditorModule = await fetch(`${baseUrl}/browser/ThemeEditor.mjs`);
     const workspaceViewRendererModule = await fetch(`${baseUrl}/browser/WorkspaceViewRenderer.mjs`);
     const templateMarkupRendererModule = await fetch(`${baseUrl}/browser/TemplateMarkupRenderer.mjs`);
@@ -176,6 +181,7 @@ test("serves the editor root and the example project", async () => {
     assert.equal(screenInstanceRendererModule.status, 200);
     assert.equal(screenElementControllerModule.status, 200);
     assert.equal(specEditorModule.status, 200);
+    assert.equal(splitViewLayoutModule.status, 200);
     assert.equal(themeEditorModule.status, 200);
     assert.equal(workspaceViewRendererModule.status, 200);
     assert.equal(templateMarkupRendererModule.status, 200);

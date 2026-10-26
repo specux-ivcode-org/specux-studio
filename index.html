@@ -81,6 +81,58 @@
     ></div>
 
     <main class="canvas" id="main">
+      <div class="spec-view-toolbar" aria-label="Behavior spec preview layout">
+        <h2 class="spec-view-heading" id="spec-view-heading">Preview</h2>
+        <div class="screen-view-selector spec-view-selector" role="group" aria-label="Behavior spec view">
+          <button
+            class="screen-view-button"
+            id="spec-view-split"
+            type="button"
+            aria-pressed="true"
+            aria-controls="screen-stage spec-editor-panel"
+          >Split</button>
+          <button
+            class="screen-view-button"
+            id="spec-view-preview"
+            type="button"
+            aria-pressed="false"
+            aria-controls="screen-stage spec-editor-panel"
+          >Preview</button>
+          <button
+            class="screen-view-button"
+            id="spec-view-markdown"
+            type="button"
+            aria-pressed="false"
+            aria-controls="screen-stage spec-editor-panel"
+          >Markdown</button>
+        </div>
+      </div>
+      <div class="asset-view-toolbar" aria-label="Asset preview layout">
+        <h2 class="asset-view-heading" id="asset-view-heading">Preview</h2>
+        <div class="screen-view-selector asset-view-selector" role="group" aria-label="Asset template view">
+          <button
+            class="screen-view-button"
+            id="asset-view-split"
+            type="button"
+            aria-pressed="true"
+            aria-controls="screen-stage asset-document-editor-panel"
+          >Split</button>
+          <button
+            class="screen-view-button"
+            id="asset-view-preview"
+            type="button"
+            aria-pressed="false"
+            aria-controls="screen-stage asset-document-editor-panel"
+          >Preview</button>
+          <button
+            class="screen-view-button"
+            id="asset-view-source"
+            type="button"
+            aria-pressed="false"
+            aria-controls="screen-stage asset-document-editor-panel"
+          >Source</button>
+        </div>
+      </div>
       <section class="stage" id="screen-stage" aria-label="Rendered Screen preview; drop an asset here to add it">
         <div class="preview-state-toolbar" id="preview-state-toolbar" aria-label="Screen view and preview states" hidden>
           <div class="preview-state-controls" id="preview-state-controls">
@@ -197,10 +249,39 @@
         </div>
       </section>
 
+      <div
+        class="spec-split-resizer"
+        id="spec-split-resizer"
+        role="separator"
+        aria-label="Resize preview and Markdown editor"
+        aria-orientation="horizontal"
+        aria-controls="screen-stage spec-editor-panel"
+        aria-valuemin="27"
+        aria-valuemax="73"
+        aria-valuenow="40"
+        title="Drag or use the arrow keys to resize the preview and Markdown editor"
+        tabindex="0"
+        hidden
+      ></div>
+
+      <div
+        class="spec-split-resizer asset-split-resizer"
+        id="asset-split-resizer"
+        role="separator"
+        aria-label="Resize preview and Asset source editor"
+        aria-orientation="horizontal"
+        aria-controls="screen-stage asset-document-editor-panel"
+        aria-valuemin="27"
+        aria-valuemax="73"
+        aria-valuenow="40"
+        title="Drag or use the arrow keys to resize the preview and Asset source editor"
+        tabindex="0"
+        hidden
+      ></div>
+
       <section class="spec-editor-panel" id="spec-editor-panel" aria-label="Behavior spec Markdown editor" hidden>
         <h2 class="spec-editor-heading" id="spec-editor-heading">Behavior spec</h2>
         <textarea class="spec-source" id="spec-source" aria-label="Behavior spec Markdown source" spellcheck="false"></textarea>
-        <div class="spec-status" id="spec-status" role="status" aria-live="polite"></div>
       </section>
 
       <section class="asset-document-editor-panel" id="asset-document-editor-panel" aria-label="Asset template source editor" hidden>

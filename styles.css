@@ -363,6 +363,11 @@
       cursor: col-resize !important;
       user-select: none !important;
     }
+    body.split-layout-resizing,
+    body.split-layout-resizing * {
+      cursor: row-resize !important;
+      user-select: none !important;
+    }
 
     .side-label {
       margin: 14px 10px 9px;
@@ -780,45 +785,90 @@
     }
 
     .canvas.asset-editing {
+      height: 100%;
+      min-height: 0;
       display: grid;
       grid-template-columns: minmax(0, 1fr);
-      align-content: start;
-      gap: 16px;
+      padding: 0;
+      grid-template-rows:
+        48px
+        minmax(180px, var(--asset-preview-track, 2fr))
+        12px
+        minmax(220px, var(--asset-source-track, 3fr))
+        auto;
+      align-content: stretch;
+      gap: 0;
+      overflow: hidden;
     }
-    .canvas.asset-editing > .editor-message { grid-column: 1 / -1; width: 100%; }
+    .canvas.asset-editing .form-content { padding: 0; }
+    .canvas.asset-editing .screen-preview > .form-content > .asset-instance {
+      margin: 0;
+      padding: 0;
+    }
+    .asset-view-toolbar {
+      display: none;
+      min-width: 0;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .canvas.asset-editing > .asset-view-toolbar { display: flex; }
+    .asset-view-heading {
+      margin: 0;
+      color: var(--ui-text-medium);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .asset-view-selector { margin-left: auto; }
     .canvas.asset-editing > .stage {
       min-width: 0;
-      min-height: 600px;
+      min-height: 0;
+      height: 100%;
       grid-column: 1;
       grid-row: 2;
-      padding: 18px;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      overflow: hidden;
+    }
+    .canvas.asset-editing > .asset-split-resizer {
+      grid-column: 1;
+      grid-row: 3;
     }
     .asset-document-editor-panel {
       min-width: 0;
-      min-height: 430px;
+      min-height: 0;
+      height: 100%;
       display: flex;
+      grid-column: 1;
+      grid-row: 4;
       flex-direction: column;
-      padding: 16px;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: var(--panel);
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
     }
     .asset-document-editor-panel[hidden] { display: none; }
-    .canvas.asset-editing > .asset-document-editor-panel { grid-column: 1; grid-row: 1; }
     .asset-document-editor-heading {
-      margin: 0 0 12px;
+      margin: 0;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
       color: var(--ui-text-medium);
       font-size: 12px;
       font-weight: 700;
     }
     .asset-document-source {
       width: 100%;
-      min-height: 300px;
+      min-height: 0;
       flex: 1;
-      resize: vertical;
+      resize: none;
       padding: 14px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      border: 0;
+      border-radius: 0;
       color: var(--ui-text-strong);
       background: var(--ui-input-alt);
       font: 12px/1.6 Consolas, "SFMono-Regular", monospace;
@@ -828,38 +878,128 @@
     .asset-document-source:focus { outline: 2px solid var(--ui-primary-hover-border); border-color: var(--ui-primary-hover-border); }
     .asset-document-status {
       min-height: 18px;
-      margin-top: 8px;
+      margin: 0;
+      padding: 4px 12px;
       color: var(--ui-status);
       font-size: 11px;
       line-height: 1.4;
     }
     .asset-document-status.error { color: var(--ui-danger); }
+    .canvas.asset-editing > .editor-message {
+      grid-column: 1;
+      grid-row: 5;
+      width: 100%;
+      margin: 0;
+    }
+    .canvas.asset-editing[data-asset-view="preview"] {
+      grid-template-rows: 48px minmax(0, 1fr) auto;
+    }
+    .canvas.asset-editing[data-asset-view="preview"] > .asset-document-editor-panel,
+    .canvas.asset-editing[data-asset-view="source"] > .stage {
+      display: none;
+    }
+    .canvas.asset-editing[data-asset-view="preview"] > .stage,
+    .canvas.asset-editing[data-asset-view="source"] > .asset-document-editor-panel {
+      grid-row: 2;
+    }
+    .canvas.asset-editing[data-asset-view="preview"] > .editor-message,
+    .canvas.asset-editing[data-asset-view="source"] > .editor-message {
+      grid-row: 3;
+    }
+    .canvas.asset-editing[data-asset-view="preview"] > .asset-split-resizer,
+    .canvas.asset-editing[data-asset-view="source"] > .asset-split-resizer {
+      display: none;
+    }
+    .canvas.asset-editing[data-asset-view="source"] {
+      grid-template-rows: 48px minmax(0, 1fr) auto;
+    }
+    .canvas.asset-editing[data-asset-view="split"] > .asset-split-resizer {
+      display: block;
+    }
 
     .canvas.spec-editing {
       height: 100%;
       min-height: 0;
       display: grid;
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: minmax(220px, 1fr) minmax(240px, 1.5fr) auto;
+      padding: 0;
+      grid-template-rows:
+        48px
+        minmax(180px, var(--spec-preview-track, 2fr))
+        12px
+        minmax(220px, var(--spec-markdown-track, 3fr))
+        auto;
       align-content: stretch;
-      gap: 16px;
+      gap: 0;
       overflow: hidden;
     }
+    .canvas.spec-editing .form-content { padding: 0; }
+    .canvas.spec-editing .screen-preview > .form-content > .asset-instance {
+      margin: 0;
+      padding: 0;
+    }
+    .spec-view-toolbar {
+      display: none;
+      min-width: 0;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .canvas.spec-editing > .spec-view-toolbar { display: flex; }
+    .spec-view-heading {
+      margin: 0;
+      color: var(--ui-text-medium);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .spec-view-selector { margin-left: auto; }
     .canvas.spec-editing > .stage {
       min-width: 0;
       min-height: 0;
       height: 100%;
       grid-column: 1;
-      grid-row: 1;
-      padding: 12px;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: var(--panel);
+      grid-row: 2;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
       overflow: hidden;
+    }
+    .spec-split-resizer {
+      position: relative;
+      display: none;
+      grid-column: 1;
+      grid-row: 3;
+      min-height: 12px;
+      outline: none;
+      cursor: row-resize;
+      touch-action: none;
+      user-select: none;
+    }
+    .spec-split-resizer::after {
+      position: absolute;
+      top: 5px;
+      right: 0;
+      left: 0;
+      height: 2px;
+      border-radius: 2px;
+      background: var(--line);
+      content: "";
+    }
+    .spec-split-resizer:hover::after,
+    .spec-split-resizer:focus-visible::after {
+      background: var(--studio-focus);
+    }
+    .spec-split-resizer[hidden] { display: none; }
+    .canvas.spec-editing[data-spec-view="split"] > #spec-split-resizer {
+      display: block;
     }
     .canvas.spec-editing > .editor-message {
       grid-column: 1;
-      grid-row: 3;
+      grid-row: 5;
       width: 100%;
       margin: 0;
     }
@@ -869,16 +1009,40 @@
       height: 100%;
       display: flex;
       grid-column: 1;
-      grid-row: 2;
+      grid-row: 4;
       flex-direction: column;
-      padding: 16px;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: var(--panel);
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
     }
     .spec-editor-panel[hidden] { display: none; }
+    .canvas.spec-editing[data-spec-view="preview"] {
+      grid-template-rows: 48px minmax(0, 1fr) auto;
+    }
+    .canvas.spec-editing[data-spec-view="preview"] > .spec-editor-panel,
+    .canvas.spec-editing[data-spec-view="markdown"] > .stage {
+      display: none;
+    }
+    .canvas.spec-editing[data-spec-view="preview"] > .stage,
+    .canvas.spec-editing[data-spec-view="markdown"] > .spec-editor-panel {
+      grid-row: 2;
+    }
+    .canvas.spec-editing[data-spec-view="preview"] > .editor-message,
+    .canvas.spec-editing[data-spec-view="markdown"] > .editor-message {
+      grid-row: 3;
+    }
+    .canvas.spec-editing[data-spec-view="preview"] > #spec-split-resizer,
+    .canvas.spec-editing[data-spec-view="markdown"] > #spec-split-resizer {
+      display: none;
+    }
+    .canvas.spec-editing[data-spec-view="markdown"] {
+      grid-template-rows: 48px minmax(0, 1fr) auto;
+    }
     .spec-editor-heading {
-      margin: 0 0 12px;
+      margin: 0;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
       color: var(--ui-text-medium);
       font-size: 12px;
       font-weight: 700;
@@ -890,8 +1054,8 @@
       flex: 1;
       resize: none;
       padding: 14px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      border: 0;
+      border-radius: 0;
       color: var(--ui-text-strong);
       background: var(--ui-input-alt);
       font: 12px/1.6 Consolas, "SFMono-Regular", monospace;
@@ -899,14 +1063,6 @@
       white-space: pre;
     }
     .spec-source:focus { outline: 2px solid var(--ui-primary-hover-border); }
-    .spec-status {
-      min-height: 18px;
-      margin-top: 8px;
-      color: var(--ui-status);
-      font-size: 11px;
-      line-height: 1.4;
-    }
-    .spec-status.error { color: var(--ui-danger); }
     .spec-action-button {
       width: 100%;
       margin-top: 8px;
@@ -1196,22 +1352,38 @@
     }
 
     @media (max-width: 800px) {
-      .canvas.asset-editing { grid-template-columns: minmax(0, 1fr); }
+      .canvas.asset-editing {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows:
+          48px
+          minmax(180px, var(--asset-preview-track, 1fr))
+          12px
+          minmax(220px, var(--asset-source-track, 1fr))
+          auto;
+      }
+      .canvas.asset-editing > .asset-view-toolbar { grid-column: 1; grid-row: 1; }
       .canvas.asset-editing > .stage,
       .canvas.asset-editing > .asset-document-editor-panel { grid-column: 1; }
-      .canvas.asset-editing > .asset-document-editor-panel { grid-row: 1; }
       .canvas.asset-editing > .stage { grid-row: 2; }
-      .canvas.asset-editing > .stage { min-height: 520px; }
-      .asset-document-editor-panel { min-height: 360px; }
-      .asset-document-source { min-height: 280px; }
+      .canvas.asset-editing > .asset-split-resizer { grid-column: 1; grid-row: 3; }
+      .canvas.asset-editing > .asset-document-editor-panel { grid-row: 4; }
+      .canvas.asset-editing > .editor-message { grid-row: 5; }
       .canvas.spec-editing {
         grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: minmax(180px, 1fr) minmax(220px, 1fr) auto;
+        grid-template-rows:
+          48px
+          minmax(180px, var(--spec-preview-track, 1fr))
+          12px
+          minmax(220px, var(--spec-markdown-track, 1fr))
+          auto;
       }
+      .canvas.spec-editing > .spec-view-toolbar { grid-column: 1; grid-row: 1; }
       .canvas.spec-editing > .stage,
       .canvas.spec-editing > .spec-editor-panel { grid-column: 1; }
-      .canvas.spec-editing > .stage { grid-row: 1; }
-      .canvas.spec-editing > .spec-editor-panel { grid-row: 2; }
+      .canvas.spec-editing > .stage { grid-row: 2; }
+      .canvas.spec-editing > .spec-split-resizer { grid-column: 1; grid-row: 3; }
+      .canvas.spec-editing > .spec-editor-panel { grid-row: 4; }
+      .canvas.spec-editing > .editor-message { grid-row: 5; }
     }
 
     .panel-heading {
@@ -1493,6 +1665,7 @@
       .canvas { min-height: calc(100vh - 58px); padding: 20px 12px; }
       .canvas.screen-editing { height: calc(100vh - 58px); min-height: 0; padding: 0; }
       .canvas.spec-editing { height: calc(100vh - 58px); min-height: 640px; }
+      .canvas.asset-editing { height: calc(100vh - 58px); min-height: 640px; }
       .stage { min-height: 70vh; flex: none; }
       .screen-preview { min-height: 70vh; }
       .canvas.screen-editing > .stage { min-height: 0; height: 100%; flex: 1; overflow: hidden; }

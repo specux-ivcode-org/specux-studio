@@ -2,6 +2,7 @@ export class SpecEditor {
   constructor({ state, services }) {
     this.state = state;
     this.services = services;
+    this.specValidationErrorFile = null;
   }
 
   async render(filePath, instancePath = this.state.activeInstancePath, owner = "instance") {
@@ -45,6 +46,7 @@ export class SpecEditor {
     services.byId("asset-document-editor-panel").hidden = true;
     services.byId("asset-document-source").oninput = null;
     services.byId("spec-editor-panel").hidden = false;
+    services.setSpecViewMode("split");
     state.viewingAssetTemplate = false;
     state.viewingTheme = false;
     state.viewingProject = false;
@@ -56,6 +58,7 @@ export class SpecEditor {
     state.activeAssetId = instance?.src || null;
     state.activeInstancePath = isProjectSpec || isScreenSpec ? [] : [...instancePath];
     services.hideEditorMessage();
+    this.specValidationErrorFile = null;
     services.updateNavigationSelection();
     services.byId("screen-stage").setAttribute(
       "aria-label",
@@ -72,13 +75,6 @@ export class SpecEditor {
     editor.setAttribute("aria-label", `Markdown source for ${filePath}`);
     editor.value = state.specSources.get(filePath);
     editor.disabled = state.isSaving;
-    const status = services.byId("spec-status");
-    status.textContent = draft
-      ? state.createdSpecFiles.has(filePath)
-        ? "Example edited; unsaved changes."
-        : "Example draft; it will not be saved unless edited."
-      : "";
-    status.classList.remove("error");
     editor.oninput = () => this.handleSourceInput(filePath, editor.value);
     services.renderInspector();
     if (instance) {
@@ -115,7 +111,6 @@ export class SpecEditor {
         }
         state.createdSpecFiles.delete(filePath);
         services.clearEdited(filePath);
-        services.byId("spec-status").textContent = "Example unchanged; no spec file will be saved.";
         return;
       }
       if (pendingDraft.owner === "project") state.project.spec = filePath;
@@ -123,11 +118,13 @@ export class SpecEditor {
       state.createdSpecFiles.add(filePath);
     }
     services.markEdited(filePath);
-    const status = services.byId("spec-status");
-    status.textContent = assetSpecError || (pendingDraft
-      ? "Example edited; unsaved changes."
-      : "Unsaved Markdown changes.");
-    status.classList.toggle("error", Boolean(assetSpecError));
+    if (assetSpecError) {
+      services.showEditorMessage("Invalid behavior spec", assetSpecError);
+      this.specValidationErrorFile = filePath;
+    } else if (this.specValidationErrorFile === filePath) {
+      services.hideEditorMessage();
+      this.specValidationErrorFile = null;
+    }
   }
 
   discardUneditedActiveDraft() {
