@@ -126,7 +126,7 @@ export class SpecEditor {
         element.classList.add("spec-focus-ancestor");
       } else {
         element.classList.add("spec-focus-dimmed");
-        element.style.setProperty("filter", "blur(1.5px) brightness(0.38)");
+        element.style.setProperty("filter", "blur(1.5px)");
         element.style.setProperty("transition", "filter 180ms ease");
       }
     }

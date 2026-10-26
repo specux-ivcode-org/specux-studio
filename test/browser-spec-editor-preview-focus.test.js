@@ -40,8 +40,8 @@ test("focuses an Element spec target and dims unrelated preview branches", async
   assert.equal(selected.style.getPropertyValue("z-index"), "1");
   assert.equal(ancestor.classList.contains("spec-focus-ancestor"), true);
   assert.equal(ancestor.style.getPropertyValue("filter"), "");
-  assert.equal(sibling.style.getPropertyValue("filter"), "blur(1.5px) brightness(0.38)");
-  assert.equal(unrelated.style.getPropertyValue("filter"), "blur(1.5px) brightness(0.38)");
+  assert.equal(sibling.style.getPropertyValue("filter"), "blur(1.5px)");
+  assert.equal(unrelated.style.getPropertyValue("filter"), "blur(1.5px)");
 
   editor.updatePreviewFocus(null);
 
