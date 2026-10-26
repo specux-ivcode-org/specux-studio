@@ -10,7 +10,7 @@ attributes:
     overridable: true
 ---
 <style>
-  .openux-sign-in-divider {
+  .specux-sign-in-divider {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -20,12 +20,12 @@ attributes:
     letter-spacing: .08em;
     white-space: nowrap;
   }
-  .openux-sign-in-divider::before,
-  .openux-sign-in-divider::after {
+  .specux-sign-in-divider::before,
+  .specux-sign-in-divider::after {
     height: 1px;
     flex: 1;
     background: var(--theme-border-muted, #e8ecf2);
     content: "";
   }
 </style>
-<div class="openux-sign-in-divider">${attributes.label}</div>
+<div class="specux-sign-in-divider">${attributes.label}</div>

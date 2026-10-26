@@ -14,7 +14,7 @@ attributes:
     overridable: true
 ---
 <style>
-  .openux-sign-in-brand {
+  .specux-sign-in-brand {
     display: flex;
     align-items: center;
     gap: 11px;
@@ -22,7 +22,7 @@ attributes:
     font: 750 14px/1.3 Inter, "Segoe UI", Arial, sans-serif;
     letter-spacing: .01em;
   }
-  .openux-sign-in-brand__mark {
+  .specux-sign-in-brand__mark {
     display: grid;
     width: 38px;
     height: 38px;
@@ -33,7 +33,7 @@ attributes:
     font-size: 18px;
   }
 </style>
-<div class="openux-sign-in-brand">
-  <span class="openux-sign-in-brand__mark" aria-hidden="true">${attributes.mark}</span>
+<div class="specux-sign-in-brand">
+  <span class="specux-sign-in-brand__mark" aria-hidden="true">${attributes.mark}</span>
   <span>${attributes.brand-name}</span>
 </div>

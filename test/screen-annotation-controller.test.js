@@ -155,8 +155,8 @@ test("caches a browser snapshot after saving an annotation set", async () => {
 
   assert.equal(snapshotRequest.method, "POST");
   assert.equal(snapshotRequest.headers["Content-Type"], "image/png");
-  assert.equal(snapshotRequest.headers["X-OpenUX-Selection-Updated-At"], selectionUpdatedAt);
-  assert.equal(snapshotRequest.headers["X-OpenUX-Annotation-Updated-At"], annotationUpdatedAt);
+  assert.equal(snapshotRequest.headers["X-SpecUX-Selection-Updated-At"], selectionUpdatedAt);
+  assert.equal(snapshotRequest.headers["X-SpecUX-Annotation-Updated-At"], annotationUpdatedAt);
   assert.equal(snapshotRequest.body, png);
   assert.match(status.textContent, /Browser snapshot cached for CLI/);
 });

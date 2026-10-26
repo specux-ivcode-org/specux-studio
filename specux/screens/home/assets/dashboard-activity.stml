@@ -1,0 +1,54 @@
+---
+id: dashboard-activity
+name: Recent Activity
+description: A recent transaction list with merchant, date, account, and amount.
+category: Dashboards/Components
+---
+<style>
+  .specux-activity-card {
+    overflow: hidden;
+    border: 1px solid var(--theme-border, #e7ebf2);
+    border-radius: 12px;
+    background: var(--theme-surface, #fff);
+    box-shadow: 0 2px 7px rgb(28 45 80 / 3%);
+  }
+  .specux-activity-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 17px 18px 13px;
+    border-bottom: 1px solid var(--theme-border-muted, #eef1f5);
+  }
+  .specux-activity-title { margin: 0; color: var(--theme-ink, #253149); font-size: 13px; font-weight: 700; }
+  .specux-activity-link { color: var(--theme-primary, #4569d8); font-size: 10px; font-weight: 650; }
+  .specux-activity-row {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 11px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--theme-border-muted, #f0f2f6);
+  }
+  .specux-activity-row:last-child { border-bottom: 0; }
+  .specux-activity-icon {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border-radius: 9px;
+    color: var(--theme-primary, #5269bb);
+    background: color-mix(in srgb, var(--theme-primary, #4569e8) 13%, var(--theme-surface, #fff));
+    font-size: 13px;
+  }
+  .specux-activity-merchant { margin: 0 0 2px; color: var(--theme-ink, #303c52); font-size: 11px; font-weight: 650; }
+  .specux-activity-meta { margin: 0; color: var(--theme-muted, #8a95a7); font-size: 9px; }
+  .specux-activity-amount { color: var(--theme-ink, #303c52); font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .specux-activity-amount--credit { color: var(--theme-success, var(--theme-primary, #168568)); }
+</style>
+<section class="specux-activity-card" aria-label="Recent transactions">
+  <div class="specux-activity-heading"><h2 class="specux-activity-title">Recent activity</h2><span class="specux-activity-link">View all</span></div>
+  <div class="specux-activity-row"><span class="specux-activity-icon">C</span><div><p class="specux-activity-merchant">Corner Coffee</p><p class="specux-activity-meta">Today, 9:42 AM · Everyday checking</p></div><span class="specux-activity-amount">−$6.80</span></div>
+  <div class="specux-activity-row"><span class="specux-activity-icon">↗</span><div><p class="specux-activity-merchant">Payroll deposit</p><p class="specux-activity-meta">Yesterday · Everyday checking</p></div><span class="specux-activity-amount specux-activity-amount--credit">+$2,840.00</span></div>
+  <div class="specux-activity-row"><span class="specux-activity-icon">M</span><div><p class="specux-activity-merchant">Metro Market</p><p class="specux-activity-meta">Oct 16 · Rewards card</p></div><span class="specux-activity-amount">−$84.26</span></div>
+  <div class="specux-activity-row"><span class="specux-activity-icon">H</span><div><p class="specux-activity-merchant">Home internet</p><p class="specux-activity-meta">Oct 15 · Everyday checking</p></div><span class="specux-activity-amount">−$65.00</span></div>
+</section>

@@ -3,7 +3,7 @@ const path = require("node:path");
 const YAML = require("yaml");
 const validation = require("./validation");
 
-const OPENUX_VERSION = "0.1.0-SNAPSHOT";
+const SPECUX_VERSION = "0.1.0-SNAPSHOT";
 
 function isWithin(directory, target) {
   const relative = path.relative(directory, target);
@@ -136,10 +136,10 @@ async function validateProject(projectRoot) {
     return { errors, project: null, assets, screens, usedAssetFiles, referencedSpecPaths };
   }
 
-  if (typeof project.openux !== "string" || !project.openux) {
-    errors.push("project.yml: openux must specify the OpenUX version.");
-  } else if (project.openux !== OPENUX_VERSION) {
-    errors.push(`project.yml: OpenUX version "${project.openux}" is not supported by this CLI (expected "${OPENUX_VERSION}").`);
+  if (typeof project.specux !== "string" || !project.specux) {
+    errors.push("project.yml: specux must specify the SpecUX version.");
+  } else if (project.specux !== SPECUX_VERSION) {
+    errors.push(`project.yml: SpecUX version "${project.specux}" is not supported by this CLI (expected "${SPECUX_VERSION}").`);
   }
   if (!Array.isArray(project.screens)) errors.push("project.yml: screens must be a list.");
   if (Object.hasOwn(project, "assets") || Object.hasOwn(project, "asset-templates")) {
@@ -539,4 +539,4 @@ async function validateProject(projectRoot) {
   };
 }
 
-module.exports = { OPENUX_VERSION, isWithin, resolveProjectPath, safeRelativePath, validateProject };
+module.exports = { SPECUX_VERSION, isWithin, resolveProjectPath, safeRelativePath, validateProject };

@@ -10,14 +10,14 @@ attributes:
     overridable: true
 ---
 <style>
-  .openux-sign-in-trust {
+  .specux-sign-in-trust {
     display: flex;
     align-items: center;
     gap: 8px;
     color: #cfdbf8;
     font: 10px/1.5 Inter, "Segoe UI", Arial, sans-serif;
   }
-  .openux-sign-in-trust__mark {
+  .specux-sign-in-trust__mark {
     display: grid;
     width: 24px;
     height: 24px;
@@ -28,7 +28,7 @@ attributes:
     font-size: 11px;
   }
 </style>
-<div class="openux-sign-in-trust">
-  <span class="openux-sign-in-trust__mark" aria-hidden="true">✓</span>
+<div class="specux-sign-in-trust">
+  <span class="specux-sign-in-trust__mark" aria-hidden="true">✓</span>
   <span>${attributes.message}</span>
 </div>

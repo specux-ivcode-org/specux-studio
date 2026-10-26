@@ -1,6 +1,6 @@
 # Screen File Schema
 
-A Screen is one YAML file named by an entry in `openux/project.yml` under `screens[].file`. Save the file under `openux/`; its path in the manifest is relative to that directory.
+A Screen is one YAML file named by an entry in `specux/project.yml` under `screens[].file`. Save the file under `specux/`; its path in the manifest is relative to that directory.
 
 The Screen ID is defined by the matching `screens[].id` in `project.yml`; do not add an `id` property to the Screen file.
 

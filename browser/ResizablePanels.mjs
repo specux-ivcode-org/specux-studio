@@ -1,4 +1,4 @@
-const STORAGE_KEY = "openux-studio.layout.v1";
+const STORAGE_KEY = "specux-studio.layout.v1";
 const PANEL_LIMITS = {
   sidebar: { min: 180, max: 420, default: 238 },
   inspector: { min: 220, max: 480, default: 292 }

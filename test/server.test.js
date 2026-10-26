@@ -17,10 +17,10 @@ function assetDocument(data, body) {
 }
 
 async function withServer(run) {
-  const rootDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "openux-server-test-"));
-  await fs.mkdir(path.join(rootDirectory, "openux"), { recursive: true });
-  await fs.mkdir(path.join(rootDirectory, "openux", "screens"), { recursive: true });
-  await fs.mkdir(path.join(rootDirectory, "openux", "assets"), { recursive: true });
+  const rootDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "specux-server-test-"));
+  await fs.mkdir(path.join(rootDirectory, "specux"), { recursive: true });
+  await fs.mkdir(path.join(rootDirectory, "specux", "screens"), { recursive: true });
+  await fs.mkdir(path.join(rootDirectory, "specux", "assets"), { recursive: true });
   await fs.mkdir(path.join(rootDirectory, "browser"), { recursive: true });
   await fs.writeFile(path.join(rootDirectory, "index.html"), "<h1>Editor</h1>");
   await fs.writeFile(path.join(rootDirectory, "app.mjs"), "window.editor = true;");
@@ -98,14 +98,14 @@ async function withServer(run) {
     path.join(rootDirectory, "browser", "WorkspaceViewRenderer.mjs"),
     "export class WorkspaceViewRenderer {}\n"
   );
-  await fs.writeFile(path.join(rootDirectory, "openux", "project.yml"), "name: Example\n");
-  await fs.writeFile(path.join(rootDirectory, "openux", "screen.yml"), "name: Before\n");
+  await fs.writeFile(path.join(rootDirectory, "specux", "project.yml"), "name: Example\n");
+  await fs.writeFile(path.join(rootDirectory, "specux", "screen.yml"), "name: Before\n");
   await fs.writeFile(
-    path.join(rootDirectory, "openux", "assets", "demo.stml"),
+    path.join(rootDirectory, "specux", "assets", "demo.stml"),
     assetDocument({ id: "demo", name: "Demo", description: "Test asset." }, "<p>Before</p>")
   );
   await fs.writeFile(
-    path.join(rootDirectory, "openux", "assets", "preview image.png"),
+    path.join(rootDirectory, "specux", "assets", "preview image.png"),
     Buffer.from("image")
   );
   const server = createServer({ rootDirectory });
@@ -117,7 +117,7 @@ async function withServer(run) {
     await new Promise((resolve, reject) =>
       server.close((error) => error ? reject(error) : resolve())
     );
-    await clearBrowserSnapshot(path.join(rootDirectory, "openux"));
+    await clearBrowserSnapshot(path.join(rootDirectory, "specux"));
     await fs.rm(rootDirectory, { recursive: true, force: true });
   }
 }
@@ -147,10 +147,10 @@ test("serves the editor root and the example project", async () => {
     const themeEditorModule = await fetch(`${baseUrl}/browser/ThemeEditor.mjs`);
     const workspaceViewRendererModule = await fetch(`${baseUrl}/browser/WorkspaceViewRenderer.mjs`);
     const templateMarkupRendererModule = await fetch(`${baseUrl}/browser/TemplateMarkupRenderer.mjs`);
-    const project = await fetch(`${baseUrl}/openux/project.yml`);
-    const encodedResource = await fetch(`${baseUrl}/openux/assets/preview%20image.png`);
-    const template = await fetch(`${baseUrl}/openux/assets/demo.stml`);
-    const traversal = await fetch(`${baseUrl}/openux/%2e%2e%2findex.html`);
+    const project = await fetch(`${baseUrl}/specux/project.yml`);
+    const encodedResource = await fetch(`${baseUrl}/specux/assets/preview%20image.png`);
+    const template = await fetch(`${baseUrl}/specux/assets/demo.stml`);
+    const traversal = await fetch(`${baseUrl}/specux/%2e%2e%2findex.html`);
     assert.equal(editor.status, 200);
     assert.match(await editor.text(), /Editor/);
     assert.equal(stylesheet.status, 200);
@@ -193,9 +193,9 @@ test("serves the editor root and the example project", async () => {
 
 test("lists project files without exposing hidden paths", async () => {
   await withServer(async ({ baseUrl, rootDirectory }) => {
-    await fs.mkdir(path.join(rootDirectory, "openux", "screens", "home", "specs"), { recursive: true });
-    await fs.writeFile(path.join(rootDirectory, "openux", "screens", "home", "screen.yml"), "name: Home\n");
-    await fs.writeFile(path.join(rootDirectory, "openux", ".private.yml"), "secret: true\n");
+    await fs.mkdir(path.join(rootDirectory, "specux", "screens", "home", "specs"), { recursive: true });
+    await fs.writeFile(path.join(rootDirectory, "specux", "screens", "home", "screen.yml"), "name: Home\n");
+    await fs.writeFile(path.join(rootDirectory, "specux", ".private.yml"), "secret: true\n");
 
     const response = await fetch(`${baseUrl}/api/files`);
     assert.equal(response.status, 200);
@@ -382,15 +382,15 @@ test("writes a browser snapshot to the shared cache and invalidates it on annota
       method: "POST",
       headers: {
         "Content-Type": "image/png",
-        "X-OpenUX-Selection-Updated-At": state.updatedAt,
-        "X-OpenUX-Annotation-Updated-At": state.annotations.updatedAt
+        "X-SpecUX-Selection-Updated-At": state.updatedAt,
+        "X-SpecUX-Annotation-Updated-At": state.annotations.updatedAt
       },
       body: png
     });
     assert.equal(saved.status, 200);
     assert.deepEqual(await saved.json(), { saved: true, previewSize: { width: 1, height: 1 } });
 
-    const cachedSnapshot = await readBrowserSnapshot(path.join(rootDirectory, "openux"));
+    const cachedSnapshot = await readBrowserSnapshot(path.join(rootDirectory, "specux"));
     assert.deepEqual(cachedSnapshot.image, png);
     assert.equal(cachedSnapshot.metadata.screenId, "home");
     assert.equal(cachedSnapshot.metadata.previewStateId, "default");
@@ -399,8 +399,8 @@ test("writes a browser snapshot to the shared cache and invalidates it on annota
       method: "POST",
       headers: {
         "Content-Type": "image/png",
-        "X-OpenUX-Selection-Updated-At": state.updatedAt,
-        "X-OpenUX-Annotation-Updated-At": state.annotations.updatedAt
+        "X-SpecUX-Selection-Updated-At": state.updatedAt,
+        "X-SpecUX-Annotation-Updated-At": state.annotations.updatedAt
       },
       body: png
     });
@@ -411,7 +411,7 @@ test("writes a browser snapshot to the shared cache and invalidates it on annota
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ screenId: "home", annotations: [], previewSize: selection.previewSize })
     });
-    assert.equal(await readBrowserSnapshot(path.join(rootDirectory, "openux")), null);
+    assert.equal(await readBrowserSnapshot(path.join(rootDirectory, "specux")), null);
 
     const stateAfterAnnotationUpdate = await fetch(`${baseUrl}/api/selection`);
     const annotationState = await stateAfterAnnotationUpdate.json();
@@ -419,15 +419,15 @@ test("writes a browser snapshot to the shared cache and invalidates it on annota
       method: "POST",
       headers: {
         "Content-Type": "image/png",
-        "X-OpenUX-Selection-Updated-At": state.updatedAt,
-        "X-OpenUX-Annotation-Updated-At": annotationState.annotations.updatedAt
+        "X-SpecUX-Selection-Updated-At": state.updatedAt,
+        "X-SpecUX-Annotation-Updated-At": annotationState.annotations.updatedAt
       },
       body: png
     });
     assert.equal(savedAgain.status, 200);
     const cleared = await fetch(`${baseUrl}/api/annotations`, { method: "DELETE" });
     assert.equal(cleared.status, 200);
-    assert.equal(await readBrowserSnapshot(path.join(rootDirectory, "openux")), null);
+    assert.equal(await readBrowserSnapshot(path.join(rootDirectory, "specux")), null);
     const afterSessionReset = await fetch(`${baseUrl}/api/annotations?screenId=home`);
     assert.deepEqual((await afterSessionReset.json()).annotations, []);
   });
@@ -447,7 +447,7 @@ test("saves YAML data while retaining unknown project fields", async () => {
     });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { saved: ["screen.yml"] });
-    const saved = YAML.parse(await fs.readFile(path.join(rootDirectory, "openux", "screen.yml"), "utf8"));
+    const saved = YAML.parse(await fs.readFile(path.join(rootDirectory, "specux", "screen.yml"), "utf8"));
     assert.deepEqual(saved, { name: "After", editorExtension: { preserved: true } });
   });
 });
@@ -483,7 +483,7 @@ test("creates new Screen YAML files and updates the project manifest", async () 
       saved: ["project.yml", "screens/new-screen/screen.yml"]
     });
     assert.deepEqual(
-      YAML.parse(await fs.readFile(path.join(rootDirectory, "openux", "project.yml"), "utf8")),
+      YAML.parse(await fs.readFile(path.join(rootDirectory, "specux", "project.yml"), "utf8")),
       {
         name: "Example",
         screens: [{ id: "new-screen", file: "screens/new-screen/screen.yml" }]
@@ -491,7 +491,7 @@ test("creates new Screen YAML files and updates the project manifest", async () 
     );
     assert.deepEqual(
       YAML.parse(await fs.readFile(
-        path.join(rootDirectory, "openux", "screens", "new-screen", "screen.yml"),
+        path.join(rootDirectory, "specux", "screens", "new-screen", "screen.yml"),
         "utf8"
       )),
       {
@@ -544,7 +544,7 @@ test("saves STML source only as a named template file", async () => {
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { saved: ["assets/demo.stml"] });
     assert.equal(
-      await fs.readFile(path.join(rootDirectory, "openux", "assets", "demo.stml"), "utf8"),
+      await fs.readFile(path.join(rootDirectory, "specux", "assets", "demo.stml"), "utf8"),
       assetDocument({ id: "demo", name: "Demo", description: "Test asset." }, "<p>After</p>")
     );
 
@@ -583,7 +583,7 @@ test("saves STML source only as a named template file", async () => {
 
 test("copies page-specific Asset template files and resources on save", async () => {
   await withServer(async ({ baseUrl, rootDirectory }) => {
-    const projectRoot = path.join(rootDirectory, "openux");
+    const projectRoot = path.join(rootDirectory, "specux");
     await fs.mkdir(path.join(projectRoot, "screens"), { recursive: true });
     await fs.writeFile(
       path.join(projectRoot, "project.yml"),
@@ -718,7 +718,7 @@ test("creates and saves project, Screen, and Element behavior specs", async () =
     });
     assert.equal(create.status, 200);
     assert.deepEqual(await create.json(), { saved: ["specs/sign-in-button.md"] });
-    const specPath = path.join(rootDirectory, "openux", "specs", "sign-in-button.md");
+    const specPath = path.join(rootDirectory, "specux", "specs", "sign-in-button.md");
     assert.equal(await fs.readFile(specPath, "utf8"), content);
 
     const update = await fetch(`${baseUrl}/api/save`, {
@@ -746,7 +746,7 @@ test("creates and saves project, Screen, and Element behavior specs", async () =
     assert.equal(screenSpecCreate.status, 200);
     assert.deepEqual(await screenSpecCreate.json(), { saved: [screenSpecPath] });
     assert.equal(
-      await fs.readFile(path.join(rootDirectory, "openux", ...screenSpecPath.split("/")), "utf8"),
+      await fs.readFile(path.join(rootDirectory, "specux", ...screenSpecPath.split("/")), "utf8"),
       assetSpecContent
     );
 
@@ -771,7 +771,7 @@ test("creates and saves project, Screen, and Element behavior specs", async () =
       })
     });
     assert.equal(invalidContent.status, 400);
-    await assert.rejects(fs.access(path.join(rootDirectory, "openux", "specs", "invalid.md")));
+    await assert.rejects(fs.access(path.join(rootDirectory, "specux", "specs", "invalid.md")));
 
     for (const pathValue of ["notes.md", "specs/nested/sign-in.md", "specs/invalid_name.md"]) {
       const rejected = await fetch(`${baseUrl}/api/save`, {
@@ -823,7 +823,7 @@ test("parses, serializes, and saves edited YAML source", async () => {
     });
     assert.equal(savedResponse.status, 200);
     assert.equal(
-      await fs.readFile(path.join(rootDirectory, "openux", "screen.yml"), "utf8"),
+      await fs.readFile(path.join(rootDirectory, "specux", "screen.yml"), "utf8"),
       source
     );
 
@@ -844,7 +844,7 @@ test("rejects save paths outside the example project", async () => {
       body: JSON.stringify({ files: [{ path: "../outside.yml", data: { name: "No" } }] })
     });
     assert.equal(response.status, 400);
-    assert.match((await response.json()).error, /relative paths inside the openux project/);
+    assert.match((await response.json()).error, /relative paths inside the specux project/);
   });
 });
 

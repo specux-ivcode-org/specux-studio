@@ -1,13 +1,13 @@
 # Theme File Schema
 
-A Theme is one YAML file named by the `theme` property in `openux/project.yml`. Save the file under `openux/`; its manifest path is relative to that directory.
+A Theme is one YAML file named by the `theme` property in `specux/project.yml`. Save the file under `specux/`; its manifest path is relative to that directory.
 
 Every YAML mapping in the Theme file accepts only the properties listed in this schema; an unlisted property is invalid. Color token names are user-defined keys.
 
 The Theme definition may reference a CSS file and any local resources referenced by that CSS. These files are part of the Theme's file bundle:
 
 ```text
-openux/theme/
+specux/theme/
 ├── theme.yml
 ├── theme.css
 └── images/

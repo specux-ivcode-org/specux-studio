@@ -1,9 +1,9 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const parseOpenuxYaml = require("../yaml");
+const parseSpecuxYaml = require("../yaml");
 
 test("parses empty flow mappings and sequences", () => {
-  assert.deepEqual(parseOpenuxYaml([
+  assert.deepEqual(parseSpecuxYaml([
     "assets:",
     "  - attributes: {}",
     "    slots: {}",
@@ -15,7 +15,7 @@ test("parses empty flow mappings and sequences", () => {
 });
 
 test("keeps quoted empty flow values as strings", () => {
-  assert.deepEqual(parseOpenuxYaml([
+  assert.deepEqual(parseSpecuxYaml([
     'mapping-text: "{}"',
     "sequence-text: '[]'"
   ].join("\n")), {
@@ -25,7 +25,7 @@ test("keeps quoted empty flow values as strings", () => {
 });
 
 test("parses light and dark theme color modes", () => {
-  assert.deepEqual(parseOpenuxYaml([
+  assert.deepEqual(parseSpecuxYaml([
     "modes:",
     "  light:",
     "    colors:",
@@ -42,7 +42,7 @@ test("parses light and dark theme color modes", () => {
 });
 
 test("folds indented plain scalar continuations", () => {
-  assert.deepEqual(parseOpenuxYaml([
+  assert.deepEqual(parseSpecuxYaml([
     "description: A multi-line value",
     "  that continues on the next line.",
     "items:",

@@ -65,7 +65,7 @@ test("writes browser history while retaining unrelated history state", async () 
     JSON.stringify(["layout", "content", 0])
   );
   assert.equal(windowObject.history.calls[0].state.retained, true);
-  assert.deepEqual(windowObject.history.calls[0].state.openuxEditor.selection.selectedAsset, {
+  assert.deepEqual(windowObject.history.calls[0].state.specuxEditor.selection.selectedAsset, {
     instancePath: ["layout", "content", 0]
   });
 

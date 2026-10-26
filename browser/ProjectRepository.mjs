@@ -17,7 +17,7 @@ export class ProjectRepository {
     }
     const url = new URL(filePath, base);
     if (url.origin !== this.appRoot.origin || !url.pathname.startsWith(this.appRoot.pathname)) {
-      throw new Error(`Project resource is outside the openux/ example project: ${filePath}`);
+      throw new Error(`Project resource is outside the specux/ example project: ${filePath}`);
     }
     return url;
   }
@@ -138,8 +138,8 @@ export class ProjectRepository {
 
   async load() {
     const project = await this.loadYaml("project.yml");
-    if (typeof project.openux !== "string" || !project.openux) {
-      throw new Error("project.yml must specify the OpenUX version in openux.");
+    if (typeof project.specux !== "string" || !project.specux) {
+      throw new Error("project.yml must specify the SpecUX version in specux.");
     }
     if (!Array.isArray(project.screens)) {
       throw new Error("project.yml must list screens.");

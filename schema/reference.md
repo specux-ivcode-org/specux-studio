@@ -1,18 +1,18 @@
-# OpenUX Authoring Reference
+# SpecUX Authoring Reference
 
-This reference is versioned with the OpenUX CLI. Start by reading the target project's `openux` version from `project.yml`; use a CLI with the same value. The skill bootstrap explains how to check and install that CLI. Use `openux schema project`, `screen`, `asset`, `theme`, and `spec` for the complete artifact schemas.
+This reference is versioned with the SpecUX CLI. Start by reading the target project's `specux` version from `project.yml`; use a CLI with the same value. The skill bootstrap explains how to check and install that CLI. Use `specux schema project`, `screen`, `asset`, `theme`, and `spec` for the complete artifact schemas.
 
 ## Project discovery
 
-- Work in the existing project the user identified. The project root is the directory containing `project.yml`, which may be in an `openux/` subdirectory.
+- Work in the existing project the user identified. The project root is the directory containing `project.yml`, which may be in an `specux/` subdirectory.
 - Read `project.yml` to find Screen IDs and files, the Theme, and any project-wide spec. Discover Assets by scanning `assets/` and `screens/<screen-id>/assets/`; do not add an Asset registry to the project manifest.
 - Keep each Screen in `screens/<screen-id>/screen.yml`. Put shared Assets in `assets/` and Screen-owned Assets in `screens/<screen-id>/assets/`. Put the Screen spec in `screens/<screen-id>/specs/screen.md` and each Element spec directly in `screens/<screen-id>/specs/element-<element-id>.md`. Project-wide specs remain in `specs/`.
-- Do not initialize a second project or change the project's OpenUX version as a shortcut.
+- Do not initialize a second project or change the project's SpecUX version as a shortcut.
 - Use existing Screens, Assets, attributes, slots, notes, and specs as source context. Do not invent IDs, slots, attribute values, or requirements.
 
 ## Create or revise a Screen
 
-1. Read `openux schema project`, `screen`, `asset`, `theme`, and `spec` before authoring or changing the corresponding artifacts.
+1. Read `specux schema project`, `screen`, `asset`, `theme`, and `spec` before authoring or changing the corresponding artifacts.
 2. A Screen ID belongs in `project.yml`, not the Screen YAML file. A Screen can be empty while it is being built; it does not need a root layout. Place text directly as a text Element, reference a discovered image Asset as an image Element, or reference a template Asset as a template Element.
 3. Keep Screen YAML structural. Reuse suitable templates; create a new template Asset only when existing files cannot express the requested visual element or layout.
 4. Before creating an Asset, decide whether it is shared or Screen-owned. Put shared files in project-level `assets/`; put Screen-specific files under that Screen's `assets/`. Screen-owned Assets may only be used by their Screen. Copying one to another Screen creates a Screen-local copy; shared Assets can be referenced by any Screen. Asset files are discovered from these directories, so do not maintain a duplicate registry.
@@ -35,19 +35,19 @@ Before finishing, inspect the complete Screen and its referenced templates. Audi
 
 ## Validate, render, and coordinate with the editor
 
-1. Run `openux validate` and fix every reported issue.
+1. Run `specux validate` and fix every reported issue.
 2. Render each changed Screen to inspect the complete composition:
 
    ```sh
-   openux render <screen-id> --format image [--state <preview-state-id>] --output <image-file>
+   specux render <screen-id> --format image [--state <preview-state-id>] --output <image-file>
    ```
 
-   Use `--format html` to inspect generated markup. If Chromium is not found, set `OPENUX_BROWSER` to its executable path.
-3. Before opening or refreshing the editor, run `openux server status`. If unavailable, start it with `openux server start`; keep it running. The default URL is `http://127.0.0.1:3000/`. Use `--port` or `--project` when needed.
-4. After direct project-file edits, run `openux server update` to notify connected browser tabs. Tabs with unsaved edits are left untouched and prompted to save or reset before refreshing.
+   Use `--format html` to inspect generated markup. If Chromium is not found, set `SPECUX_BROWSER` to its executable path.
+3. Before opening or refreshing the editor, run `specux server status`. If unavailable, start it with `specux server start`; keep it running. The default URL is `http://127.0.0.1:3000/`. Use `--port` or `--project` when needed.
+4. After direct project-file edits, run `specux server update` to notify connected browser tabs. Tabs with unsaved edits are left untouched and prompted to save or reset before refreshing.
 5. Do not report completion until validation succeeds and the rendered Screen has been checked when rendering is available. Clearly state any check that could not be run.
 
-Use `openux server selected` when the user asks about the browser editor's current selection or has drawn temporary Screen annotations; its JSON includes the marks, Element paths, and nearby target text when available. Use `openux render <screen> --format image --annotations --output <file>` to capture a full Screen image with the marks overlaid. Use `openux server annotations clear` to remove marks from the selected Screen when requested. Annotations are temporary server memory, not project files. Edit project files directly; the CLI provides schema guidance, validation, rendering, and editor coordination. Do not remove Assets or specs as a side effect. `openux prune` only deletes files when explicitly run with `--apply`. Preserve unrelated user changes and avoid committing generated renders unless requested.
+Use `specux server selected` when the user asks about the browser editor's current selection or has drawn temporary Screen annotations; its JSON includes the marks, Element paths, and nearby target text when available. Use `specux render <screen> --format image --annotations --output <file>` to capture a full Screen image with the marks overlaid. Use `specux server annotations clear` to remove marks from the selected Screen when requested. Annotations are temporary server memory, not project files. Edit project files directly; the CLI provides schema guidance, validation, rendering, and editor coordination. Do not remove Assets or specs as a side effect. `specux prune` only deletes files when explicitly run with `--apply`. Preserve unrelated user changes and avoid committing generated renders unless requested.
 
 ## Final validation checklist
 
@@ -59,7 +59,7 @@ Before reporting a Screen or project task complete, explicitly review every item
 - [ ] Are shared Assets in `assets/` and Screen-owned Assets in the matching Screen's `assets/` directory?
 - [ ] Do all Element asset paths, attributes, and slot IDs resolve to discovered files and template definitions?
 - [ ] Are alternate visual states represented as Screen preview states with Element visibility, rather than duplicate Screens?
-- [ ] Does the installed CLI version from `openux version` match the project's `openux` value?
-- [ ] Does `openux validate` succeed without errors?
+- [ ] Does the installed CLI version from `specux version` match the project's `specux` value?
+- [ ] Does `specux validate` succeed without errors?
 - [ ] Have changed Screens been rendered and visually inspected when rendering is available?
 - [ ] Have changed project files been saved, and has the editor been refreshed or notified when applicable?

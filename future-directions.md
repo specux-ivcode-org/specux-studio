@@ -1,10 +1,10 @@
 # Possible Future Directions
 
-**Status:** Exploratory ideas only. This document is not part of the OpenUX Standard, does not define requirements, and records no implementation decisions.
+**Status:** Exploratory ideas only. This document is not part of the SpecUX Standard, does not define requirements, and records no implementation decisions.
 
 ## Unified Local Runtime
 
-The CLI and Studio server could become parts of one local OpenUX runtime. A CLI command could launch a process that serves the browser-based Studio and provides a local API for project operations. The same runtime could expose an MCP interface, avoiding separate implementations of project access and validation.
+The CLI and Studio server could become parts of one local SpecUX runtime. A CLI command could launch a process that serves the browser-based Studio and provides a local API for project operations. The same runtime could expose an MCP interface, avoiding separate implementations of project access and validation.
 
 Possible MCP transports include:
 
@@ -22,11 +22,11 @@ MCP tools could let an agent discover and inspect project content, such as:
 - A specific Asset, including its template, name, attributes, linked behavior spec, and location in the Screen.
 - Validation results or a rendered preview.
 
-MCP resources could provide read access to project artifacts and the OpenUX Standard. The standard could be exposed as a versioned resource so an agent can consult the same guidance used by the Studio, with its version and source made clear.
+MCP resources could provide read access to project artifacts and the SpecUX Standard. The standard could be exposed as a versioned resource so an agent can consult the same guidance used by the Studio, with its version and source made clear.
 
 ## Updates and Studio Refresh
 
-An agent could make project updates through MCP tools. Those updates could use the same validation and persistence logic as Studio edits, writing changes to the OpenUX project files, which remain the source of truth.
+An agent could make project updates through MCP tools. Those updates could use the same validation and persistence logic as Studio edits, writing changes to the SpecUX project files, which remain the source of truth.
 
 After a successful update, the runtime could notify connected Studio pages that project content changed. Server-Sent Events could carry the change notification; another transport could be considered if the interaction model calls for it. Events might identify the changed artifacts and a project revision, allowing the Studio to refresh only affected content while preserving the current Screen and selection.
 

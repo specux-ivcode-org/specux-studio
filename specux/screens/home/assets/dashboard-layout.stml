@@ -13,7 +13,7 @@ slots:
     name: Main content
 ---
 <style>
-  .openux-dashboard-shell {
+  .specux-dashboard-shell {
     box-sizing: border-box;
     display: grid;
     grid-template:
@@ -25,7 +25,7 @@ slots:
     background: var(--theme-background, #f4f7fb);
     font: 14px/1.5 Inter, "Segoe UI", Arial, sans-serif;
   }
-  .openux-dashboard-header {
+  .specux-dashboard-header {
     grid-area: header;
     z-index: 1;
     display: flex !important;
@@ -36,37 +36,37 @@ slots:
     border-bottom: 1px solid var(--theme-border, #e1e7ef);
     background: var(--theme-surface, #fff);
   }
-  .openux-dashboard-navigation {
+  .specux-dashboard-navigation {
     grid-area: navigation;
     min-width: 0;
     padding: 18px 12px;
     border-right: 1px solid var(--theme-border, #e1e7ef);
     background: var(--theme-surface, #fff);
   }
-  .openux-dashboard-content {
+  .specux-dashboard-content {
     grid-area: content;
     min-width: 0;
     padding: 20px;
   }
   @media (max-width: 760px) {
-    .openux-dashboard-shell {
+    .specux-dashboard-shell {
       grid-template:
         "header" 66px
         "navigation" auto
         "content" minmax(0, 1fr)
         / minmax(0, 1fr);
     }
-    .openux-dashboard-header { padding: 0 16px; }
-    .openux-dashboard-navigation {
+    .specux-dashboard-header { padding: 0 16px; }
+    .specux-dashboard-navigation {
       padding: 8px 12px;
       border-right: 0;
       border-bottom: 1px solid var(--theme-border, #e1e7ef);
     }
-    .openux-dashboard-content { padding: 20px 14px; }
+    .specux-dashboard-content { padding: 20px 14px; }
   }
 </style>
-<div class="openux-dashboard-shell">
-  <header class="openux-dashboard-header" data-openux-slot="header"></header>
-  <nav class="openux-dashboard-navigation" aria-label="Main navigation" data-openux-slot="navigation"></nav>
-  <main class="openux-dashboard-content" data-openux-slot="content"></main>
+<div class="specux-dashboard-shell">
+  <header class="specux-dashboard-header" data-specux-slot="header"></header>
+  <nav class="specux-dashboard-navigation" aria-label="Main navigation" data-specux-slot="navigation"></nav>
+  <main class="specux-dashboard-content" data-specux-slot="content"></main>
 </div>

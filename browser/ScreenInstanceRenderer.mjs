@@ -30,12 +30,12 @@ export class ScreenInstanceRenderer {
     host.dataset.instancePath = JSON.stringify(instancePath);
     host.hidden = Boolean(screenId && !services.isInstanceVisible(instance));
     if (screenId) {
-      host.dataset.openuxScreenId = screenId;
-      host.dataset.openuxScreenName = screenName;
-      host.dataset.openuxAssetId = template?.id || instance.src || type;
-      host.dataset.openuxElementId = instance.id || "";
-      host.dataset.openuxInstanceName = typeof instance.name === "string" ? instance.name : "";
-      host.dataset.openuxInstancePath = JSON.stringify(instancePath);
+      host.dataset.specuxScreenId = screenId;
+      host.dataset.specuxScreenName = screenName;
+      host.dataset.specuxAssetId = template?.id || instance.src || type;
+      host.dataset.specuxElementId = instance.id || "";
+      host.dataset.specuxInstanceName = typeof instance.name === "string" ? instance.name : "";
+      host.dataset.specuxInstancePath = JSON.stringify(instancePath);
     }
     if (instancePath.length === 1) host.dataset.instanceIndex = String(instancePath[0]);
     if (editorInteractionsEnabled) {
@@ -49,7 +49,7 @@ export class ScreenInstanceRenderer {
     }
 
     const usesLightDom = type === "template" && Boolean(template.data.slots);
-    if (usesLightDom) host.id = `openux-asset-scope-${++state.assetStyleScopeId}`;
+    if (usesLightDom) host.id = `specux-asset-scope-${++state.assetStyleScopeId}`;
     if (type === "template") {
       const root = usesLightDom ? host : host.attachShadow({ mode: "open" });
       services.templateMarkupRenderer.mount(root, template.html, template.base, instance, template);
@@ -188,17 +188,17 @@ export class ScreenInstanceRenderer {
         throw new Error(`Asset "${template.id}" does not define the "${id}" layout slot.`);
       }
     }
-    const slotTargets = [...root.querySelectorAll("[data-openux-slot]")];
+    const slotTargets = [...root.querySelectorAll("[data-specux-slot]")];
     for (const slot of template.data.slots) {
-      const target = slotTargets.find((node) => node.getAttribute("data-openux-slot") === slot.id);
+      const target = slotTargets.find((node) => node.getAttribute("data-specux-slot") === slot.id);
       if (!state.isRenderOnly) {
-        target.classList.add("openux-drop-slot");
+        target.classList.add("specux-drop-slot");
         target.setAttribute("role", "group");
         target.setAttribute("aria-label", `Drop zone: ${slot.name || slot.id}`);
         target.setAttribute("data-placeholder", `Drop Elements into ${slot.name || slot.id}`);
         if (instancePath.length) this.configureSlotInteractions(target, instancePath, slot.id);
       } else {
-        target.classList.add("openux-render-slot");
+        target.classList.add("specux-render-slot");
       }
       const children = slots[slot.id] || [];
       if (!Array.isArray(children)) {

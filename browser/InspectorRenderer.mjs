@@ -115,7 +115,7 @@ export class InspectorRenderer {
     this.appendDetail(panel, "Asset templates", state.assets.size);
     this.appendDetail(panel, "Behavior specs", state.specSources.size);
     this.appendDetail(panel, "Theme", state.theme?.name || "Not configured");
-    this.appendDetail(panel, "Project manifest", "openux/project.yml");
+    this.appendDetail(panel, "Project manifest", "specux/project.yml");
     this.appendSection(panel, "Project-wide behavior spec");
     const pendingDraft = [...state.createdSpecDrafts.entries()]
       .find(([, draft]) => draft.owner === "project");

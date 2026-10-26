@@ -292,7 +292,7 @@ export class ProjectPersistence {
       if (!state.hasEdits) {
         services.showEditorMessage(
           "Changes saved",
-          `${result.saved.length} project file${result.saved.length === 1 ? "" : "s"} saved to openux/.`
+          `${result.saved.length} project file${result.saved.length === 1 ? "" : "s"} saved to specux/.`
         );
       }
     } catch (error) {

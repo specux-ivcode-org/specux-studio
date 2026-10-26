@@ -1,10 +1,10 @@
-(function exposeOpenuxValidation(root, factory) {
+(function exposeSpecuxValidation(root, factory) {
   // The schema/*.md files are the source of truth; update validation and tests whenever a schema changes.
   const validation = factory();
   if (typeof module !== "undefined" && module.exports) {
     module.exports = validation;
   } else {
-    root.OpenuxValidation = validation;
+    root.SpecuxValidation = validation;
   }
 })(globalThis, () => {
   const TEMPLATE_FILE_EXTENSION = ".stml";
@@ -361,7 +361,7 @@
     if (!template.slots) return;
     const markupSlots = [];
     const tagPattern = /<([a-z][\w:-]*)\b([^>]*)>/gi;
-    const attributePattern = /(?:^|\s)data-openux-slot\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i;
+    const attributePattern = /(?:^|\s)data-specux-slot\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i;
     for (const match of markup.matchAll(tagPattern)) {
       if (match[0].startsWith("<!--")) continue;
       const attribute = attributePattern.exec(match[2]);
@@ -372,7 +372,7 @@
     for (const slot of template.slots) {
       const matching = markupSlots.filter((id) => id === slot.id);
       if (matching.length !== 1) {
-        throw new Error(`${source} must contain exactly one element with data-openux-slot="${slot.id}".`);
+        throw new Error(`${source} must contain exactly one element with data-specux-slot="${slot.id}".`);
       }
     }
     for (const id of markupSlots) {

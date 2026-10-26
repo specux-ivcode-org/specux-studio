@@ -7,7 +7,7 @@ function snapshotPaths(projectRoot) {
   const absoluteRoot = path.resolve(projectRoot);
   const hashInput = process.platform === "win32" ? absoluteRoot.toLowerCase() : absoluteRoot;
   const projectKey = createHash("sha256").update(hashInput).digest("hex");
-  const directory = path.join(os.tmpdir(), "openux-browser-snapshots", projectKey);
+  const directory = path.join(os.tmpdir(), "specux-browser-snapshots", projectKey);
   return {
     directory,
     imagePath: path.join(directory, "latest.png"),
