@@ -6,10 +6,13 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const YAML = require("yaml");
-const { createServer } = require("../server");
-const { clearBrowserSnapshot, readBrowserSnapshot } = require("../browserSnapshotCache");
-const validation = require("../validation");
-const cliPath = path.join(__dirname, "..", "cli.js");
+const { createServer } = require("../backend/server");
+const {
+  clearBrowserAnnotationCache,
+  readBrowserAnnotationCache
+} = require("../backend/browserAnnotationCache");
+const validation = require("../shared/validation");
+const cliPath = path.join(__dirname, "..", "backend", "cli.js");
 const execFileAsync = promisify(execFile);
 
 function assetDocument(data, body) {
@@ -51,6 +54,10 @@ async function withServer(run) {
     "export class InspectorRenderer {}\n"
   );
   await fs.writeFile(
+    path.join(rootDirectory, "browser", "MaterialFileEditor.mjs"),
+    "export class MaterialFileEditor {}\n"
+  );
+  await fs.writeFile(
     path.join(rootDirectory, "browser", "TemplateMarkupRenderer.mjs"),
     "export class TemplateMarkupRenderer {}\n"
   );
@@ -71,6 +78,10 @@ async function withServer(run) {
     "export class ScreenAnnotationController {}\n"
   );
   await fs.writeFile(
+    path.join(rootDirectory, "browser", "ScreenRulerController.mjs"),
+    "export class ScreenRulerController {}\n"
+  );
+  await fs.writeFile(
     path.join(rootDirectory, "browser", "ProjectFileTree.mjs"),
     "export class ProjectFileTree {}\n"
   );
@@ -81,6 +92,10 @@ async function withServer(run) {
   await fs.writeFile(
     path.join(rootDirectory, "browser", "PreviewStateController.mjs"),
     "export class PreviewStateController {}\n"
+  );
+  await fs.writeFile(
+    path.join(rootDirectory, "browser", "ResponsiveToolbarController.mjs"),
+    "export class ResponsiveToolbarController {}\n"
   );
   await fs.writeFile(
     path.join(rootDirectory, "browser", "ProjectRepository.mjs"),
@@ -102,6 +117,22 @@ async function withServer(run) {
     path.join(rootDirectory, "browser", "WorkspaceViewRenderer.mjs"),
     "export class WorkspaceViewRenderer {}\n"
   );
+  await fs.writeFile(
+    path.join(rootDirectory, "browser", "MaterialCanvas.mjs"),
+    "export class MaterialCanvas {}\n"
+  );
+  await fs.writeFile(
+    path.join(rootDirectory, "browser", "ScreenMaterialController.mjs"),
+    "export class ScreenMaterialController {}\n"
+  );
+  await fs.writeFile(
+    path.join(rootDirectory, "browser", "ScreenMaterialRenderer.mjs"),
+    "export class ScreenMaterialRenderer {}\n"
+  );
+  await fs.writeFile(
+    path.join(rootDirectory, "browser", "MaterialDefaults.mjs"),
+    "export function getMaterialDefaultSize() { return null; }\n"
+  );
   await fs.writeFile(path.join(rootDirectory, "specux", "project.yml"), "name: Example\n");
   await fs.writeFile(path.join(rootDirectory, "specux", "screen.yml"), "name: Before\n");
   await fs.writeFile(
@@ -121,7 +152,7 @@ async function withServer(run) {
     await new Promise((resolve, reject) =>
       server.close((error) => error ? reject(error) : resolve())
     );
-    await clearBrowserSnapshot(path.join(rootDirectory, "specux"));
+    await clearBrowserAnnotationCache(path.join(rootDirectory, "specux"));
     await fs.rm(rootDirectory, { recursive: true, force: true });
   }
 }
@@ -132,18 +163,23 @@ test("serves the editor root and the example project", async () => {
     const appModule = await fetch(`${baseUrl}/app.mjs`);
     const imageCaptureLibrary = await fetch(`${baseUrl}/vendor/html-to-image.js`);
     const stylesheet = await fetch(`${baseUrl}/styles.css`);
+    const yamlModule = await fetch(`${baseUrl}/shared/yaml.js`);
+    const validationModule = await fetch(`${baseUrl}/shared/validation.js`);
     const assetEditorModule = await fetch(`${baseUrl}/browser/AssetEditor.mjs`);
     const editorEventControllerModule = await fetch(`${baseUrl}/browser/EditorEventController.mjs`);
     const browserModule = await fetch(`${baseUrl}/browser/BrowserHistory.mjs`);
     const editorNavigationModule = await fetch(`${baseUrl}/browser/EditorNavigation.mjs`);
     const inspectorRendererModule = await fetch(`${baseUrl}/browser/InspectorRenderer.mjs`);
+    const materialFileEditorModule = await fetch(`${baseUrl}/browser/MaterialFileEditor.mjs`);
     const projectRepositoryModule = await fetch(`${baseUrl}/browser/ProjectRepository.mjs`);
     const projectFileNavigatorModule = await fetch(`${baseUrl}/browser/ProjectFileNavigator.mjs`);
     const projectFileTreeModule = await fetch(`${baseUrl}/browser/ProjectFileTree.mjs`);
     const projectPersistenceModule = await fetch(`${baseUrl}/browser/ProjectPersistence.mjs`);
     const resizablePanelsModule = await fetch(`${baseUrl}/browser/ResizablePanels.mjs`);
     const previewStateControllerModule = await fetch(`${baseUrl}/browser/PreviewStateController.mjs`);
+    const responsiveToolbarControllerModule = await fetch(`${baseUrl}/browser/ResponsiveToolbarController.mjs`);
     const screenAnnotationControllerModule = await fetch(`${baseUrl}/browser/ScreenAnnotationController.mjs`);
+    const screenRulerControllerModule = await fetch(`${baseUrl}/browser/ScreenRulerController.mjs`);
     const screenYamlEditorModule = await fetch(`${baseUrl}/browser/ScreenYamlEditor.mjs`);
     const screenInstanceRendererModule = await fetch(`${baseUrl}/browser/ScreenInstanceRenderer.mjs`);
     const screenElementControllerModule = await fetch(`${baseUrl}/browser/ScreenElementController.mjs`);
@@ -152,6 +188,10 @@ test("serves the editor root and the example project", async () => {
     const themeEditorModule = await fetch(`${baseUrl}/browser/ThemeEditor.mjs`);
     const workspaceViewRendererModule = await fetch(`${baseUrl}/browser/WorkspaceViewRenderer.mjs`);
     const templateMarkupRendererModule = await fetch(`${baseUrl}/browser/TemplateMarkupRenderer.mjs`);
+    const materialCanvasModule = await fetch(`${baseUrl}/browser/MaterialCanvas.mjs`);
+    const screenMaterialControllerModule = await fetch(`${baseUrl}/browser/ScreenMaterialController.mjs`);
+    const screenMaterialRendererModule = await fetch(`${baseUrl}/browser/ScreenMaterialRenderer.mjs`);
+    const materialDefaultsModule = await fetch(`${baseUrl}/browser/MaterialDefaults.mjs`);
     const project = await fetch(`${baseUrl}/specux/project.yml`);
     const encodedResource = await fetch(`${baseUrl}/specux/assets/preview%20image.png`);
     const template = await fetch(`${baseUrl}/specux/assets/demo.stml`);
@@ -160,15 +200,17 @@ test("serves the editor root and the example project", async () => {
     assert.match(await editor.text(), /Editor/);
     assert.equal(stylesheet.status, 200);
     assert.equal(stylesheet.headers.get("content-type"), "text/css; charset=utf-8");
+    assert.equal(yamlModule.status, 200);
+    assert.equal(validationModule.status, 200);
     assert.equal(appModule.status, 200);
     assert.equal(appModule.headers.get("content-type"), "text/javascript; charset=utf-8");
-    assert.equal(imageCaptureLibrary.status, 200);
-    assert.match(await imageCaptureLibrary.text(), /htmlToImage/);
+    assert.equal(imageCaptureLibrary.status, 404);
     assert.equal(assetEditorModule.status, 200);
     assert.equal(editorEventControllerModule.status, 200);
     assert.equal(browserModule.status, 200);
     assert.equal(editorNavigationModule.status, 200);
     assert.equal(inspectorRendererModule.status, 200);
+    assert.equal(materialFileEditorModule.status, 200);
     assert.equal(browserModule.headers.get("content-type"), "text/javascript; charset=utf-8");
     assert.equal(projectRepositoryModule.status, 200);
     assert.equal(projectFileNavigatorModule.status, 200);
@@ -176,7 +218,9 @@ test("serves the editor root and the example project", async () => {
     assert.equal(projectPersistenceModule.status, 200);
     assert.equal(resizablePanelsModule.status, 200);
     assert.equal(previewStateControllerModule.status, 200);
+    assert.equal(responsiveToolbarControllerModule.status, 200);
     assert.equal(screenAnnotationControllerModule.status, 200);
+    assert.equal(screenRulerControllerModule.status, 200);
     assert.equal(screenYamlEditorModule.status, 200);
     assert.equal(screenInstanceRendererModule.status, 200);
     assert.equal(screenElementControllerModule.status, 200);
@@ -185,6 +229,10 @@ test("serves the editor root and the example project", async () => {
     assert.equal(themeEditorModule.status, 200);
     assert.equal(workspaceViewRendererModule.status, 200);
     assert.equal(templateMarkupRendererModule.status, 200);
+    assert.equal(materialCanvasModule.status, 200);
+    assert.equal(screenMaterialControllerModule.status, 200);
+    assert.equal(screenMaterialRendererModule.status, 200);
+    assert.equal(materialDefaultsModule.status, 200);
     assert.equal(project.status, 200);
     assert.deepEqual(YAML.parse(await project.text()), { name: "Example" });
     assert.equal(encodedResource.status, 200);
@@ -271,7 +319,7 @@ test("reports server status and browser selection and notifies connected browser
   });
 });
 
-test("serves temporary Screen annotations to the CLI and clears them by Screen", async () => {
+test("serves absolute canvas annotations to the CLI and clears them by Screen", async () => {
   await withServer(async ({ baseUrl }) => {
     const port = new URL(baseUrl).port;
     const selection = {
@@ -286,34 +334,50 @@ test("serves temporary Screen annotations to the CLI and clears them by Screen",
     const annotation = {
       id: "mark-1",
       tool: "circle",
-      points: [{ x: 0.2, y: 0.3 }, { x: 0.4, y: 0.5 }],
+      points: [{ x: 200, y: 300 }, { x: 400, y: 500 }],
       target: {
         instancePath: [0, "content", 1],
         elementId: "account-summary",
         name: "Account summary",
+        materialId: "account-summary",
+        materialSrc: "materials/surface.stml",
         text: "Payroll deposit"
       }
     };
-    const previewSize = { width: 390, height: 844 };
+    const canvasSize = { width: 1440, height: 900 };
+    const annotationSet = {
+      screenId: "home",
+      annotations: [annotation],
+      coordinateSpace: "screen canvas pixels",
+      canvasSize,
+      previewStateId: "default"
+    };
     const saved = await fetch(`${baseUrl}/api/annotations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ screenId: "home", annotations: [annotation], previewSize })
+      body: JSON.stringify(annotationSet)
     });
     assert.equal(saved.status, 200);
-    assert.equal((await saved.json()).saved, 1);
+    const savedBody = await saved.json();
+    assert.equal(savedBody.saved, 1);
+    assert.equal(savedBody.cached, true);
 
     const selected = await fetch(`${baseUrl}/api/selection`);
     const selectedBody = await selected.json();
     assert.deepEqual(selectedBody.annotations.annotations, [annotation]);
-    assert.deepEqual(selectedBody.annotations.previewSize, previewSize);
+    assert.deepEqual(selectedBody.annotations.canvasSize, canvasSize);
+    assert.equal(selectedBody.annotations.coordinateSpace, "screen canvas pixels");
+    assert.equal(selectedBody.annotations.previewStateId, "default");
 
     const invalid = await fetch(`${baseUrl}/api/annotations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         screenId: "home",
-        annotations: [{ ...annotation, points: [{ x: 2, y: 0 }] }]
+        annotations: [{ ...annotation, points: [{ x: 1441, y: 0 }] }],
+        coordinateSpace: "screen canvas pixels",
+        canvasSize,
+        previewStateId: "default"
       })
     });
     assert.equal(invalid.status, 400);
@@ -322,7 +386,7 @@ test("serves temporary Screen annotations to the CLI and clears them by Screen",
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        screenId: "home",
+        ...annotationSet,
         annotations: [{
           ...annotation,
           target: { ...annotation.target, text: "x".repeat(501) }
@@ -331,23 +395,23 @@ test("serves temporary Screen annotations to the CLI and clears them by Screen",
     });
     assert.equal(invalidTargetText.status, 400);
 
-    const invalidPreviewSize = await fetch(`${baseUrl}/api/annotations`, {
+    const invalidCanvasSize = await fetch(`${baseUrl}/api/annotations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        screenId: "home",
-        annotations: [annotation],
-        previewSize: { width: 0, height: 844 }
+        ...annotationSet,
+        canvasSize: { width: 0, height: 900 }
       })
     });
-    assert.equal(invalidPreviewSize.status, 400);
+    assert.equal(invalidCanvasSize.status, 400);
 
     const cliList = await execFileAsync(process.execPath, [
       cliPath, "server", "annotations", "--port", port
     ], { encoding: "utf8" });
     const cliListBody = JSON.parse(cliList.stdout);
     assert.deepEqual(cliListBody.annotations, [annotation]);
-    assert.deepEqual(cliListBody.previewSize, previewSize);
+    assert.deepEqual(cliListBody.canvasSize, canvasSize);
+    assert.equal(cliListBody.coordinateSpace, "screen canvas pixels");
 
     const cliClear = await execFileAsync(process.execPath, [
       cliPath, "server", "annotations", "clear", "--port", port
@@ -359,81 +423,63 @@ test("serves temporary Screen annotations to the CLI and clears them by Screen",
   });
 });
 
-test("writes a browser snapshot to the shared cache and invalidates it on annotation changes", async () => {
+test("caches structured annotations and clears them when editor context changes", async () => {
   await withServer(async ({ baseUrl, rootDirectory }) => {
     const selection = {
       view: "screen",
       screen: { id: "home" },
-      previewStateId: "default",
-      previewSize: { width: 1, height: 1 }
+      previewStateId: "default"
     };
     await fetch(`${baseUrl}/api/selection`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ selection })
     });
-    await fetch(`${baseUrl}/api/annotations`, {
+    const annotationSet = {
+      screenId: "home",
+      coordinateSpace: "screen canvas pixels",
+      canvasSize: { width: 1440, height: 900 },
+      previewStateId: "default",
+      annotations: [{
+        id: "note-1",
+        tool: "note",
+        points: [{ x: 300, y: 250 }],
+        text: "Review this Material",
+        target: {
+          instancePath: [0],
+          materialId: "top-bar",
+          materialSrc: "materials/surface.stml"
+        }
+      }]
+    };
+    const currentSave = await fetch(`${baseUrl}/api/annotations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ screenId: "home", annotations: [], previewSize: selection.previewSize })
+      body: JSON.stringify(annotationSet)
     });
+    assert.equal((await currentSave.json()).cached, true);
+    const projectRoot = path.join(rootDirectory, "specux");
+    const cachedAnnotations = await readBrowserAnnotationCache(projectRoot);
+    assert.equal(cachedAnnotations.screenId, "home");
+    assert.deepEqual(cachedAnnotations.annotations, annotationSet.annotations);
+    assert.deepEqual(cachedAnnotations.canvasSize, annotationSet.canvasSize);
 
-    const stateResponse = await fetch(`${baseUrl}/api/selection`);
-    const state = await stateResponse.json();
-    const png = Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC",
-      "base64"
-    );
-    const saved = await fetch(`${baseUrl}/api/snapshots?screenId=home`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "image/png",
-        "X-SpecUX-Selection-Updated-At": state.updatedAt,
-        "X-SpecUX-Annotation-Updated-At": state.annotations.updatedAt
-      },
-      body: png
-    });
-    assert.equal(saved.status, 200);
-    assert.deepEqual(await saved.json(), { saved: true, previewSize: { width: 1, height: 1 } });
-
-    const cachedSnapshot = await readBrowserSnapshot(path.join(rootDirectory, "specux"));
-    assert.deepEqual(cachedSnapshot.image, png);
-    assert.equal(cachedSnapshot.metadata.screenId, "home");
-    assert.equal(cachedSnapshot.metadata.previewStateId, "default");
-
-    const replaced = await fetch(`${baseUrl}/api/snapshots?screenId=home`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "image/png",
-        "X-SpecUX-Selection-Updated-At": state.updatedAt,
-        "X-SpecUX-Annotation-Updated-At": state.annotations.updatedAt
-      },
-      body: png
-    });
-    assert.equal(replaced.status, 200);
-
-    await fetch(`${baseUrl}/api/annotations`, {
+    await fetch(`${baseUrl}/api/selection`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ screenId: "home", annotations: [], previewSize: selection.previewSize })
+      body: JSON.stringify({ selection: { view: "screen", screen: { id: "sign-in" } } })
     });
-    assert.equal(await readBrowserSnapshot(path.join(rootDirectory, "specux")), null);
-
-    const stateAfterAnnotationUpdate = await fetch(`${baseUrl}/api/selection`);
-    const annotationState = await stateAfterAnnotationUpdate.json();
-    const savedAgain = await fetch(`${baseUrl}/api/snapshots?screenId=home`, {
+    assert.equal(await readBrowserAnnotationCache(projectRoot), null);
+    const staleSave = await fetch(`${baseUrl}/api/annotations`, {
       method: "POST",
-      headers: {
-        "Content-Type": "image/png",
-        "X-SpecUX-Selection-Updated-At": state.updatedAt,
-        "X-SpecUX-Annotation-Updated-At": annotationState.annotations.updatedAt
-      },
-      body: png
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(annotationSet)
     });
-    assert.equal(savedAgain.status, 200);
+    assert.equal((await staleSave.json()).cached, false);
+    assert.equal(await readBrowserAnnotationCache(projectRoot), null);
     const cleared = await fetch(`${baseUrl}/api/annotations`, { method: "DELETE" });
     assert.equal(cleared.status, 200);
-    assert.equal(await readBrowserSnapshot(path.join(rootDirectory, "specux")), null);
+    assert.equal(await readBrowserAnnotationCache(projectRoot), null);
     const afterSessionReset = await fetch(`${baseUrl}/api/annotations?screenId=home`);
     assert.deepEqual((await afterSessionReset.json()).annotations, []);
   });
@@ -546,6 +592,48 @@ test("saves STML source only as a named template file", async () => {
           content: assetDocument({ id: "demo", name: "Demo", description: "Test asset." }, "<p>After</p>")
         }]
       })
+    });
+
+    test("creates and validates reusable Material STML files", async () => {
+      await withServer(async ({ baseUrl, rootDirectory }) => {
+        const content = assetDocument({
+          id: "notice",
+          name: "Label",
+          type: "label",
+          attributes: { text: { type: "string", default: "Notice", overridable: true } }
+        }, '<div class="material-visual material-visual-label">${attributes.text}</div>\n');
+        const response = await fetch(`${baseUrl}/api/save`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            files: [{ path: "materials/notice.stml", create: true, content }]
+          })
+        });
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.json(), { saved: ["materials/notice.stml"] });
+        assert.equal(
+          await fs.readFile(path.join(rootDirectory, "specux", "materials", "notice.stml"), "utf8"),
+          content
+        );
+
+        const invalid = await fetch(`${baseUrl}/api/save`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            files: [{
+              path: "materials/notice.stml",
+              content: assetDocument({
+                id: "notice",
+                name: "Label",
+                type: "label",
+                attributes: { text: { type: "string", default: "Notice", overridable: true } }
+              }, "<div>One</div><div>Two</div>")
+            }]
+          })
+        });
+        assert.equal(invalid.status, 400);
+        assert.match((await invalid.json()).error, /one root HTML element/);
+      });
     });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { saved: ["assets/demo.stml"] });

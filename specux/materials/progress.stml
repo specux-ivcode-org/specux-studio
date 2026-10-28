@@ -1,0 +1,25 @@
+---
+id: progress
+name: Progress Bar
+type: progress
+attributes:
+  value:
+    type: number
+    format: integer
+    default: 50
+    overridable: true
+  track:
+    type: string
+    default: "#e9edf6"
+    overridable: true
+  fill:
+    type: string
+    default: "#5a70dc"
+    overridable: true
+  border-radius:
+    type: number
+    format: integer
+    default: 5
+    overridable: true
+---
+<div class="material-visual"><div style="width:100%;height:8px;overflow:hidden;background:${attributes.track};border-radius:${attributes.border-radius}px"><div style="width:${attributes.value}%;height:100%;background:${attributes.fill};border-radius:${attributes.border-radius}px"></div></div></div>

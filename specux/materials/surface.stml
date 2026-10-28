@@ -1,0 +1,24 @@
+---
+id: surface
+name: Surface
+type: surface
+attributes:
+  background:
+    type: string
+    default: "#ffffff"
+    overridable: true
+  border:
+    type: string
+    default: "1px solid #e6eaf1"
+    overridable: true
+  border-radius:
+    type: number
+    format: integer
+    default: 12
+    overridable: true
+  shadow:
+    type: string
+    default: "0 3px 12px rgba(32, 52, 89, 0.06)"
+    overridable: true
+---
+<div class="material-visual" style="background:${attributes.background};border:${attributes.border};border-radius:${attributes.border-radius}px;box-shadow:${attributes.shadow}"></div>

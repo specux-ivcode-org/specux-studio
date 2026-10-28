@@ -10,7 +10,7 @@ function response(body, status = 200) {
 }
 
 test("clears prior-session annotations before loading a Screen", async () => {
-  const { ScreenAnnotationController } = await import("../browser/ScreenAnnotationController.mjs");
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const requests = [];
   const controller = new ScreenAnnotationController({
     state: {},
@@ -40,7 +40,7 @@ test("clears prior-session annotations before loading a Screen", async () => {
 });
 
 test("updates annotation tool buttons and actions for the active tool", async () => {
-  const { ScreenAnnotationController } = await import("../browser/ScreenAnnotationController.mjs");
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const attributes = new Map();
   const makeButton = (tool) => ({
     dataset: { annotationTool: tool },
@@ -52,7 +52,7 @@ test("updates annotation tool buttons and actions for the active tool", async ()
   const toolButtons = ["pen", "circle", "rectangle", "arrow", "highlight", "note"]
     .map(makeButton);
   const controls = new Map([
-    ["annotation-mode-exit", { ...makeButton(null), hidden: true }],
+    ["annotation-mode-exit", { ...makeButton(null), disabled: true }],
     ["annotation-undo", makeButton(null)],
     ["annotation-redo", makeButton(null)],
     ["annotation-clear", makeButton(null)]
@@ -71,7 +71,7 @@ test("updates annotation tool buttons and actions for the active tool", async ()
 
   controller.updateControls();
 
-  assert.equal(controls.get("annotation-mode-exit").hidden, false);
+  assert.equal(controls.get("annotation-mode-exit").disabled, false);
   assert.equal(attributes.get("rectangle:aria-pressed"), "true");
   assert.equal(attributes.get("circle:aria-pressed"), "false");
   assert.equal(toolButtons.every((button) => !button.disabled), true);
@@ -81,7 +81,7 @@ test("updates annotation tool buttons and actions for the active tool", async ()
 });
 
 test("selecting a tool enters annotation mode and Exit leaves it", async () => {
-  const { ScreenAnnotationController } = await import("../browser/ScreenAnnotationController.mjs");
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const attributes = new Map();
   const toolButtons = ["pen", "circle", "rectangle", "arrow", "highlight", "note"].map((tool) => ({
     dataset: { annotationTool: tool },
@@ -89,7 +89,7 @@ test("selecting a tool enters annotation mode and Exit leaves it", async () => {
       attributes.set(`${tool}:${name}`, value);
     }
   }));
-  const exitButton = { hidden: true, disabled: false };
+  const exitButton = { disabled: true };
   const status = { textContent: "", classList: { toggle() {} } };
   const controller = new ScreenAnnotationController({
     state: {},
@@ -101,47 +101,32 @@ test("selecting a tool enters annotation mode and Exit leaves it", async () => {
   controller.screenId = "home";
   controller.render = () => {};
 
+  controller.updateControls();
+  assert.equal(exitButton.disabled, true);
+
   controller.selectTool("circle");
 
   assert.equal(controller.enabled, true);
   assert.equal(controller.tool, "circle");
-  assert.equal(exitButton.hidden, false);
+  assert.equal(exitButton.disabled, false);
   assert.equal(attributes.get("circle:aria-pressed"), "true");
   controller.setEnabled(false);
-  assert.equal(exitButton.hidden, true);
+  assert.equal(exitButton.disabled, true);
   assert.equal(attributes.get("circle:aria-pressed"), "false");
 });
 
-test("caches a browser snapshot after saving an annotation set", async () => {
-  const { ScreenAnnotationController } = await import("../browser/ScreenAnnotationController.mjs");
-  const png = Buffer.from("browser preview");
+test("saves absolute canvas annotations without capturing a browser image", async () => {
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const annotationUpdatedAt = "2026-10-25T12:00:00.000Z";
-  const selectionUpdatedAt = "2026-10-25T11:59:00.000Z";
-  let snapshotRequest;
-  const status = { textContent: "", classList: { toggle() {} } };
+  let annotationRequest;
   const controller = new ScreenAnnotationController({
     state: {},
     services: {
-      byId: () => status,
-      capturePreview: async () => png,
+      getActivePreviewStateId: () => "add-item-open",
       fetcher: async (url, options = {}) => {
         if (url === "/api/annotations") {
-          return response({ saved: 1, updatedAt: annotationUpdatedAt });
-        }
-        if (url === "/api/selection") {
-          return response({
-            updatedAt: selectionUpdatedAt,
-            selection: {
-              view: "screen",
-              screen: { id: "home" },
-              previewStateId: "default"
-            },
-            annotations: { updatedAt: annotationUpdatedAt }
-          });
-        }
-        if (url === "/api/snapshots?screenId=home") {
-          snapshotRequest = options;
-          return response({ saved: true });
+          annotationRequest = options;
+          return response({ saved: 1, cached: true, updatedAt: annotationUpdatedAt });
         }
         throw new Error(`Unexpected request: ${url}`);
       }
@@ -149,14 +134,82 @@ test("caches a browser snapshot after saving an annotation set", async () => {
   });
   controller.screenId = "home";
   controller.annotationRevision = 1;
-  controller.annotations = [{ id: "note-1" }];
+  controller.renderWidth = 1440;
+  controller.renderHeight = 900;
+  controller.annotations = [{
+    id: "note-1",
+    tool: "note",
+    points: [{ x: 220, y: 180 }],
+    text: "Review this Material",
+    target: { instancePath: [0], materialId: "header", materialSrc: "materials/surface.stml" }
+  }];
 
   await controller.persist();
 
-  assert.equal(snapshotRequest.method, "POST");
-  assert.equal(snapshotRequest.headers["Content-Type"], "image/png");
-  assert.equal(snapshotRequest.headers["X-SpecUX-Selection-Updated-At"], selectionUpdatedAt);
-  assert.equal(snapshotRequest.headers["X-SpecUX-Annotation-Updated-At"], annotationUpdatedAt);
-  assert.equal(snapshotRequest.body, png);
-  assert.match(status.textContent, /Browser snapshot cached for CLI/);
+  assert.equal(annotationRequest.method, "POST");
+  assert.equal(annotationRequest.headers["Content-Type"], "application/json");
+  assert.deepEqual(JSON.parse(annotationRequest.body), {
+    screenId: "home",
+    annotations: controller.annotations,
+    coordinateSpace: "screen canvas pixels",
+    canvasSize: { width: 1440, height: 900 },
+    previewStateId: "add-item-open"
+  });
+});
+
+test("converts pointer positions to absolute canvas pixels at zoomed scale", async () => {
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
+  const content = {
+    offsetWidth: 1440,
+    offsetHeight: 900,
+    getBoundingClientRect: () => ({ left: -120, top: -45, width: 720, height: 450 })
+  };
+  const preview = { querySelector: () => content };
+  const controller = new ScreenAnnotationController({
+    state: {},
+    services: { byId: () => preview }
+  });
+  controller.renderWidth = 1440;
+  controller.renderHeight = 900;
+
+  assert.deepEqual(controller.pointFromEvent({ clientX: 100, clientY: 100 }), {
+    x: 440,
+    y: 290
+  });
+});
+
+test("records Material identity as the target of an annotation", async () => {
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
+  const content = {
+    offsetWidth: 1440,
+    offsetHeight: 900,
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1440, height: 900 })
+  };
+  const preview = { querySelector: () => content };
+  const material = {
+    classList: { contains: (name) => name === "material-instance" },
+    dataset: {
+      instancePath: "[2]",
+      materialId: "brand-label",
+      materialSrc: "materials/label.stml"
+    },
+    parentElement: null
+  };
+  const text = { textContent: "Northstar", parentElement: material };
+  const controller = new ScreenAnnotationController({
+    state: {},
+    services: {
+      byId: () => preview,
+      document: { elementFromPoint: () => text }
+    }
+  });
+  controller.overlay = { style: {} };
+  controller.enabled = true;
+
+  assert.deepEqual(controller.targetAtPoint({ x: 120, y: 80 }), {
+    instancePath: [2],
+    materialId: "brand-label",
+    materialSrc: "materials/label.stml",
+    text: "Northstar"
+  });
 });

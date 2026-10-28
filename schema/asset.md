@@ -1,6 +1,8 @@
 # Asset File Schema
 
-An Asset is a reusable file discovered under the shared `specux/assets/` directory or a Screen-owned `specux/screens/<screen-id>/assets/` directory. The project manifest does not list Assets; filesystem discovery is the source of truth. Asset paths referenced by Screen Elements are relative to `specux/`.
+Asset files are optional project resources discovered under the shared `specux/assets/` directory or a Screen-owned `specux/screens/<screen-id>/assets/` directory. They are not canvas Materials and cannot be placed by a Screen YAML file. Reusable canvas Materials are defined separately as single-object STML files under `specux/materials/`; see [`material.md`](material.md). The project manifest does not list Assets; filesystem discovery is the source of truth.
+
+The template guidance below documents the retained `.stml` resource format; it is not the authoring path for Screen composition.
 
 ```text
 specux/screens/home/assets/
@@ -10,7 +12,7 @@ specux/screens/home/assets/
     └── dashboard-chart.png
 ```
 
-Image files (AVIF, BMP, GIF, ICO, JPEG, PNG, SVG, and WebP) can be placed directly as image Elements. Other discovered files can be referenced as resources by templates. A Screen-owned Asset is available only on its owning Screen; shared Assets under `assets/` are available to every Screen.
+Image files (AVIF, BMP, GIF, ICO, JPEG, PNG, SVG, and WebP) are discovered as resources. Other discovered files can be referenced by templates. A Screen-owned Asset is available only on its owning Screen; shared Assets under `assets/` are available to every Screen. Neither type is a Screen Material.
 
 ## Template Assets
 
@@ -44,7 +46,7 @@ The opening and closing delimiters are required. Header properties must be valid
 
 Asset IDs and slot IDs must start with a lowercase letter and contain only lowercase letters, numbers, or hyphens. Category segments must be non-empty.
 
-Behavior specs belong to Screen Elements, not template Assets. Do not add a `spec` property to template front matter; link a spec to a placed Element through its `id`.
+Materials are visual only and do not have individual behavior specs. Do not use template front matter to define Screen behavior.
 
 ### Attribute Definitions
 
@@ -53,8 +55,8 @@ Each key under `attributes` is an attribute name. Its value is a mapping:
 | Property | Type | Required | Definition |
 |---|---|---:|---|
 | `type` | string | Yes | One of `string`, `boolean`, `list`, or `number`. |
-| `default` | value matching `type` | No | Value used when an Element does not override the attribute. |
-| `overridable` | boolean | No | Allows an Element to provide a replacement value when `true`. Defaults to `false`. |
+| `default` | value matching `type` | No | Value used when a template consumer does not override the attribute. |
+| `overridable` | boolean | No | Allows a template consumer to provide a replacement value when `true`. Defaults to `false`. |
 | `options` | list of strings | For `list` attributes | Allowed values. It must contain at least one unique string. A default must match one of the options. |
 | `format` | string | For `number` attributes | One of `integer`, `decimal`, `currency`, or `percentage`. Defaults to `decimal`. `integer` values must be whole numbers. |
 
@@ -85,7 +87,7 @@ attributes:
 
 ### Slot Definitions
 
-Each item in `slots` is a mapping:
+Each item in `slots` is a mapping. Slots describe template markup only; they are not Screen layout containers:
 
 | Property | Type | Required | Definition |
 |---|---|---:|---|

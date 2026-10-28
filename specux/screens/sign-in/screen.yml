@@ -1,108 +1,494 @@
 name: Sign In
-description: A visual-only sign-in page concept for the Northstar financial app.
-note: Keep this preview static; do not collect or submit credentials.
-elements:
-  - id: northstar-sign-in-page
-    name: Northstar sign-in page
-    description: A responsive, visual-only sign-in composition.
-    note: Keep all nested elements static; this preview must not collect or submit
-      credentials.
-    slots:
-      brand:
-        - id: northstar-brand
-          name: Northstar brand
-          attributes:
-            mark: N
-            brand-name: Northstar
-          type: template
-          src: screens/sign-in/assets/sign-in-brand.stml
-        - id: brand-story
-          name: Brand story
-          attributes:
-            eyebrow: A clearer view of your money
-            title: Make room for what matters.
-            description: Bring your accounts together, follow your progress, and feel more
-              confident about what comes next.
-          type: template
-          src: screens/sign-in/assets/sign-in-story.stml
-        - id: account-balance-preview
-          name: Account balance preview
-          attributes:
-            label: Total balance
-            amount: $24,000.00
-            change: ↗ 8.4% this month
-          type: template
-          src: screens/sign-in/assets/sign-in-snapshot.stml
-        - id: privacy-note
-          name: Privacy note
-          attributes:
-            message: Private by design · Protected with care
-          type: template
-          src: screens/sign-in/assets/sign-in-trust.stml
-      content:
-        - id: sign-in-heading
-          name: Sign-in heading
-          attributes:
-            kicker: Your financial home
-            title: Welcome back
-            description: Sign in to pick up right where you left off.
-          type: template
-          src: screens/sign-in/assets/sign-in-heading.stml
-        - id: email-field-preview
-          name: Email field preview
-          description: Static visual representation of an email field.
-          attributes:
-            label: Email address
-            preview-value: jordan.davis@example.com
-            hint: EMAIL
-            icon: "@"
-          type: template
-          src: screens/sign-in/assets/sign-in-field-visual.stml
-        - id: password-field-preview
-          name: Password field preview
-          description: Static visual representation of a password field.
-          attributes:
-            label: Password
-            preview-value: ••••••••••••
-            hint: ◉
-            icon: •
-          type: template
-          src: screens/sign-in/assets/sign-in-field-visual.stml
-        - id: sign-in-options-preview
-          name: Sign-in options preview
-          attributes:
-            remember-label: Remember this device
-            recovery-label: Forgot password?
-          type: template
-          src: screens/sign-in/assets/sign-in-options-visual.stml
-        - id: primary-sign-in-action-preview
-          name: Primary sign-in action preview
-          description: Static visual representation of the primary sign-in action.
-          attributes:
-            label: Continue to dashboard
-            variant: primary
-          type: template
-          src: screens/sign-in/assets/sign-in-action-visual.stml
-        - id: alternative-sign-in-divider
-          name: Alternative sign-in divider
-          attributes:
-            label: OR CONTINUE WITH
-          type: template
-          src: screens/sign-in/assets/sign-in-divider.stml
-        - id: google-sign-in-option-preview
-          name: Google sign-in option preview
-          description: Static visual representation of an alternative sign-in option.
-          attributes:
-            label: Continue with Google
-            variant: secondary
-            mark: G
-          type: template
-          src: screens/sign-in/assets/sign-in-action-visual.stml
-        - id: preview-disclaimer
-          name: Preview disclaimer
-          attributes:
-            text: Visual preview only — no credentials are collected or submitted.
-          type: template
-          src: screens/sign-in/assets/sign-in-disclaimer.stml
-    type: template
-    src: screens/sign-in/assets/sign-in-layout.stml
+description: A sign-in screen composed from reusable Surface, Avatar, Text Field, Checkbox, Divider, Label, and Button materials.
+note: Static preview only; fields are visual Materials and do not collect or submit credentials.
+materials:
+  - id: signin-background
+    src: materials/surface.stml
+    attributes:
+      background: "#f8f9fc"
+      border: none
+      border-radius: 0
+      shadow: none
+    position:
+      x: 0
+      y: 0
+    size:
+      width: 1360
+      height: 900
+    rotation: 0
+  - id: brand-story-panel
+    src: materials/surface.stml
+    attributes:
+      background: "linear-gradient(145deg, #18254e, #263d78 62%, #3151a0)"
+      border: none
+      border-radius: 0
+      shadow: none
+    position:
+      x: 0
+      y: 0
+    size:
+      width: 680
+      height: 900
+    rotation: 0
+  - id: signin-brand-mark
+    src: materials/avatar.stml
+    attributes:
+      initials: N
+      color: "#1e315f"
+      background: "#ffffff"
+      border-radius: 11
+      font-size: 18
+      font-weight: 800
+    position:
+      x: 72
+      y: 52
+    size:
+      width: 38
+      height: 38
+    rotation: 0
+  - id: signin-brand-name
+    src: materials/label.stml
+    attributes:
+      text: Northstar
+      color: "#ffffff"
+      font-size: 17
+      font-weight: 750
+    position:
+      x: 122
+      y: 53
+    size:
+      width: 180
+      height: 36
+    rotation: 0
+  - id: signin-brand-tagline
+    src: materials/label.stml
+    attributes:
+      text: BANKING THAT MOVES WITH YOU
+      color: "#b8c8f5"
+      font-size: 10
+      font-weight: 750
+      letter-spacing: 1.2px
+    position:
+      x: 74
+      y: 257
+    size:
+      width: 420
+      height: 24
+    rotation: 0
+  - id: signin-story-heading
+    src: materials/label.stml
+    attributes:
+      text: Make room for what matters.
+      color: "#ffffff"
+      font-size: 42
+      font-weight: 750
+      line-height: 1.12
+    position:
+      x: 72
+      y: 293
+    size:
+      width: 520
+      height: 116
+    rotation: 0
+  - id: signin-story-copy
+    src: materials/label.stml
+    attributes:
+      text: A clearer view of your money starts here. Move confidently toward the life you want.
+      color: "#d1daf3"
+      font-size: 14
+      font-weight: 450
+      line-height: 1.55
+    position:
+      x: 74
+      y: 425
+    size:
+      width: 480
+      height: 66
+    rotation: 0
+  - id: snapshot-card
+    src: materials/surface.stml
+    attributes:
+      background: rgba(255,255,255,0.10)
+      border: 1px solid rgba(255,255,255,0.22)
+      border-radius: 14
+      shadow: none
+    position:
+      x: 72
+      y: 610
+    size:
+      width: 510
+      height: 154
+    rotation: 0
+  - id: snapshot-caption
+    src: materials/label.stml
+    attributes:
+      text: YOUR FINANCIAL SNAPSHOT
+      color: "#c2cff0"
+      font-size: 9
+      font-weight: 750
+      letter-spacing: .9px
+    position:
+      x: 96
+      y: 628
+    size:
+      width: 320
+      height: 24
+    rotation: 0
+  - id: snapshot-balance
+    src: materials/label.stml
+    attributes:
+      text: $25,680.50
+      color: "#ffffff"
+      font-size: 27
+      font-weight: 750
+    position:
+      x: 96
+      y: 653
+    size:
+      width: 280
+      height: 42
+    rotation: 0
+  - id: snapshot-change
+    src: materials/label.stml
+    attributes:
+      text: Up 8.2% this month
+      color: "#a7e8d2"
+      font-size: 11
+      font-weight: 650
+    position:
+      x: 98
+      y: 701
+    size:
+      width: 240
+      height: 24
+    rotation: 0
+  - id: snapshot-divider
+    src: materials/divider.stml
+    attributes:
+      color: rgba(255,255,255,0.24)
+      line-width: 1px
+      line-height: 100%
+    position:
+      x: 338
+      y: 646
+    size:
+      width: 24
+      height: 84
+    rotation: 0
+  - id: snapshot-savings-label
+    src: materials/label.stml
+    attributes:
+      text: SAVINGS RATE
+      color: "#c2cff0"
+      font-size: 9
+      font-weight: 750
+      letter-spacing: .7px
+    position:
+      x: 380
+      y: 653
+    size:
+      width: 170
+      height: 24
+    rotation: 0
+  - id: snapshot-savings-value
+    src: materials/label.stml
+    attributes:
+      text: 38.2%
+      color: "#ffffff"
+      font-size: 24
+      font-weight: 750
+    position:
+      x: 380
+      y: 678
+    size:
+      width: 170
+      height: 38
+    rotation: 0
+  - id: signin-trust-note
+    src: materials/label.stml
+    attributes:
+      text: "Secure: your data is encrypted and protected at every step."
+      color: "#c2cff0"
+      font-size: 10
+      font-weight: 500
+    position:
+      x: 74
+      y: 807
+    size:
+      width: 520
+      height: 26
+    rotation: 0
+  - id: signin-help-prompt
+    src: materials/label.stml
+    attributes:
+      text: New to Northstar?
+      color: "#748096"
+      font-size: 11
+      font-weight: 500
+    position:
+      x: 782
+      y: 47
+    size:
+      width: 150
+      height: 24
+    rotation: 0
+  - id: signin-create-account
+    src: materials/label.stml
+    attributes:
+      text: Create an account
+      color: "#4569e8"
+      font-size: 11
+      font-weight: 700
+    position:
+      x: 930
+      y: 47
+    size:
+      width: 160
+      height: 24
+    rotation: 0
+  - id: signin-heading
+    src: materials/label.stml
+    attributes:
+      text: Welcome back
+      color: "#1e293b"
+      font-size: 29
+      font-weight: 750
+    position:
+      x: 782
+      y: 128
+    size:
+      width: 490
+      height: 43
+    rotation: 0
+  - id: signin-intro
+    src: materials/label.stml
+    attributes:
+      text: Sign in to continue to your account.
+      color: "#718096"
+      font-size: 12
+      font-weight: 450
+    position:
+      x: 784
+      y: 175
+    size:
+      width: 470
+      height: 28
+    rotation: 0
+  - id: email-label
+    src: materials/label.stml
+    attributes:
+      text: Email address
+      color: "#344054"
+      font-size: 11
+      font-weight: 650
+    position:
+      x: 782
+      y: 248
+    size:
+      width: 460
+      height: 24
+    rotation: 0
+  - id: email-field
+    src: materials/text-field.stml
+    attributes:
+      value: jordan.davis@example.com
+      icon: "@"
+      trailing: ""
+      color: "#485569"
+      background: "#ffffff"
+      border: "1px solid #dce2ec"
+      border-radius: 8
+      padding: 0 13px
+      font-size: 12
+    position:
+      x: 782
+      y: 274
+    size:
+      width: 470
+      height: 50
+    rotation: 0
+  - id: password-label
+    src: materials/label.stml
+    attributes:
+      text: Password
+      color: "#344054"
+      font-size: 11
+      font-weight: 650
+    position:
+      x: 782
+      y: 348
+    size:
+      width: 460
+      height: 24
+    rotation: 0
+  - id: password-field
+    src: materials/text-field.stml
+    attributes:
+      value: "************"
+      icon: ""
+      trailing: SHOW
+      color: "#485569"
+      background: "#ffffff"
+      border: "1px solid #dce2ec"
+      border-radius: 8
+      padding: 0 13px
+      font-size: 13
+    position:
+      x: 782
+      y: 374
+    size:
+      width: 470
+      height: 50
+    rotation: 0
+  - id: remember-check
+    src: materials/checkbox.stml
+    attributes:
+      mark: x
+      color: "#ffffff"
+      background: "#4569e8"
+      border: "1px solid #4569e8"
+      border-radius: 4
+      font-size: 10
+    position:
+      x: 782
+      y: 448
+    size:
+      width: 24
+      height: 24
+    rotation: 0
+  - id: remember-label
+    src: materials/label.stml
+    attributes:
+      text: Remember me
+      color: "#596579"
+      font-size: 10
+      font-weight: 500
+    position:
+      x: 808
+      y: 444
+    size:
+      width: 160
+      height: 24
+    rotation: 0
+  - id: forgot-password
+    src: materials/label.stml
+    attributes:
+      text: Forgot password?
+      color: "#4569e8"
+      font-size: 10
+      font-weight: 650
+      text-align: right
+      justify-content: flex-end
+    position:
+      x: 1094
+      y: 444
+    size:
+      width: 158
+      height: 24
+    rotation: 0
+  - id: continue-button
+    src: materials/button.stml
+    attributes:
+      text: Continue to dashboard
+      border-radius: 8
+      font-size: 12
+      shadow: 0 7px 14px rgba(69, 105, 232, .20)
+    position:
+      x: 782
+      y: 489
+    size:
+      width: 470
+      height: 52
+    rotation: 0
+  - id: signin-divider-left
+    src: materials/divider.stml
+    attributes:
+      color: "#e4e8ef"
+      line-width: 100%
+      line-height: 1px
+    position:
+      x: 782
+      y: 564
+    size:
+      width: 190
+      height: 24
+    rotation: 0
+  - id: signin-divider-label
+    src: materials/label.stml
+    attributes:
+      text: OR
+      color: "#9aa4b4"
+      font-size: 9
+      font-weight: 700
+      text-align: center
+      justify-content: center
+    position:
+      x: 987
+      y: 563
+    size:
+      width: 60
+      height: 25
+    rotation: 0
+  - id: signin-divider-right
+    src: materials/divider.stml
+    attributes:
+      color: "#e4e8ef"
+      line-width: 100%
+      line-height: 1px
+    position:
+      x: 1062
+      y: 564
+    size:
+      width: 190
+      height: 24
+    rotation: 0
+  - id: google-button
+    src: materials/button.stml
+    attributes:
+      text: G     Continue with Google
+      border-radius: 8
+      font-size: 11
+      color: "#344054"
+      background: "#ffffff"
+      border: "1px solid #dce2ec"
+      shadow: none
+    position:
+      x: 782
+      y: 598
+    size:
+      width: 470
+      height: 50
+    rotation: 0
+  - id: signin-disclaimer
+    src: materials/label.stml
+    attributes:
+      text: By continuing, you agree to Northstar's Terms of Service and acknowledge our Privacy Policy.
+      color: "#909aac"
+      font-size: 9
+      font-weight: 450
+      text-align: center
+      justify-content: center
+      line-height: 1.55
+    position:
+      x: 782
+      y: 678
+    size:
+      width: 470
+      height: 46
+    rotation: 0
+  - id: signin-footer
+    src: materials/label.stml
+    attributes:
+      text: Copyright 2026 Northstar Financial. Member FDIC.
+      color: "#a1aaba"
+      font-size: 9
+      font-weight: 450
+      text-align: center
+      justify-content: center
+    position:
+      x: 782
+      y: 825
+    size:
+      width: 470
+      height: 24
+    rotation: 0

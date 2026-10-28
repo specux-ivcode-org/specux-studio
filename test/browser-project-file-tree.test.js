@@ -35,7 +35,7 @@ function findFolder(container, directoryPath) {
 }
 
 test("renders sorted project files and preserves expanded directory state", async () => {
-  const { ProjectFileTree } = await import("../browser/ProjectFileTree.mjs");
+  const { ProjectFileTree } = await import("../frontend/browser/ProjectFileTree.mjs");
   const container = createNode("div");
   const fileTree = new ProjectFileTree({
     container,

@@ -22,7 +22,7 @@ function createInstance(path, children = [], shadowRoot = null) {
 }
 
 test("focuses an Element spec target and dims unrelated preview branches", async () => {
-  const { SpecEditor } = await import("../browser/SpecEditor.mjs");
+  const { SpecEditor } = await import("../frontend/browser/SpecEditor.mjs");
   const selectedChild = createInstance([0, "navigation", 0, "links", 0]);
   const selected = createInstance(
     [0, "navigation", 0],
@@ -70,7 +70,7 @@ test("focuses an Element spec target and dims unrelated preview branches", async
 });
 
 test("keeps all descendants clear when a container Element is focused", async () => {
-  const { SpecEditor } = await import("../browser/SpecEditor.mjs");
+  const { SpecEditor } = await import("../frontend/browser/SpecEditor.mjs");
   const nestedChild = createInstance([0, "navigation", 0]);
   const nestedGrandchild = createInstance([0, "navigation", 0, "links", 0]);
   const selectedContainer = createInstance(

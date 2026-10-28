@@ -2,7 +2,7 @@
 
 The SpecUX Standard.
 
-The `schema/` directory contains the SpecUX artifact schemas and authoring guidance. Other project documentation lives in `doc/`. The Node.js server and browser editor are at the repository root, and the editor's sample SpecUX project is in `specux/`. Run `npm install` once, then `npm start` to launch the local editor at `http://127.0.0.1:3000/`.
+The `schema/` directory contains the SpecUX artifact schemas and authoring guidance. Other project documentation lives in `doc/`. Browser code lives in `frontend/`, server and CLI code in `backend/`, and YAML/validation code shared by both in `shared/`. The editor's sample SpecUX project remains in `specux/`. Run `npm install` once, then `npm start` to launch the local editor at `http://127.0.0.1:3000/`.
 
 ## Install
 

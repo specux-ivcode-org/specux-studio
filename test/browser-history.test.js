@@ -21,7 +21,7 @@ function createWindow(href) {
 }
 
 function createController(windowObject, options = {}) {
-  return import("../browser/BrowserHistory.mjs").then(({ BrowserHistory }) =>
+  return import("../frontend/browser/BrowserHistory.mjs").then(({ BrowserHistory }) =>
     new BrowserHistory({
       windowObject,
       getCurrentSelection: () => options.selection,

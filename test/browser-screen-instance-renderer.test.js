@@ -20,7 +20,7 @@ function createElement(tagName, className = "") {
 }
 
 test("does not expose asset selection interactions in render-only mode", async () => {
-  const { ScreenInstanceRenderer } = await import("../browser/ScreenInstanceRenderer.mjs");
+  const { ScreenInstanceRenderer } = await import("../frontend/browser/ScreenInstanceRenderer.mjs");
   const hosts = [];
   const renderer = new ScreenInstanceRenderer({
     state: {
@@ -58,7 +58,7 @@ test("does not expose asset selection interactions in render-only mode", async (
 });
 
 test("does not expose drop-zone interactions in render-only mode", async () => {
-  const { ScreenInstanceRenderer } = await import("../browser/ScreenInstanceRenderer.mjs");
+  const { ScreenInstanceRenderer } = await import("../frontend/browser/ScreenInstanceRenderer.mjs");
   const target = createElement("div");
   target.attributes["data-specux-slot"] = "content";
   const renderer = new ScreenInstanceRenderer({

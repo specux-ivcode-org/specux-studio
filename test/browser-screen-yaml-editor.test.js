@@ -21,11 +21,12 @@ function createElement() {
 }
 
 test("shows annotation toolbar only for the Screen preview", async () => {
-  const { ScreenYamlEditor } = await import("../browser/ScreenYamlEditor.mjs");
+  const { ScreenYamlEditor } = await import("../frontend/browser/ScreenYamlEditor.mjs");
   const elements = new Map([
     ["screen-view-preview", createElement()],
     ["screen-view-yaml", createElement()],
     ["preview-state-controls", createElement()],
+    ["screen-canvas-viewport", createElement()],
     ["screen-preview", createElement()],
     ["screen-yaml-editor-panel", createElement()],
     ["annotation-toolbar", createElement()],
@@ -49,15 +50,18 @@ test("shows annotation toolbar only for the Screen preview", async () => {
   editor.syncViewMode();
   assert.equal(elements.get("annotation-toolbar").hidden, false);
   editor.setViewMode("yaml");
+  assert.equal(elements.get("screen-canvas-viewport").hidden, true);
   assert.equal(elements.get("annotation-toolbar").hidden, true);
   editor.setViewMode("preview");
+  assert.equal(elements.get("screen-canvas-viewport").hidden, false);
   assert.equal(elements.get("annotation-toolbar").hidden, false);
   editor.hideControls();
+  assert.equal(elements.get("screen-canvas-viewport").hidden, false);
   assert.equal(elements.get("annotation-toolbar").hidden, true);
 });
 
 test("parses valid Screen YAML and refreshes the active Screen", async () => {
-  const { ScreenYamlEditor } = await import("../browser/ScreenYamlEditor.mjs");
+  const { ScreenYamlEditor } = await import("../frontend/browser/ScreenYamlEditor.mjs");
   const screen = {
     id: "home",
     file: "screens/home/screen.yml",
@@ -96,7 +100,7 @@ test("parses valid Screen YAML and refreshes the active Screen", async () => {
 });
 
 test("ignores a stale Screen YAML parse response", async () => {
-  const { ScreenYamlEditor } = await import("../browser/ScreenYamlEditor.mjs");
+  const { ScreenYamlEditor } = await import("../frontend/browser/ScreenYamlEditor.mjs");
   const screen = {
     file: "screens/home/screen.yml",
     data: { name: "Home" },
@@ -121,7 +125,7 @@ test("ignores a stale Screen YAML parse response", async () => {
 });
 
 test("generates Screen YAML and fills the active YAML editor", async () => {
-  const { ScreenYamlEditor } = await import("../browser/ScreenYamlEditor.mjs");
+  const { ScreenYamlEditor } = await import("../frontend/browser/ScreenYamlEditor.mjs");
   const screen = {
     file: "screens/home/screen.yml",
     data: { name: "Home" },

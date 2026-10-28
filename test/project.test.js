@@ -5,12 +5,15 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const YAML = require("yaml");
-const { inlineProjectResources } = require("../cli");
-const { clearBrowserSnapshot, writeBrowserSnapshot } = require("../browserSnapshotCache");
-const { SPECUX_VERSION, validateProject } = require("../project");
-const validation = require("../validation");
+const { inlineProjectResources } = require("../backend/cli");
+const {
+  clearBrowserAnnotationCache,
+  writeBrowserAnnotationCache
+} = require("../backend/browserAnnotationCache");
+const { SPECUX_VERSION, validateProject } = require("../backend/project");
+const validation = require("../shared/validation");
 
-const cliPath = path.join(__dirname, "..", "cli.js");
+const cliPath = path.join(__dirname, "..", "backend", "cli.js");
 const validSpec = [
   "# Call to action",
   "",
@@ -50,24 +53,38 @@ async function createProject() {
         { id: "default", name: "Default" },
         { id: "dialog-open", name: "Dialog open", description: "Show the dialog." }
       ],
-      elements: [
-        { id: "brand-mark", type: "image", src: "assets/brand.png", alt: "Brand" },
+      materials: [
         {
-          id: "page-layout",
-          type: "template",
-          src: "screens/home/assets/layout.stml",
-          slots: {
-            content: [{
-              id: "continue-button",
-              type: "template",
-              src: "assets/button.stml",
-              attributes: { label: "Continue" },
-              visibility: { default: false, "dialog-open": true }
-            }]
-          }
+          id: "brand-mark",
+          src: "materials/brand.stml",
+          attributes: { text: "Brand" },
+          position: { x: 10, y: 10 },
+          size: { width: 120, height: 40 },
+          rotation: 0
+        },
+        {
+          id: "continue-button",
+          src: "materials/continue.stml",
+          attributes: { text: "Continue" },
+          position: { x: 10, y: 60 },
+          size: { width: 160, height: 48 },
+          rotation: 0,
+          visibility: { default: false, "dialog-open": true }
         }
       ]
     }),
+    "materials/brand.stml": assetDocument({
+      id: "brand",
+      name: "Label",
+      type: "label",
+      attributes: { text: { type: "string", default: "Label", overridable: true } }
+    }, '<div class="material-visual material-visual-label">${attributes.text}</div>\n'),
+    "materials/continue.stml": assetDocument({
+      id: "continue",
+      name: "Button",
+      type: "button",
+      attributes: { text: { type: "string", default: "Button", overridable: true } }
+    }, '<div class="material-visual material-visual-button">${attributes.text}</div>\n'),
     "assets/brand.png": Buffer.from("image"),
     "assets/static-page.html": "<main>Static HTML</main>\n",
     "assets/button.stml": assetDocument({
@@ -106,7 +123,7 @@ async function createProject() {
   return root;
 }
 
-test("discovers Assets and validates image and template Elements", async () => {
+test("discovers project files and validates native visual materials", async () => {
   const root = await createProject();
   try {
     const result = await validateProject(root);
@@ -115,9 +132,11 @@ test("discovers Assets and validates image and template Elements", async () => {
     assert.equal(result.assets.get("assets/brand.png").type, "image");
     assert.equal(result.assets.get("assets/static-page.html").type, "resource");
     assert.equal(result.assets.get("screens/home/assets/layout.stml").type, "template");
-    assert.equal(result.usedAssetFiles.has("assets/button.stml"), true);
-    assert.equal(result.usedAssetFiles.has("assets/brand.png"), true);
-    assert.equal(result.usedAssetFiles.has("screens/home/assets/layout.stml"), true);
+    assert.equal(result.materialFiles.get("materials/brand.stml").data.type, "label");
+    assert.equal(result.materialFiles.get("materials/continue.stml").data.type, "button");
+    assert.equal(result.usedAssetFiles.has("assets/button.stml"), false);
+    assert.equal(result.usedAssetFiles.has("assets/brand.png"), false);
+    assert.equal(result.usedAssetFiles.has("screens/home/assets/layout.stml"), false);
     assert.equal(result.usedAssetFiles.has("screens/home/assets/unused.stml"), false);
     assert.equal(result.usedAssetFiles.has("screens/home/assets/images/chart.png"), false);
     assert.deepEqual([...result.referencedSpecPaths], ["screens/home/specs/element-continue-button.md"]);
@@ -126,7 +145,7 @@ test("discovers Assets and validates image and template Elements", async () => {
   }
 });
 
-test("rejects manifest Asset registries and invalid Screen Element references", async () => {
+test("rejects manifest Asset registries and invalid Screen material transforms", async () => {
   const root = await createProject();
   try {
     const manifestPath = path.join(root, "project.yml");
@@ -140,25 +159,73 @@ test("rejects manifest Asset registries and invalid Screen Element references", 
     await fs.writeFile(manifestPath, YAML.stringify(manifest));
     const screenPath = path.join(root, "screens", "home", "screen.yml");
     const screen = YAML.parse(await fs.readFile(screenPath, "utf8"));
-    screen.elements[0].src = "assets/missing.png";
-    screen.elements[1].type = "image";
+    screen.materials[0].attributes.text = 42;
+    screen.materials[0].position.x = "left";
+    screen.materials[1].src = "materials/missing.stml";
     await fs.writeFile(screenPath, YAML.stringify(screen));
     result = await validateProject(root);
-    assert.ok(result.errors.some((error) => error.includes('does not reference a discovered image asset')));
+    assert.ok(result.errors.some((error) => error.includes("position must contain numeric x and y values")));
+    assert.ok(result.errors.some((error) =>
+      error.includes('Material attribute "text" does not match its declared type')
+    ));
+    assert.ok(result.errors.some((error) => error.includes("src must reference a discovered Material STML file")));
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
 
-test("rejects inline text Screen Elements", async () => {
+test("validates reusable Material front matter and single-root markup", async () => {
+  const root = await createProject();
+  try {
+    const materialPath = path.join(root, "materials", "brand.stml");
+    await fs.writeFile(materialPath, assetDocument({
+      id: "brand",
+      name: "Brand",
+      type: "image"
+    }, "<div>Brand</div>\n"));
+    let result = await validateProject(root);
+    assert.ok(result.errors.some((error) =>
+      error.includes("type must be one of: label, button, surface, avatar, navigation-item, text-field, progress, divider, checkbox")
+    ));
+
+    await fs.writeFile(materialPath, assetDocument({
+      id: "brand",
+      name: "Brand",
+      type: "surface"
+    }, "<div>One</div><div>Two</div>\n"));
+    result = await validateProject(root);
+    assert.ok(!result.errors.some((error) => error.includes("front matter type must be one of:")));
+    assert.ok(result.errors.some((error) => error.includes("one root HTML element")));
+
+    await fs.writeFile(materialPath, assetDocument({
+      id: "brand",
+      name: "Brand",
+      type: "label"
+    }, "<div>${attributes.unknown}</div>\n"));
+    result = await validateProject(root);
+    assert.ok(result.errors.some((error) => error.includes('references undeclared attribute "unknown"')));
+
+    await fs.writeFile(materialPath, assetDocument({
+      id: "brand",
+      name: "Brand",
+      type: "button"
+    }, "<button>Not an interactive control</button>\n"));
+    result = await validateProject(root);
+    assert.ok(result.errors.some((error) => error.includes("interactive controls")));
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects the obsolete Screen elements property", async () => {
   const root = await createProject();
   try {
     const screenPath = path.join(root, "screens", "home", "screen.yml");
     const screen = YAML.parse(await fs.readFile(screenPath, "utf8"));
-    screen.elements.unshift({ id: "page-title", type: "text", content: "Welcome" });
+    screen.elements = [{ id: "page-title",     type: "label", content: "Welcome" }];
     await fs.writeFile(screenPath, YAML.stringify(screen));
     const result = await validateProject(root);
-    assert.ok(result.errors.some((error) => error.includes('type must be "image" or "template"')));
+    assert.ok(result.errors.some((error) => error.includes("Screen elements are no longer supported")));
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -227,7 +294,7 @@ test("validates Element spec front matter and direct specs directory paths", asy
   );
 });
 
-test("CLI init creates a discoverable template Asset and an Element-based Screen", async () => {
+test("CLI init creates reusable STML Materials and Screen placements", async () => {
   const parent = await fs.mkdtemp(path.join(os.tmpdir(), "specux-init-test-"));
   try {
     const result = spawnSync(process.execPath, [cliPath, "init", "--project", parent], {
@@ -240,36 +307,43 @@ test("CLI init creates a discoverable template Asset and an Element-based Screen
       "utf8"
     ));
     assert.equal(Object.hasOwn(manifest, "asset-templates"), false);
-    assert.equal(screen.elements[0].type, "template");
-    assert.equal(screen.elements[0].src, "screens/home/assets/page-layout.stml");
-    assert.ok(await fs.readFile(
-      path.join(parent, "specux", "screens", "home", "assets", "page-layout.stml"),
+    assert.equal(screen.materials[0].src, "materials/label.stml");
+    assert.deepEqual(screen.materials[0].attributes, { text: "Welcome to SpecUX" });
+    assert.equal(screen.materials[1].src, "materials/button.stml");
+    assert.deepEqual(screen.materials[1].attributes, { text: "Get started" });
+    const label = await fs.readFile(
+      path.join(parent, "specux", "materials", "label.stml"),
       "utf8"
-    ));
+    );
+    assert.match(label, /type: label/);
+    assert.match(label, /attributes:/);
+    assert.match(label, /\$\{attributes\.text\}/);
+    const validationResult = await validateProject(path.join(parent, "specux"));
+    assert.deepEqual(validationResult.errors, []);
   } finally {
     await fs.rm(parent, { recursive: true, force: true });
   }
 });
 
-test("CLI renders an annotated image from the local snapshot without a running server", async () => {
-  const parent = await fs.mkdtemp(path.join(os.tmpdir(), "specux-snapshot-cli-test-"));
+test("CLI renders structured annotations without a running editor server", async () => {
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), "specux-annotation-cli-test-"));
   const projectRoot = path.join(parent, "specux");
   try {
     const initialized = spawnSync(process.execPath, [cliPath, "init", "--project", parent], {
       encoding: "utf8"
     });
     assert.equal(initialized.status, 0, initialized.stderr || initialized.stdout);
-    const png = Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC",
-      "base64"
-    );
-    await writeBrowserSnapshot(projectRoot, png, {
+    await writeBrowserAnnotationCache(projectRoot, {
       screenId: "home",
       previewStateId: "default",
-      previewSize: { width: 1, height: 1 },
-      annotationUpdatedAt: "2026-10-25T12:00:00.000Z",
-      selectionUpdatedAt: "2026-10-25T11:59:00.000Z",
-      capturedAt: "2026-10-25T12:00:00.000Z"
+      coordinateSpace: "screen canvas pixels",
+      canvasSize: { width: 1440, height: 900 },
+      annotations: [{
+        id: "mark-1",
+        tool: "circle",
+        points: [{ x: 120, y: 120 }, { x: 360, y: 300 }],
+        target: { instancePath: [0], materialId: "welcome" }
+      }]
     });
     const outputPath = path.join(parent, "home-annotated.png");
     const rendered = spawnSync(process.execPath, [
@@ -286,9 +360,11 @@ test("CLI renders an annotated image from the local snapshot without a running s
     ], { encoding: "utf8" });
 
     assert.equal(rendered.status, 0, rendered.stderr || rendered.stdout);
-    assert.deepEqual(await fs.readFile(outputPath), png);
+    const png = await fs.readFile(outputPath);
+    assert.deepEqual(png.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    assert.match(rendered.stdout, /Rendered Screen "home" to/);
   } finally {
-    await clearBrowserSnapshot(projectRoot);
+    await clearBrowserAnnotationCache(projectRoot);
     await fs.rm(parent, { recursive: true, force: true });
   }
 });

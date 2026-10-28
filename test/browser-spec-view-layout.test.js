@@ -82,7 +82,7 @@ const ASSET_LAYOUT = {
 };
 
 test("switches between split, preview, and Markdown layouts", async () => {
-  const { SplitViewLayout } = await import("../browser/SplitViewLayout.mjs");
+  const { SplitViewLayout } = await import("../frontend/browser/SplitViewLayout.mjs");
   const harness = createHarness(SPEC_LAYOUT);
   const controller = new SplitViewLayout({ ...harness, ...SPEC_LAYOUT });
   controller.bind();
@@ -104,7 +104,7 @@ test("switches between split, preview, and Markdown layouts", async () => {
 });
 
 test("switches between split, preview, and asset source layouts", async () => {
-  const { SplitViewLayout } = await import("../browser/SplitViewLayout.mjs");
+  const { SplitViewLayout } = await import("../frontend/browser/SplitViewLayout.mjs");
   const harness = createHarness(ASSET_LAYOUT);
   const controller = new SplitViewLayout({ ...harness, ...ASSET_LAYOUT });
   controller.bind();
@@ -126,7 +126,7 @@ test("switches between split, preview, and asset source layouts", async () => {
 });
 
 test("supports bounded pointer and keyboard resizing", async () => {
-  const { SplitViewLayout } = await import("../browser/SplitViewLayout.mjs");
+  const { SplitViewLayout } = await import("../frontend/browser/SplitViewLayout.mjs");
   const harness = createHarness(SPEC_LAYOUT);
   const controller = new SplitViewLayout({ ...harness, ...SPEC_LAYOUT });
   controller.bind();

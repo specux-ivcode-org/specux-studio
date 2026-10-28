@@ -1,0 +1,45 @@
+---
+id: text-field
+name: Text Field
+type: text-field
+attributes:
+  value:
+    type: string
+    default: "Enter a value"
+    overridable: true
+  icon:
+    type: string
+    default: ""
+    overridable: true
+  trailing:
+    type: string
+    default: ""
+    overridable: true
+  color:
+    type: string
+    default: "#485569"
+    overridable: true
+  background:
+    type: string
+    default: "#ffffff"
+    overridable: true
+  border:
+    type: string
+    default: "1px solid #dce2ec"
+    overridable: true
+  border-radius:
+    type: number
+    format: integer
+    default: 8
+    overridable: true
+  padding:
+    type: string
+    default: "0 13px"
+    overridable: true
+  font-size:
+    type: number
+    format: integer
+    default: 12
+    overridable: true
+---
+<div class="material-visual" style="gap:10px;justify-content:space-between;padding:${attributes.padding};color:${attributes.color};background:${attributes.background};border:${attributes.border};border-radius:${attributes.border-radius}px;font-size:${attributes.font-size}px"><span style="color:#8894a8">${attributes.icon}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${attributes.value}</span><span style="color:#8894a8">${attributes.trailing}</span></div>

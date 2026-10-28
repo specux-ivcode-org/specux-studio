@@ -10,10 +10,10 @@ The Screen ID is defined by the matching `screens[].id` in `project.yml`; do not
 | `description` | string | Yes | Description of the Screen. |
 | `note` | string | No | Implementation guidance for the Screen. |
 | `spec` | string | No | Path to this Screen's behavior spec: `screens/<screen-id>/specs/screen.md`. |
-| `elements` | list | Yes | Ordered list of placed Screen Elements. An empty list is allowed while building the Screen. |
+| `materials` | list | Yes | Ordered list of independent visual materials. An empty list is allowed while building the Screen. |
 | `preview-states` | list | No | Named visual states for previewing this Screen. If omitted, the Screen has an implicit `default` state. |
 
-Use the Screen-level spec for behavior spanning the page, including activation conditions for its preview states. Keep individual Element behavior in the relevant Element specs.
+Screen Materials are instances of reusable STML templates. Labels and buttons are visual only; they do not execute actions or accept user input. Each instance can override declared template variables and has its own absolute position, size, and rotation.
 
 ## Preview States
 
@@ -25,82 +25,78 @@ Each item in `preview-states` is a mapping with these properties:
 | `name` | string | Yes | Non-empty label shown in the Studio preview-state selector. |
 | `description` | string | Yes, except for `default` | Non-empty description of the visual state. |
 
-Every non-default preview state must have a non-empty description. The implicit or explicit `default` state does not require one. Preview states are editor-only visual configurations; they do not define application navigation or executable behavior. The Studio starts in `default`. Select another state to preview its visibility configuration without changing the Screen's authored defaults.
+Every non-default preview state must have a non-empty description. The implicit or explicit `default` state does not require one. Preview states are visual configurations; they do not define application navigation or executable behavior. Select another state to preview its material visibility configuration without changing the Screen's authored defaults.
 
-When a Screen defines non-default preview states, each state ID must appear in at least one scenario step in a behavior spec linked to that Screen or one of its Elements. Write the step as `- **SHOW** <state-id>` after that scenario's `THEN` step. `SHOW` records which preview state represents the scenario outcome; it does not make the state executable.
+When a Screen defines non-default preview states, each state ID must appear in a scenario step in a behavior spec linked to that Screen. Write the step as `- **SHOW** <state-id>` after that scenario's `THEN` step. `SHOW` records which preview state represents the scenario outcome; it does not make the state executable.
 
-## Elements
+## Materials
 
-Each item in `elements`, and each child in a template Element's `slots`, is an Element mapping. Every Element requires a unique `id` within its Screen and a `type` of `image` or `template`.
-
-Common properties:
+Each item in `materials` is a mapping with these properties:
 
 | Property | Type | Required | Definition |
 |---|---|---:|---|
-| `id` | string | Yes | Unique Element ID on this Screen; behavior specs link to it through Markdown front matter. |
-| `type` | string | Yes | One of `image` or `template`. |
-| `name` | string | No | Name for this use of the Element. |
-| `description` | string | No | Description of this use of the Element. |
-| `note` | string | No | Implementation guidance for this Element. |
-| `visibility` | mapping | No | Optional state-specific visibility values, keyed by `preview-states[].id`. A missing state value means visible. |
+| `id` | string | Yes | Unique Material ID on this Screen. |
+| `src` | string | Yes | Path to a reusable STML Material file under `materials/`. |
+| `attributes` | mapping | No | Instance-specific values for overridable variables declared in the Material's STML front matter. |
+| `position` | mapping | Yes | Absolute canvas position in CSS pixels from the top-left corner: `{x, y}`. |
+| `size` | mapping | Yes | Material dimensions in CSS pixels: `{width, height}`, each at least `24`. |
+| `rotation` | number | No | Clockwise rotation in degrees around the material's center. Defaults to `0`. |
+| `visibility` | mapping | No | Optional state-specific visibility values keyed by `preview-states[].id`. A missing state value means visible. |
+| `note` | string | No | Optional implementation guidance. |
 
-Type-specific properties:
+Material markup and variable definitions are saved in the STML file; Screen YAML stores each instance's attribute overrides and transform. Edit a selected instance's variable fields to change only that placement. In the Studio, select one and drag it to move; use its handles to resize or rotate it. Open the Material file to edit its shared markup and variable definitions. A button Material is visual only and has no click behavior.
 
-| Type | Required properties | Optional properties | Definition |
-|---|---|---|---|
-| `image` | `src`, `alt` | — | `src` is a project-relative path to a discovered image asset. `alt` is a string; use an empty string for a decorative image. |
-| `template` | `src` | `attributes`, `slots` | `src` is a project-relative path to a discovered `.stml` template asset. `attributes` contains overrides marked `overridable: true` by that template. `slots` contains child Element lists keyed by the template's declared slot IDs. |
-
-Image Elements cannot define template attributes or slots. Template attributes and slot IDs are validated against the referenced template. Any template or image under `screens/<screen-id>/assets/` is limited to that Screen; files under project-level `assets/` are shared.
-
-An empty `elements` list is a valid empty Screen. Drag an image or template asset from the file tree to add an Element. Put text content in a template asset rather than adding it directly to the Screen. Elements may be arranged at the Screen root or nested in a template's named slots. There is no mandatory root layout.
-
-Element IDs must use lowercase letters, numbers, and hyphens and be unique within the Screen. An Element behavior spec links through the `element-id` YAML front matter and is named `screens/<screen-id>/specs/element-<element-id>.md`; do not add a `spec` property to the Element mapping. Each spec describes intended behavior and is Markdown guidance, not executable. Create or update specs for Elements whose behavior is specified by the user or project context. Do not create specs for purely visual Elements or invent behavior. See [`spec.md`](spec.md) for file conventions.
+IDs must use lowercase letters, numbers, and hyphens and be unique within the Screen. Each `src` must reference a discovered Material file. Do not use the former `elements` property or asset templates for Screen composition.
 
 ## Example
 
 ```yaml
 name: Sign In
-description: Sign in to the application.
-note: Keep the page focused on account access.
-elements:
-  - id: brand-mark
-    type: image
-    src: assets/brand-mark.svg
-    alt: Northstar
-  - id: sign-in-form
-    type: template
-    src: assets/sign-in-form.stml
-    slots:
-      content:
-        - id: email-field
-          type: template
-          src: assets/text-field.stml
-          attributes:
-            label: Email
-            input-type: email
-            required: true
-        - id: continue-button
-          type: template
-          src: assets/button.stml
-          attributes:
-            label: Continue
+description: A visual-only sign-in composition.
+materials:
+  - id: welcome
+    src: materials/label.stml
+    attributes:
+      text: Welcome back
+    position:
+      x: 48
+      y: 48
+    size:
+      width: 320
+      height: 56
+    rotation: 0
+  - id: continue
+    src: materials/button.stml
+    attributes:
+      text: Continue
+    position:
+      x: 48
+      y: 132
+    size:
+      width: 180
+      height: 48
+    rotation: 0
 ```
 
-This example keeps a dialog on the same Screen and shows it only in the named preview state:
+This example shows a visual message in a named preview state:
 
 ```yaml
 preview-states:
   - id: default
     name: Screen
-  - id: add-item-open
-    name: Add item dialog open
-    description: Show the Add item dialog over the page.
-elements:
-  - id: add-item-dialog
-    type: template
-    src: assets/add-item-dialog.stml
+  - id: message-visible
+    name: Message visible
+    description: Show the confirmation message.
+materials:
+  - id: confirmation
+    src: materials/confirmation.stml
+    position:
+      x: 48
+      y: 220
+    size:
+      width: 320
+      height: 48
     visibility:
       default: false
-      add-item-open: true
+      message-visible: true
 ```
