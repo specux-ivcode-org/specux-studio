@@ -178,6 +178,48 @@ test("converts pointer positions to absolute canvas pixels at zoomed scale", asy
   });
 });
 
+test("places the annotation overlay above material layers and captures the canvas", async () => {
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
+  const overlay = {
+    style: {},
+    setAttribute() {},
+    replaceChildren() {},
+    append() {}
+  };
+  const content = {
+    offsetWidth: 1440,
+    offsetHeight: 900,
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1440, height: 900 }),
+    querySelector: () => overlay,
+    querySelectorAll: () => [{
+      style: { zIndex: "42" },
+      getBoundingClientRect: () => ({ right: 0, bottom: 0 })
+    }]
+  };
+  const preview = {
+    querySelector: () => content,
+    classList: { toggle() {} }
+  };
+  const controller = new ScreenAnnotationController({
+    state: {},
+    services: {
+      byId: () => preview,
+      document: {
+        createElementNS: () => ({
+          setAttribute() {},
+          append() {}
+        })
+      }
+    }
+  });
+  controller.enabled = true;
+
+  controller.render();
+
+  assert.equal(overlay.style.zIndex, "43");
+  assert.equal(overlay.style.pointerEvents, "all");
+});
+
 test("records Material identity as the target of an annotation", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const content = {

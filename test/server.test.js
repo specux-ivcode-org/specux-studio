@@ -165,6 +165,7 @@ test("serves the editor root and the example project", async () => {
     const stylesheet = await fetch(`${baseUrl}/styles.css`);
     const yamlModule = await fetch(`${baseUrl}/shared/yaml.js`);
     const validationModule = await fetch(`${baseUrl}/shared/validation.js`);
+    const screenLayersModule = await fetch(`${baseUrl}/shared/ScreenLayers.mjs`);
     const assetEditorModule = await fetch(`${baseUrl}/browser/AssetEditor.mjs`);
     const editorEventControllerModule = await fetch(`${baseUrl}/browser/EditorEventController.mjs`);
     const browserModule = await fetch(`${baseUrl}/browser/BrowserHistory.mjs`);
@@ -202,6 +203,7 @@ test("serves the editor root and the example project", async () => {
     assert.equal(stylesheet.headers.get("content-type"), "text/css; charset=utf-8");
     assert.equal(yamlModule.status, 200);
     assert.equal(validationModule.status, 200);
+    assert.equal(screenLayersModule.status, 200);
     assert.equal(appModule.status, 200);
     assert.equal(appModule.headers.get("content-type"), "text/javascript; charset=utf-8");
     assert.equal(imageCaptureLibrary.status, 404);
@@ -825,7 +827,7 @@ test("creates and saves project, Screen, and Element behavior specs", async () =
         }]
       })
     });
-    assert.equal(update.status, 200);
+    assert.equal(update.status, 200, await update.text());
     assert.equal(await fs.readFile(specPath, "utf8"), updatedContent);
 
     const screenSpecPath = "screens/sign-in/specs/element-sign-in-button.md";

@@ -1,3 +1,5 @@
+import { normalizeScreenLayers } from "../../shared/ScreenLayers.mjs";
+
 export class ScreenYamlEditor {
   constructor({
     documentObject,
@@ -10,7 +12,8 @@ export class ScreenYamlEditor {
     renderNavigation,
     renderScreen,
     updateSaveControls,
-    validatePreviewStates
+    validatePreviewStates,
+    validateScreenMaterials
   }) {
     this.document = documentObject;
     this.fetcher = fetcher;
@@ -24,6 +27,7 @@ export class ScreenYamlEditor {
     this.renderScreen = renderScreen;
     this.updateSaveControls = updateSaveControls;
     this.validatePreviewStates = validatePreviewStates;
+    this.validateScreenMaterials = validateScreenMaterials;
   }
 
   setStatus(screen, message, isError = false) {
@@ -147,9 +151,11 @@ export class ScreenYamlEditor {
       throw new Error(`${screen.file} must contain a YAML mapping.`);
     }
     this.validatePreviewStates(data, screen.file);
+    const migratedLayers = normalizeScreenLayers(data);
+    this.validateScreenMaterials({ file: screen.file, data });
     screen.data = data;
     screen.yamlSource = source;
-    screen.yamlSourceMode = "source";
+    screen.yamlSourceMode = migratedLayers ? "data" : "source";
     this.invalidYamlFiles.delete(screen.file);
     this.setStatus(screen, "YAML is valid. Save to persist changes.");
     this.renderNavigation();

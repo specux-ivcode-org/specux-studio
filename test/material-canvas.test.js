@@ -214,9 +214,84 @@ test("keeps legacy slot compositions full-width on the canvas", async () => {
   assert.equal(host.style.width, "100%");
 });
 
+test("stacks placements by layer order while preserving material order within each layer", async () => {
+  const { MaterialCanvas } = await import("../frontend/browser/MaterialCanvas.mjs");
+  const canvas = new MaterialCanvas({
+    state: { isRenderOnly: true },
+    services: { document: { createElement } }
+  });
+  const content = createElement("div");
+  const screen = {
+    file: "screens/home/screen.yml",
+    data: {
+      layers: [
+        { id: "front", name: "Front" },
+        { id: "back", name: "Back" },
+        { id: "base", name: "Base" }
+      ],
+      materials: [{ layer: "front" }, { layer: "back" }, { layer: "base" }]
+    }
+  };
+  const frontFrame = canvas.createFrame(
+    createElement("div"),
+    { id: "front-item", layer: "front", position: { x: 0, y: 0 } },
+    0,
+    content,
+    screen
+  );
+  const backFrame = canvas.createFrame(
+    createElement("div"),
+    { id: "back-item", layer: "back", position: { x: 0, y: 0 } },
+    1,
+    content,
+    screen
+  );
+  const baseFrame = canvas.createFrame(
+    createElement("div"),
+    { id: "base-item", layer: "base", position: { x: 0, y: 0 } },
+    2,
+    content,
+    screen
+  );
+
+  assert.ok(Number(frontFrame.style.zIndex) > Number(backFrame.style.zIndex));
+  assert.ok(Number(backFrame.style.zIndex) > Number(baseFrame.style.zIndex));
+});
+
+test("normalizes legacy layer lists without inventing placement assignments", async () => {
+  const { BASE_LAYER_ID, normalizeScreenLayers } =
+    await import("../shared/ScreenLayers.mjs");
+  const legacyScreen = { materials: [{ id: "background" }] };
+  assert.equal(normalizeScreenLayers(legacyScreen), true);
+  assert.deepEqual(legacyScreen.layers, [
+    { id: BASE_LAYER_ID, name: "Base" }
+  ]);
+  assert.equal(legacyScreen.materials[0].layer, undefined);
+
+  const screen = {
+    layers: [{ id: "foreground", name: "Foreground" }],
+    materials: [{ id: "title" }]
+  };
+  assert.equal(normalizeScreenLayers(screen), false);
+  assert.deepEqual(screen.layers, [{ id: "foreground", name: "Foreground" }]);
+  assert.equal(screen.materials[0].layer, undefined);
+
+  const emptyScreen = { layers: [], materials: [] };
+  assert.equal(normalizeScreenLayers(emptyScreen), true);
+  assert.deepEqual(emptyScreen.layers, [{ id: BASE_LAYER_ID, name: "Base" }]);
+  assert.equal(normalizeScreenLayers(screen), false);
+});
+
 test("adds Label instances from one reusable template with independent variables and transforms", async () => {
   const { ScreenMaterialController } = await import("../frontend/browser/ScreenMaterialController.mjs");
-  const screen = { id: "home", file: "screens/home/screen.yml", data: { materials: [] } };
+  const screen = {
+    id: "home",
+    file: "screens/home/screen.yml",
+    data: {
+      layers: [{ id: "foreground", name: "Foreground" }],
+      materials: []
+    }
+  };
   const calls = { edited: [], renders: 0, selected: [] };
   const materialFiles = new Map();
   const createdMaterialFiles = new Set();
@@ -264,7 +339,8 @@ test("adds Label instances from one reusable template with independent variables
     attributes: { text: "Greeting" },
     position: { x: 152, y: 87 },
     size: { width: 240, height: 56 },
-    rotation: 0
+    rotation: 0,
+    layer: "foreground"
   });
   assert.deepEqual(calls.edited, [
     "materials/label.stml",
@@ -290,6 +366,379 @@ test("adds Label instances from one reusable template with independent variables
       content: materialFiles.get("materials/label.stml").documentSource
     }
   );
+});
+
+test("treats Base as an ordinary layer and deletes layers with placements", async () => {
+  const { ScreenMaterialController } = await import("../frontend/browser/ScreenMaterialController.mjs");
+  const screen = {
+    file: "screens/home/screen.yml",
+    data: {
+      layers: [{ id: "base", name: "Base" }],
+      materials: [
+        { id: "welcome", layer: "base" },
+        { id: "background", layer: "base" }
+      ]
+    }
+  };
+  const calls = { edited: 0, rendered: 0 };
+  const controller = new ScreenMaterialController({
+    state: { screens: [screen], activeScreenIndex: 0 },
+    services: {
+      markEdited() { calls.edited += 1; },
+      async renderScreen() { calls.rendered += 1; }
+    }
+  });
+
+  await controller.createLayer();
+  await controller.createLayer();
+  assert.deepEqual(screen.data.layers, [
+    { id: "layer-2", name: "Layer 2" },
+    { id: "layer-1", name: "Layer 1" },
+    { id: "base", name: "Base" }
+  ]);
+  assert.equal(screen.data.materials[0].layer, "base");
+  await controller.moveLayer("layer-1", -1);
+  await controller.renameLayer("layer-1", "Foreground");
+  await controller.setLayerVisibility("layer-1", false);
+  await controller.assignMaterialLayer(0, "layer-1");
+
+  assert.equal(screen.data.layers[0].name, "Foreground");
+  assert.equal(screen.data.layers[0].visible, false);
+  assert.equal(screen.data.materials[0].layer, "layer-1");
+
+  await controller.deleteLayer("layer-1");
+  assert.deepEqual(screen.data.materials.map(({ id }) => id), ["background"]);
+  assert.deepEqual(screen.data.layers, [
+    { id: "layer-2", name: "Layer 2" },
+    { id: "base", name: "Base" }
+  ]);
+  await controller.moveLayer("layer-2", 1);
+  await controller.renameLayer("base", "Foundation");
+  assert.deepEqual(screen.data.layers, [
+    { id: "base", name: "Foundation" },
+    { id: "layer-2", name: "Layer 2" }
+  ]);
+  await controller.assignMaterialLayer(0, "base");
+  await controller.deleteLayer("base");
+  assert.deepEqual(screen.data.materials, []);
+  assert.deepEqual(screen.data.layers, [{ id: "layer-2", name: "Layer 2" }]);
+
+  await assert.rejects(
+    controller.deleteLayer("layer-2"),
+    /At least one layer must remain/
+  );
+  assert.deepEqual(screen.data.layers, [{ id: "layer-2", name: "Layer 2" }]);
+  assert.equal(calls.edited, 11);
+  assert.equal(calls.rendered, 11);
+});
+
+test("deleting a layer removes its placements and keeps surviving selection valid", async () => {
+  const { ScreenMaterialController } = await import("../frontend/browser/ScreenMaterialController.mjs");
+  const screen = {
+    file: "screens/home/screen.yml",
+    data: {
+      layers: [
+        { id: "base", name: "Base" },
+        { id: "overlay", name: "Overlay" },
+        { id: "backup", name: "Backup" }
+      ],
+      materials: [
+        { id: "removed", layer: "base" },
+        { id: "overlay-item", layer: "overlay" },
+        { id: "selected", layer: "base" },
+        { id: "backup-item", layer: "backup" }
+      ]
+    }
+  };
+  const state = {
+    screens: [screen],
+    activeScreenIndex: 0,
+    activeInstancePath: [1]
+  };
+  const selections = [];
+  const controller = new ScreenMaterialController({
+    state,
+    services: {
+      markEdited() {},
+      selectInstance(path, src) {
+        state.activeInstancePath = path;
+        selections.push([path, src]);
+      },
+      async renderScreen() {}
+    }
+  });
+
+  await controller.deleteLayer("base");
+
+  assert.deepEqual(screen.data.materials.map(({ id }) => id), [
+    "overlay-item", "backup-item"
+  ]);
+  assert.deepEqual(screen.data.layers.map(({ id }) => id), ["overlay", "backup"]);
+  assert.deepEqual(state.activeInstancePath, [0]);
+  assert.deepEqual(selections, [[[0], null]]);
+
+  state.activeInstancePath = [0];
+  await controller.deleteLayer("overlay");
+  assert.deepEqual(screen.data.materials.map(({ id }) => id), ["backup-item"]);
+  assert.deepEqual(screen.data.layers.map(({ id }) => id), ["backup"]);
+  assert.deepEqual(state.activeInstancePath, []);
+  assert.deepEqual(selections, [[[0], null], [[], null]]);
+
+  await assert.rejects(
+    controller.deleteLayer("backup"),
+    /At least one layer must remain/
+  );
+  assert.deepEqual(screen.data.layers.map(({ id }) => id), ["backup"]);
+  assert.deepEqual(screen.data.materials.map(({ id }) => id), ["backup-item"]);
+});
+
+test("reorders placements within their layer without changing other layers", async () => {
+  const { ScreenMaterialController } = await import("../frontend/browser/ScreenMaterialController.mjs");
+  const screen = {
+    file: "screens/home/screen.yml",
+    data: {
+      layers: [{ id: "base", name: "Base" }, { id: "overlay", name: "Overlay" }],
+      materials: [
+        { id: "first", layer: "base" },
+        { id: "other-layer", layer: "overlay" },
+        { id: "second", layer: "base" },
+        { id: "third", layer: "base" }
+      ]
+    }
+  };
+  const state = { screens: [screen], activeScreenIndex: 0, activeInstancePath: [0] };
+  let renders = 0;
+  const selections = [];
+  const controller = new ScreenMaterialController({
+    state,
+    services: {
+      markEdited() {},
+      selectInstance(path) {
+        state.activeInstancePath = path;
+        selections.push(path);
+      },
+      async renderScreen() { renders += 1; }
+    }
+  });
+
+  await controller.moveMaterial(0, 1);
+  assert.deepEqual(screen.data.materials.map(({ id }) => id), [
+    "second", "other-layer", "first", "third"
+  ]);
+  await controller.moveMaterial(3, -1);
+  assert.deepEqual(screen.data.materials.map(({ id }) => id), [
+    "second", "other-layer", "third", "first"
+  ]);
+  assert.equal(renders, 2);
+  assert.deepEqual(selections, [[2], [3]]);
+});
+
+test("reorders layers and placements by drop position while preserving placement selection", async () => {
+  const { ScreenMaterialController } = await import("../frontend/browser/ScreenMaterialController.mjs");
+  const screen = {
+    file: "screens/home/screen.yml",
+    data: {
+      layers: [
+        { id: "top", name: "Top" },
+        { id: "middle", name: "Middle" },
+        { id: "base", name: "Base" }
+      ],
+      materials: [
+        { id: "moving", layer: "base" },
+        { id: "base-target", layer: "base" },
+        { id: "top-target", layer: "top" }
+      ]
+    }
+  };
+  const state = {
+    screens: [screen],
+    activeScreenIndex: 0,
+    activeInstancePath: [0]
+  };
+  const selections = [];
+  let renders = 0;
+  const controller = new ScreenMaterialController({
+    state,
+    services: {
+      markEdited() {},
+      selectInstance(path) {
+        state.activeInstancePath = path;
+        selections.push(path);
+      },
+      async renderScreen() { renders += 1; }
+    }
+  });
+
+  await controller.reorderLayer("base", "top", false);
+  assert.deepEqual(screen.data.layers.map(({ id }) => id), ["base", "top", "middle"]);
+  await controller.reorderLayer("base", "middle", true);
+  assert.deepEqual(screen.data.layers.map(({ id }) => id), ["top", "middle", "base"]);
+
+  await controller.reorderMaterial(0, "base-target", true);
+  assert.deepEqual(screen.data.materials.map(({ id }) => id), [
+    "base-target", "moving", "top-target"
+  ]);
+  assert.equal(screen.data.materials[1].layer, "base");
+  assert.deepEqual(state.activeInstancePath, [1]);
+
+  await controller.reorderMaterial(1, "top-target", true);
+  assert.deepEqual(screen.data.materials.map(({ id }) => id), [
+    "base-target", "top-target", "moving"
+  ]);
+  assert.equal(screen.data.materials[2].layer, "top");
+  assert.deepEqual(state.activeInstancePath, [2]);
+  assert.deepEqual(selections, [[1], [2]]);
+  assert.equal(renders, 4);
+});
+
+test("shows one-line layers above placements for the selected layer", async () => {
+  const { InspectorRenderer } = await import("../frontend/browser/InspectorRenderer.mjs");
+  function element(tagName, className = "", textContent = "") {
+    const listeners = new Map();
+    const attributes = new Map();
+    const classes = new Set(className.split(/\s+/).filter(Boolean));
+    const children = [];
+    return {
+      tagName,
+      className,
+      textContent,
+      children,
+      dataset: {},
+      listeners,
+      attributes,
+      classList: {
+        add(name) { classes.add(name); },
+        toggle(name, force) {
+          if (force) classes.add(name);
+          else classes.delete(name);
+        }
+      },
+      append(...nodes) { children.push(...nodes); },
+      replaceChildren(...nodes) {
+        children.splice(0, children.length, ...nodes);
+      },
+      addEventListener(type, callback) { listeners.set(type, callback); },
+      setAttribute(name, value) { attributes.set(name, value); },
+      getBoundingClientRect() { return { top: 0, height: 20 }; },
+      closest() { return null; }
+    };
+  }
+  const dragCalls = [];
+  const deletionMessages = [];
+  const screen = {
+    layers: [{ id: "overlay", name: "Overlay" }, { id: "base", name: "Base" }],
+    materials: [
+      { id: "title", layer: "overlay" },
+      { id: "background", layer: "base" },
+      { id: "footer", layer: "base" }
+    ]
+  };
+  const renderer = new InspectorRenderer({
+    state: {
+      screens: [{ file: "screens/home/screen.yml", data: screen }],
+      activeScreenIndex: 0,
+      activeInstancePath: []
+    },
+    services: {
+      element,
+      createLayer: async () => {},
+      setLayerVisibility: async () => {},
+      renameLayer: async () => {},
+      moveLayer: async () => {},
+      reorderLayer: (...args) => { dragCalls.push(["layer", ...args]); },
+      deleteLayer: async (layerId) => { dragCalls.push(["delete", layerId]); },
+      assignMaterialLayer: (...args) => { dragCalls.push(["assign", ...args]); },
+      moveMaterial: async () => {},
+      reorderMaterial: (...args) => { dragCalls.push(["material", ...args]); },
+      selectInstance() {},
+      confirm(message) {
+        deletionMessages.push(message);
+        return true;
+      },
+      showFatalError() {}
+    }
+  });
+  const panel = element("div");
+  renderer.renderLayersDetails(panel, screen);
+
+  const [layerBox, placementBox] = panel.children;
+  const layerList = layerBox.children[1];
+  const placementList = placementBox.children[2];
+  assert.equal(layerList.children.length, 2);
+  assert.equal(layerList.children[1].attributes.get("aria-current"), "true");
+  assert.ok(layerList.children[1].children.some((child) =>
+    child.className === "layer-delete-button"
+  ));
+  assert.equal(placementList.children[0].dataset.materialIndex, "1");
+  assert.equal(placementList.children[0].children.length, 4);
+  assert.ok(placementList.children[0].children.every((child) =>
+    child.className !== "layer-placement-assignment"
+  ));
+
+  const layerTransfer = {
+    types: ["application/x-specux-layer"],
+    setData(type, value) { this[type] = value; },
+    getData(type) { return this[type]; }
+  };
+  const layerHandle = layerList.children[1].children[0];
+  layerHandle.listeners.get("dragstart")({ dataTransfer: layerTransfer });
+  layerList.children[0].listeners.get("dragover")({
+    dataTransfer: layerTransfer,
+    clientY: 19,
+    preventDefault() {}
+  });
+  layerList.children[0].listeners.get("drop")({
+    dataTransfer: layerTransfer,
+    preventDefault() {}
+  });
+  assert.deepEqual(dragCalls[0], ["layer", "base", "overlay", true]);
+
+  const materialTransfer = {
+    types: ["application/x-specux-material"],
+    setData(type, value) { this[type] = value; },
+    getData(type) { return this[type]; }
+  };
+  placementList.children[0].children[0].listeners.get("dragstart")({
+    dataTransfer: materialTransfer
+  });
+  layerList.children[0].listeners.get("drop")({
+    dataTransfer: materialTransfer,
+    preventDefault() {}
+  });
+  assert.deepEqual(dragCalls[1], ["assign", 1, "overlay"]);
+
+  placementList.children[0].children[0].listeners.get("dragstart")({
+    dataTransfer: materialTransfer
+  });
+  placementList.children[1].listeners.get("dragover")({
+    dataTransfer: materialTransfer,
+    clientY: 19,
+    preventDefault() {}
+  });
+  placementList.children[1].listeners.get("drop")({
+    dataTransfer: materialTransfer,
+    preventDefault() {}
+  });
+  assert.deepEqual(dragCalls[2], ["material", 1, "footer", true]);
+
+  layerList.children[1].children
+    .find((child) => child.className === "layer-delete-button")
+    .listeners.get("click")();
+  assert.deepEqual(deletionMessages, ['Delete "Base" and its 2 placements?']);
+  assert.deepEqual(dragCalls[3], ["delete", "base"]);
+
+  layerList.children[0].listeners.get("click")({ target: layerList.children[0] });
+  assert.equal(layerList.children[0].attributes.get("aria-current"), "true");
+  assert.equal(placementList.children[0].dataset.materialIndex, "0");
+
+  screen.layers = [{ id: "base", name: "Base" }];
+  const singleLayerPanel = element("div");
+  renderer.renderLayersDetails(singleLayerPanel, screen);
+  const singleLayerRow = singleLayerPanel.children[0].children[1].children[0];
+  const singleLayerDelete = singleLayerRow.children
+    .find((child) => child.className === "layer-delete-button");
+  assert.equal(singleLayerDelete.disabled, true);
+  assert.equal(singleLayerDelete.title, "At least one layer must remain");
 });
 
 test("reuses one Material file with independent placement transforms", async () => {
@@ -331,7 +780,8 @@ test("reuses one Material file with independent placement transforms", async () 
       attributes: { text: "Notice" },
       position: { x: 30, y: 40 },
       size: { width: 240, height: 56 },
-      rotation: 0
+      rotation: 0,
+      layer: "base"
     },
     {
       id: "notice-2",
@@ -339,7 +789,8 @@ test("reuses one Material file with independent placement transforms", async () 
       attributes: { text: "Notice" },
       position: { x: 90, y: 120 },
       size: { width: 240, height: 56 },
-      rotation: 0
+      rotation: 0,
+      layer: "base"
     }
   ]);
   assert.equal(calls.renders, 2);

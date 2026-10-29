@@ -61,7 +61,9 @@ test("parses native Material transforms in the example Screens", () => {
     const filePath = path.join(__dirname, "..", "specux", "screens", screenId, "screen.yml");
     const screen = parseSpecuxYaml(readFileSync(filePath, "utf8"));
     assert.ok(Array.isArray(screen.materials), `${screenId} Screen should define Materials.`);
+    assert.ok(screen.layers.some((layer) => layer.id === "base"), `${screenId} Screen should define Base.`);
     for (const material of screen.materials) {
+      assert.equal(typeof material.layer, "string", `${material.id} should belong to a layer.`);
       assert.equal(typeof material.position.x, "number");
       assert.equal(typeof material.position.y, "number");
       assert.equal(typeof material.size.width, "number");

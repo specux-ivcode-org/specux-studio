@@ -733,7 +733,11 @@ async function serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, res
     "/browser/WorkspaceViewRenderer.mjs"
   ].includes(pathname)) {
     relativePath = pathname.slice(1);
-  } else if (pathname === "/shared/yaml.js" || pathname === "/shared/validation.js") {
+  } else if ([
+    "/shared/yaml.js",
+    "/shared/validation.js",
+    "/shared/ScreenLayers.mjs"
+  ].includes(pathname)) {
     allowedRoot = sharedRoot;
     relativePath = pathname.slice("/shared/".length);
   } else if (pathname.startsWith("/specux/")) {

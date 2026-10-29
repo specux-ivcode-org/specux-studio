@@ -37,6 +37,8 @@ function pushError(errors, source, error) {
 }
 
 async function validateProject(projectRoot) {
+  const { normalizeScreenLayers } =
+    await import("../shared/ScreenLayers.mjs");
   const errors = [];
   const assets = new Map();
   const materialFiles = new Map();
@@ -336,6 +338,7 @@ async function validateProject(projectRoot) {
 
   const linkedSpecsByScreen = new Map();
   for (const screen of screens) {
+    normalizeScreenLayers(screen.data);
     const linkedSpecPaths = new Set();
     linkedSpecsByScreen.set(screen.file, linkedSpecPaths);
     const materialIds = new Set();
@@ -362,6 +365,40 @@ async function validateProject(projectRoot) {
     if (Object.hasOwn(screen.data, "elements")) {
       errors.push(`${screen.file}: Screen elements are no longer supported; use materials.`);
     }
+    const layerIds = new Set();
+    if (screen.data.layers !== undefined) {
+      if (!Array.isArray(screen.data.layers)) {
+        errors.push(`${screen.file}: Screen layers must be a list.`);
+      } else {
+        screen.data.layers.forEach((layer, index) => {
+          const location = `${screen.file} layers[${index}]`;
+          if (!validation.isMapping(layer)) {
+            errors.push(`${location}: Layer must be a mapping.`);
+            return;
+          }
+          try {
+            validation.validateElementId(layer.id, location);
+            if (layerIds.has(layer.id)) {
+              errors.push(`${location}: Layer id "${layer.id}" is already used on this Screen.`);
+            }
+            layerIds.add(layer.id);
+          } catch (error) {
+            pushError(errors, location, error);
+          }
+          if (typeof layer.name !== "string" || !layer.name.trim()) {
+            errors.push(`${location}: Layer name must be a non-empty string.`);
+          }
+          if (layer.visible !== undefined && typeof layer.visible !== "boolean") {
+            errors.push(`${location}: Layer visible must be a boolean.`);
+          }
+          for (const property of Object.keys(layer)) {
+            if (!["id", "name", "visible"].includes(property)) {
+              errors.push(`${location}: unsupported property "${property}".`);
+            }
+          }
+        });
+      }
+    }
     if (!Array.isArray(screen.data.materials)) {
       errors.push(`${screen.file}: Screen "${screen.id}" materials must be a list.`);
       continue;
@@ -382,7 +419,7 @@ async function validateProject(projectRoot) {
         pushError(errors, location, error);
       }
       const allowedProperties = new Set([
-        "id", "src", "attributes", "position", "size", "rotation", "visibility", "note"
+        "id", "src", "attributes", "position", "size", "rotation", "visibility", "note", "layer"
       ]);
       for (const property of Object.keys(material)) {
         if (!allowedProperties.has(property)) errors.push(`${location}: unsupported property "${property}".`);
@@ -400,6 +437,9 @@ async function validateProject(projectRoot) {
       }
       if (material.note !== undefined && typeof material.note !== "string") {
         errors.push(`${location}: note must be a string.`);
+      }
+      if (typeof material.layer !== "string" || !layerIds.has(material.layer)) {
+        errors.push(`${location}: layer must reference a layer defined on this Screen.`);
       }
       if (!validation.isMapping(material.position) ||
           !Number.isFinite(material.position.x) || !Number.isFinite(material.position.y)) {

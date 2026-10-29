@@ -49,6 +49,7 @@ async function createProject() {
     "screens/home/screen.yml": YAML.stringify({
       name: "Home",
       description: "Test screen",
+      layers: [{ id: "base", name: "Base" }],
       "preview-states": [
         { id: "default", name: "Default" },
         { id: "dialog-open", name: "Dialog open", description: "Show the dialog." }
@@ -60,7 +61,8 @@ async function createProject() {
           attributes: { text: "Brand" },
           position: { x: 10, y: 10 },
           size: { width: 120, height: 40 },
-          rotation: 0
+          rotation: 0,
+          layer: "base"
         },
         {
           id: "continue-button",
@@ -69,6 +71,7 @@ async function createProject() {
           position: { x: 10, y: 60 },
           size: { width: 160, height: 48 },
           rotation: 0,
+          layer: "base",
           visibility: { default: false, "dialog-open": true }
         }
       ]
@@ -169,6 +172,38 @@ test("rejects manifest Asset registries and invalid Screen material transforms",
       error.includes('Material attribute "text" does not match its declared type')
     ));
     assert.ok(result.errors.some((error) => error.includes("src must reference a discovered Material STML file")));
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("validates Screen layers and placement layer references", async () => {
+  const root = await createProject();
+  try {
+    const screenPath = path.join(root, "screens", "home", "screen.yml");
+    const screen = YAML.parse(await fs.readFile(screenPath, "utf8"));
+    screen.layers = [{ id: "foreground", name: "Foreground" }];
+    for (const material of screen.materials) material.layer = "foreground";
+    await fs.writeFile(screenPath, YAML.stringify(screen));
+    let result = await validateProject(root);
+    assert.deepEqual(result.errors, []);
+
+    delete screen.materials[0].layer;
+    await fs.writeFile(screenPath, YAML.stringify(screen));
+    result = await validateProject(root);
+    assert.ok(result.errors.some((error) =>
+      error.includes("layer must reference a layer defined on this Screen")
+    ));
+
+    screen.materials[0].layer = "foreground";
+    screen.layers.push({ id: "foreground", name: "", visible: "yes" });
+    screen.materials[1].layer = "missing";
+    await fs.writeFile(screenPath, YAML.stringify(screen));
+    result = await validateProject(root);
+    assert.ok(result.errors.some((error) => error.includes('Layer id "foreground" is already used')));
+    assert.ok(result.errors.some((error) => error.includes("Layer name must be a non-empty string")));
+    assert.ok(result.errors.some((error) => error.includes("Layer visible must be a boolean")));
+    assert.ok(result.errors.some((error) => error.includes("layer must reference a layer defined")));
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

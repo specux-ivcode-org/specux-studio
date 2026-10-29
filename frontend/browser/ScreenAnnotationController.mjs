@@ -246,7 +246,10 @@ export class ScreenAnnotationController {
     this.overlay.setAttribute("height", String(this.renderHeight));
     this.overlay.style.width = `${this.renderWidth}px`;
     this.overlay.style.height = `${this.renderHeight}px`;
-    this.overlay.style.pointerEvents = this.enabled ? "auto" : "none";
+    const highestMaterialLayer = [...content.querySelectorAll(":scope > .material-frame")]
+      .reduce((highest, frame) => Math.max(highest, Number(frame.style.zIndex) || 0), 20);
+    this.overlay.style.zIndex = String(highestMaterialLayer + 1);
+    this.overlay.style.pointerEvents = this.enabled ? "all" : "none";
     preview.classList.toggle("annotation-mode", this.enabled);
     this.overlay.replaceChildren();
     this.renderArrowhead();
@@ -439,7 +442,7 @@ export class ScreenAnnotationController {
         node = innerNode;
       }
     } finally {
-      this.overlay.style.pointerEvents = this.enabled ? "auto" : "none";
+      this.overlay.style.pointerEvents = this.enabled ? "all" : "none";
     }
     const hitNode = node;
     while (node) {

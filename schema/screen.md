@@ -10,6 +10,7 @@ The Screen ID is defined by the matching `screens[].id` in `project.yml`; do not
 | `description` | string | Yes | Description of the Screen. |
 | `note` | string | No | Implementation guidance for the Screen. |
 | `spec` | string | No | Path to this Screen's behavior spec: `screens/<screen-id>/specs/screen.md`. |
+| `layers` | list | Yes | Ordered layer stack, from topmost to bottommost. Every Screen must have at least one layer. |
 | `materials` | list | Yes | Ordered list of independent visual materials. An empty list is allowed while building the Screen. |
 | `preview-states` | list | No | Named visual states for previewing this Screen. If omitted, the Screen has an implicit `default` state. |
 
@@ -43,19 +44,36 @@ Each item in `materials` is a mapping with these properties:
 | `rotation` | number | No | Clockwise rotation in degrees around the material's center. Defaults to `0`. |
 | `visibility` | mapping | No | Optional state-specific visibility values keyed by `preview-states[].id`. A missing state value means visible. |
 | `note` | string | No | Optional implementation guidance. |
+| `layer` | string | Yes | ID of a layer in the Screen's `layers` list. Every placement belongs to an explicit layer. |
 
 Material markup and variable definitions are saved in the STML file; Screen YAML stores each instance's attribute overrides and transform. Edit a selected instance's variable fields to change only that placement. In the Studio, select one and drag it to move; use its handles to resize or rotate it. Open the Material file to edit its shared markup and variable definitions. A button Material is visual only and has no click behavior.
 
 IDs must use lowercase letters, numbers, and hyphens and be unique within the Screen. Each `src` must reference a discovered Material file. Do not use the former `elements` property or asset templates for Screen composition.
+
+## Layers
+
+Each item in `layers` is a mapping with these properties:
+
+| Property | Type | Required | Definition |
+|---|---|---:|---|
+| `id` | string | Yes | Unique layer identifier using lowercase letters, numbers, and hyphens. |
+| `name` | string | Yes | Non-empty layer name shown in the Studio. |
+| `visible` | boolean | No | Whether the layer's placements are rendered. Defaults to `true`. |
+
+The list is ordered from topmost to bottommost; placements in upper layers render above placements in lower layers. Within a layer, the order in `materials` determines stacking and can be changed in the Studio's selected-layer placement list. Every Screen must have at least one layer. New Screens start with a layer using the ID `base` and name `Base`, but it is an ordinary layer: it can be renamed, reordered, hidden, and deleted when another layer remains. Deleting a layer also deletes its placements. Older Screen files without a layer list are initialized with Base, but every placement must explicitly name a valid layer; missing or invalid layer assignments are rejected.
 
 ## Example
 
 ```yaml
 name: Sign In
 description: A visual-only sign-in composition.
+layers:
+  - id: base
+    name: Base
 materials:
   - id: welcome
     src: materials/label.stml
+    layer: base
     attributes:
       text: Welcome back
     position:
@@ -67,6 +85,7 @@ materials:
     rotation: 0
   - id: continue
     src: materials/button.stml
+    layer: base
     attributes:
       text: Continue
     position:
@@ -76,6 +95,29 @@ materials:
       width: 180
       height: 48
     rotation: 0
+```
+
+This example puts a placement on a named layer:
+
+```yaml
+layers:
+  - id: foreground
+    name: Foreground
+  - id: background
+    name: Background
+    visible: true
+  - id: base
+    name: Base
+materials:
+  - id: welcome
+    src: materials/label.stml
+    layer: foreground
+    position:
+      x: 48
+      y: 48
+    size:
+      width: 320
+      height: 56
 ```
 
 This example shows a visual message in a named preview state:

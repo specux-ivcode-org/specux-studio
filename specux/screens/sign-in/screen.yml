@@ -1,8 +1,12 @@
 name: Sign In
 description: A sign-in screen composed from reusable Surface, Avatar, Text Field, Checkbox, Divider, Label, and Button materials.
 note: Static preview only; fields are visual Materials and do not collect or submit credentials.
+layers:
+  - id: base
+    name: Base
 materials:
   - id: signin-background
+    layer: base
     src: materials/surface.stml
     attributes:
       background: "#f8f9fc"
@@ -17,6 +21,7 @@ materials:
       height: 900
     rotation: 0
   - id: brand-story-panel
+    layer: base
     src: materials/surface.stml
     attributes:
       background: "linear-gradient(145deg, #18254e, #263d78 62%, #3151a0)"
@@ -31,6 +36,7 @@ materials:
       height: 900
     rotation: 0
   - id: signin-brand-mark
+    layer: base
     src: materials/avatar.stml
     attributes:
       initials: N
@@ -47,6 +53,7 @@ materials:
       height: 38
     rotation: 0
   - id: signin-brand-name
+    layer: base
     src: materials/label.stml
     attributes:
       text: Northstar
@@ -61,6 +68,7 @@ materials:
       height: 36
     rotation: 0
   - id: signin-brand-tagline
+    layer: base
     src: materials/label.stml
     attributes:
       text: BANKING THAT MOVES WITH YOU
@@ -76,6 +84,7 @@ materials:
       height: 24
     rotation: 0
   - id: signin-story-heading
+    layer: base
     src: materials/label.stml
     attributes:
       text: Make room for what matters.
@@ -91,6 +100,7 @@ materials:
       height: 116
     rotation: 0
   - id: signin-story-copy
+    layer: base
     src: materials/label.stml
     attributes:
       text: A clearer view of your money starts here. Move confidently toward the life you want.
@@ -106,6 +116,7 @@ materials:
       height: 66
     rotation: 0
   - id: snapshot-card
+    layer: base
     src: materials/surface.stml
     attributes:
       background: rgba(255,255,255,0.10)
@@ -120,6 +131,7 @@ materials:
       height: 154
     rotation: 0
   - id: snapshot-caption
+    layer: base
     src: materials/label.stml
     attributes:
       text: YOUR FINANCIAL SNAPSHOT
@@ -135,6 +147,7 @@ materials:
       height: 24
     rotation: 0
   - id: snapshot-balance
+    layer: base
     src: materials/label.stml
     attributes:
       text: $25,680.50
@@ -149,6 +162,7 @@ materials:
       height: 42
     rotation: 0
   - id: snapshot-change
+    layer: base
     src: materials/label.stml
     attributes:
       text: Up 8.2% this month
@@ -163,6 +177,7 @@ materials:
       height: 24
     rotation: 0
   - id: snapshot-divider
+    layer: base
     src: materials/divider.stml
     attributes:
       color: rgba(255,255,255,0.24)
@@ -176,6 +191,7 @@ materials:
       height: 84
     rotation: 0
   - id: snapshot-savings-label
+    layer: base
     src: materials/label.stml
     attributes:
       text: SAVINGS RATE
@@ -191,6 +207,7 @@ materials:
       height: 24
     rotation: 0
   - id: snapshot-savings-value
+    layer: base
     src: materials/label.stml
     attributes:
       text: 38.2%
@@ -205,6 +222,7 @@ materials:
       height: 38
     rotation: 0
   - id: signin-trust-note
+    layer: base
     src: materials/label.stml
     attributes:
       text: "Secure: your data is encrypted and protected at every step."
@@ -219,6 +237,7 @@ materials:
       height: 26
     rotation: 0
   - id: signin-help-prompt
+    layer: base
     src: materials/label.stml
     attributes:
       text: New to Northstar?
@@ -233,6 +252,7 @@ materials:
       height: 24
     rotation: 0
   - id: signin-create-account
+    layer: base
     src: materials/label.stml
     attributes:
       text: Create an account
@@ -247,6 +267,7 @@ materials:
       height: 24
     rotation: 0
   - id: signin-heading
+    layer: base
     src: materials/label.stml
     attributes:
       text: Welcome back
@@ -261,6 +282,7 @@ materials:
       height: 43
     rotation: 0
   - id: signin-intro
+    layer: base
     src: materials/label.stml
     attributes:
       text: Sign in to continue to your account.
@@ -275,6 +297,7 @@ materials:
       height: 28
     rotation: 0
   - id: email-label
+    layer: base
     src: materials/label.stml
     attributes:
       text: Email address
@@ -289,6 +312,7 @@ materials:
       height: 24
     rotation: 0
   - id: email-field
+    layer: base
     src: materials/text-field.stml
     attributes:
       value: jordan.davis@example.com
@@ -308,6 +332,7 @@ materials:
       height: 50
     rotation: 0
   - id: password-label
+    layer: base
     src: materials/label.stml
     attributes:
       text: Password
@@ -322,6 +347,7 @@ materials:
       height: 24
     rotation: 0
   - id: password-field
+    layer: base
     src: materials/text-field.stml
     attributes:
       value: "************"
@@ -341,6 +367,7 @@ materials:
       height: 50
     rotation: 0
   - id: remember-check
+    layer: base
     src: materials/checkbox.stml
     attributes:
       mark: x
@@ -357,6 +384,7 @@ materials:
       height: 24
     rotation: 0
   - id: remember-label
+    layer: base
     src: materials/label.stml
     attributes:
       text: Remember me
@@ -371,6 +399,7 @@ materials:
       height: 24
     rotation: 0
   - id: forgot-password
+    layer: base
     src: materials/label.stml
     attributes:
       text: Forgot password?
@@ -387,6 +416,7 @@ materials:
       height: 24
     rotation: 0
   - id: continue-button
+    layer: base
     src: materials/button.stml
     attributes:
       text: Continue to dashboard
@@ -401,6 +431,7 @@ materials:
       height: 52
     rotation: 0
   - id: signin-divider-left
+    layer: base
     src: materials/divider.stml
     attributes:
       color: "#e4e8ef"
@@ -414,6 +445,7 @@ materials:
       height: 24
     rotation: 0
   - id: signin-divider-label
+    layer: base
     src: materials/label.stml
     attributes:
       text: OR
@@ -430,6 +462,7 @@ materials:
       height: 25
     rotation: 0
   - id: signin-divider-right
+    layer: base
     src: materials/divider.stml
     attributes:
       color: "#e4e8ef"
@@ -443,6 +476,7 @@ materials:
       height: 24
     rotation: 0
   - id: google-button
+    layer: base
     src: materials/button.stml
     attributes:
       text: G     Continue with Google
@@ -460,6 +494,7 @@ materials:
       height: 50
     rotation: 0
   - id: signin-disclaimer
+    layer: base
     src: materials/label.stml
     attributes:
       text: By continuing, you agree to Northstar's Terms of Service and acknowledge our Privacy Policy.
@@ -477,6 +512,7 @@ materials:
       height: 46
     rotation: 0
   - id: signin-footer
+    layer: base
     src: materials/label.stml
     attributes:
       text: Copyright 2026 Northstar Financial. Member FDIC.

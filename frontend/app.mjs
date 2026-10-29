@@ -128,7 +128,8 @@ const screenYamlEditor = new ScreenYamlEditor({
   renderNavigation,
   renderScreen,
   updateSaveControls,
-  validatePreviewStates: sharedValidation.validatePreviewStates
+  validatePreviewStates: sharedValidation.validatePreviewStates,
+  validateScreenMaterials
 });
 const specViewLayout = new SplitViewLayout({
   windowObject: window,
@@ -223,7 +224,13 @@ const screenMaterialController = new ScreenMaterialController({
     get projectFilePaths() { return projectFilePaths; },
     get appRoot() { return appRoot; }
   },
-  services: { markEdited, renderNavigation, renderScreen, selectInstance }
+  services: {
+    markEdited,
+    renderNavigation,
+    renderScreen,
+    selectInstance,
+    confirm: (message) => window.confirm(message)
+  }
 });
 const projectPersistence = new ProjectPersistence({
   state: {
@@ -764,6 +771,17 @@ const inspectorRenderer = new InspectorRenderer({
     createSpecForScreen,
     renderScreenInstanceTree,
     deleteMaterial: (path) => screenMaterialController.delete(path),
+    createLayer: () => screenMaterialController.createLayer(),
+    renameLayer: (...args) => screenMaterialController.renameLayer(...args),
+    setLayerVisibility: (...args) => screenMaterialController.setLayerVisibility(...args),
+    moveLayer: (...args) => screenMaterialController.moveLayer(...args),
+    reorderLayer: (...args) => screenMaterialController.reorderLayer(...args),
+    moveMaterial: (...args) => screenMaterialController.moveMaterial(...args),
+    reorderMaterial: (...args) => screenMaterialController.reorderMaterial(...args),
+    deleteLayer: (...args) => screenMaterialController.deleteLayer(...args),
+    assignMaterialLayer: (...args) => screenMaterialController.assignMaterialLayer(...args),
+    selectInstance,
+    confirm: (message) => window.confirm(message),
     renderNavigation,
     refreshActiveView,
     getAssetSpecPath,

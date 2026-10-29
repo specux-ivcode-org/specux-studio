@@ -72,8 +72,10 @@ export class WorkspaceViewRenderer {
         "Screen canvas with positioned materials"
       );
       const stateId = services.getActivePreviewStateId(selected.data);
+      const layers = selected.data.layers || [];
       for (const [materialIndex, material] of selected.data.materials.entries()) {
         if (!services.isInstanceVisible(material, stateId)) continue;
+        if (layers.find((layer) => layer.id === material.layer)?.visible === false) continue;
         const host = services.renderMaterial(material, materialIndex);
         content.append(services.createMaterialFrame(host, material, materialIndex, content, selected));
       }

@@ -1,16 +1,23 @@
+import { BASE_LAYER_ID } from "../../shared/ScreenLayers.mjs";
+
+const LAYER_DRAG_TYPE = "application/x-specux-layer";
+const MATERIAL_DRAG_TYPE = "application/x-specux-material";
+
 export class InspectorRenderer {
   constructor({ state, services }) {
     this.state = state;
     this.services = services;
+    this.screenDetailsTab = "properties";
+    this.selectedScreenFile = null;
+    this.selectedScreenLayerId = BASE_LAYER_ID;
   }
 
   render() {
     const { state, services } = this;
     const panel = services.byId("inspector-content");
+    panel.parentElement?.classList?.toggle("layers-details-open", false);
     panel.replaceChildren(services.element("h2", "panel-heading", "Details"));
-    if (state.viewingPreviewState) {
-      this.renderPreviewStateDetails(panel);
-    } else if (state.viewingProject) {
+    if (state.viewingProject) {
       this.renderProjectDetails(panel);
     } else if (state.viewingTheme) {
       services.themeEditor.renderDetails(panel);
@@ -32,11 +39,390 @@ export class InspectorRenderer {
       const template = instance?.type === "template"
         ? services.getTemplateByPath(instance.src)
         : null;
-      if (instance) this.renderInstanceDetails(panel, instance, template);
-      else {
-        this.renderScreenDetails(panel, screen);
-        this.renderReviewControls(panel);
+      this.renderScreenEditorDetails(
+        panel,
+        screen,
+        instance,
+        template,
+        state.viewingPreviewState
+      );
+    }
+  }
+
+  renderScreenEditorDetails(panel, screen, instance, template, viewingPreviewState) {
+    const { services } = this;
+    const tabList = services.element("div", "inspector-tabs");
+    tabList.setAttribute("role", "tablist");
+    tabList.setAttribute("aria-label", "Screen details");
+    const content = services.element("div", "inspector-tab-panel");
+    content.id = "screen-details-panel";
+    content.setAttribute("role", "tabpanel");
+    content.setAttribute("aria-labelledby", `screen-details-tab-${this.screenDetailsTab}`);
+
+    for (const [tabId, label] of [["properties", "Properties"], ["layers", "Layers"]]) {
+      const tab = services.element(
+        "button",
+        `inspector-tab${this.screenDetailsTab === tabId ? " selected" : ""}`,
+        label
+      );
+      tab.type = "button";
+      tab.id = `screen-details-tab-${tabId}`;
+      tab.dataset.inspectorTab = tabId;
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("aria-selected", String(this.screenDetailsTab === tabId));
+      tab.setAttribute("aria-controls", content.id);
+      tab.tabIndex = this.screenDetailsTab === tabId ? 0 : -1;
+      tab.addEventListener("click", () => {
+        this.screenDetailsTab = tabId;
+        services.renderInspector();
+        services.byId("inspector-content").parentElement.scrollTop = 0;
+      });
+      tab.addEventListener("keydown", (event) => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const nextTab = event.key === "Home"
+          ? "properties"
+          : event.key === "End"
+            ? "layers"
+            : this.screenDetailsTab === "properties" ? "layers" : "properties";
+        this.screenDetailsTab = nextTab;
+        services.renderInspector();
+        services.byId("inspector-content")
+          .querySelector(`[data-inspector-tab="${nextTab}"]`)?.focus();
+        services.byId("inspector-content").parentElement.scrollTop = 0;
+      });
+      tabList.append(tab);
+    }
+    panel.append(tabList, content);
+
+    if (this.screenDetailsTab === "layers") {
+      panel.parentElement?.classList?.toggle("layers-details-open", true);
+      this.renderLayersDetails(content, screen);
+    } else if (viewingPreviewState) {
+      this.renderPreviewStateDetails(content);
+    } else if (instance) {
+      this.renderInstanceDetails(content, instance, template);
+    } else {
+      this.renderScreenDetails(content, screen);
+      this.renderReviewControls(content);
+    }
+  }
+
+  renderLayersDetails(panel, screen) {
+    const { state, services } = this;
+    this.dropTargets = new Set();
+    const layers = screen.layers || [];
+    const activeScreenFile = state.screens[state.activeScreenIndex]?.file;
+    if (this.selectedScreenFile !== activeScreenFile) {
+      this.selectedScreenFile = activeScreenFile;
+      this.selectedScreenLayerId = BASE_LAYER_ID;
+    }
+    if (!layers.some((layer) => layer.id === this.selectedScreenLayerId)) {
+      this.selectedScreenLayerId = layers[0]?.id || null;
+    }
+
+    const layerBox = services.element("section", "screen-layer-box");
+    const layerBoxHeader = services.element("div", "screen-editor-box-header");
+    layerBoxHeader.append(services.element("h3", "screen-editor-box-title", "Layers"));
+    const layerList = services.element("div", "screen-layer-list");
+    layerList.setAttribute("role", "list");
+    const addLayer = services.element("button", "spec-action-button", "Create layer");
+    addLayer.type = "button";
+    addLayer.addEventListener("click", () =>
+      services.createLayer().then((layerId) => {
+        this.selectedScreenLayerId = layerId;
+        services.renderInspector();
+      }).catch(services.showFatalError)
+    );
+    layerBoxHeader.append(addLayer);
+    layerBox.append(layerBoxHeader, layerList);
+
+    const placementBox = services.element("section", "screen-placement-box");
+    const placementHeader = services.element("div", "screen-editor-box-header");
+    placementHeader.append(services.element("h3", "screen-editor-box-title", "Placements"));
+    const selectedLayerName = services.element("div", "screen-placement-layer-name");
+    const placementList = services.element("div", "screen-placement-list");
+    placementList.setAttribute("role", "list");
+    placementBox.append(placementHeader, selectedLayerName, placementList);
+    panel.append(layerBox, placementBox);
+
+    const entries = layers.map((layer, index) => ({ layer, index }));
+    for (const entry of entries) {
+      const { layer, index } = entry;
+      const visible = layer.visible !== false;
+      const isSelected = layer.id === this.selectedScreenLayerId;
+      const row = services.element(
+        "div",
+        `screen-layer-row${isSelected ? " selected" : ""}`
+      );
+      row.dataset.layerId = layer.id;
+      row.setAttribute("role", "listitem");
+      row.setAttribute("aria-current", String(isSelected));
+      row.setAttribute("aria-label", `${layer.name} layer`);
+      row.setAttribute("data-layer-id", layer.id);
+      row.addEventListener("click", (event) => {
+        if (event.target.closest("button")) return;
+        this.selectScreenLayer(
+          layer.id,
+          screen,
+          layerList,
+          selectedLayerName,
+          placementList
+        );
+      });
+      this.bindDropTarget(row, [
+        {
+          type: LAYER_DRAG_TYPE,
+          insertPosition: true,
+          drop: (sourceLayerId, insertAfter) =>
+            services.reorderLayer(sourceLayerId, layer.id, insertAfter)
+        },
+        {
+          type: MATERIAL_DRAG_TYPE,
+          drop: (materialId) => {
+            const materialIndex = screen.materials.findIndex(
+              (material) => material.id === materialId
+            );
+            if (materialIndex < 0) {
+              throw new Error(`Material placement "${materialId}" is no longer available.`);
+            }
+            return services.assignMaterialLayer(materialIndex, layer.id);
+          }
+        }
+      ]);
+
+      row.append(this.createDragHandle(
+        `Drag ${layer.name} layer to reorder or move placements into it`,
+        LAYER_DRAG_TYPE,
+        layer.id,
+        row
+      ));
+
+      const visibility = services.element(
+        "button",
+        `layer-visibility-toggle${visible ? "" : " is-hidden"}`,
+        visible ? "Visible" : "Hidden"
+      );
+      visibility.type = "button";
+      visibility.setAttribute("aria-label", `${visible ? "Hide" : "Show"} ${layer.name} layer`);
+      visibility.setAttribute("aria-pressed", String(visible));
+      visibility.addEventListener("click", () =>
+        services.setLayerVisibility(layer.id, !visible).catch(services.showFatalError)
+      );
+      row.append(visibility);
+
+      const name = services.element("input", "layer-name-input");
+      name.type = "text";
+      name.value = layer.name;
+      name.maxLength = 80;
+      name.setAttribute("aria-label", `${layer.name} layer name`);
+      name.addEventListener("focus", () =>
+        this.selectScreenLayer(
+          layer.id,
+          screen,
+          layerList,
+          selectedLayerName,
+          placementList
+        )
+      );
+      name.addEventListener("change", () =>
+        services.renameLayer(layer.id, name.value).catch(services.showFatalError)
+      );
+      row.append(name);
+      const moveUp = services.element("button", "layer-order-button", "↑");
+      moveUp.type = "button";
+      moveUp.disabled = index === 0;
+      moveUp.title = "Move layer up";
+      moveUp.setAttribute("aria-label", `Move ${layer.name} layer up`);
+      moveUp.addEventListener("click", () =>
+        services.moveLayer(layer.id, -1).catch(services.showFatalError)
+      );
+      row.append(moveUp);
+      const moveDown = services.element("button", "layer-order-button", "↓");
+      moveDown.type = "button";
+      moveDown.disabled = index === layers.length - 1;
+      moveDown.title = "Move layer down";
+      moveDown.setAttribute("aria-label", `Move ${layer.name} layer down`);
+      moveDown.addEventListener("click", () =>
+        services.moveLayer(layer.id, 1).catch(services.showFatalError)
+      );
+      row.append(moveDown);
+      const remove = services.element("button", "layer-delete-button", "×");
+      remove.type = "button";
+      remove.disabled = layers.length === 1;
+      remove.title = remove.disabled
+        ? "At least one layer must remain"
+        : "Delete layer";
+      remove.setAttribute("aria-label", `Delete ${layer.name} layer`);
+      remove.addEventListener("click", () => {
+        const assignedCount = screen.materials.filter((material) => material.layer === layer.id).length;
+        const message = assignedCount
+          ? `Delete "${layer.name}" and its ${assignedCount} placement${assignedCount === 1 ? "" : "s"}?`
+          : `Delete "${layer.name}"?`;
+        if (services.confirm(message)) {
+          services.deleteLayer(layer.id).catch(services.showFatalError);
+        }
+      });
+      row.append(remove);
+      layerList.append(row);
+    }
+    this.renderLayerPlacements(
+      screen,
+      this.selectedScreenLayerId,
+      selectedLayerName,
+      placementList
+    );
+  }
+
+  selectScreenLayer(layerId, screen, layerList, selectedLayerName, placementList) {
+    this.selectedScreenLayerId = layerId;
+    for (const row of layerList.children) {
+      const selected = row.dataset.layerId === layerId;
+      row.classList.toggle("selected", selected);
+      row.setAttribute("aria-current", String(selected));
+    }
+    this.renderLayerPlacements(
+      screen,
+      layerId,
+      selectedLayerName,
+      placementList
+    );
+  }
+
+  renderLayerPlacements(screen, layerId, selectedLayerName, placementList) {
+    const { state, services } = this;
+    const layer = screen.layers.find((candidate) => candidate.id === layerId);
+    selectedLayerName.textContent = layer ? layer.name : "";
+    for (const child of placementList.children) this.dropTargets.delete(child);
+    placementList.replaceChildren();
+    const assignedMaterials = screen.materials
+      .map((material, materialIndex) => ({ material, materialIndex }))
+      .filter(({ material }) => material.layer === layerId);
+    if (assignedMaterials.length === 0) {
+      placementList.append(services.element("div", "layer-empty-message", "No placements"));
+      return;
+    }
+    for (const [layerIndex, { material, materialIndex }] of assignedMaterials.entries()) {
+      const placement = services.element(
+        "div",
+        `screen-placement-row${state.activeInstancePath.length === 1 &&
+          state.activeInstancePath[0] === materialIndex ? " selected" : ""}`
+      );
+      placement.dataset.materialIndex = String(materialIndex);
+      this.bindDropTarget(placement, [{
+        type: MATERIAL_DRAG_TYPE,
+        insertPosition: true,
+        drop: (materialId, insertAfter) => {
+          const sourceIndex = screen.materials.findIndex(
+            (candidate) => candidate.id === materialId
+          );
+          if (sourceIndex < 0) {
+            throw new Error(`Material placement "${materialId}" is no longer available.`);
+          }
+          return services.reorderMaterial(sourceIndex, material.id, insertAfter);
+        }
+      }]);
+      placement.append(this.createDragHandle(
+        `Drag ${material.id} to reorder or move it to another layer`,
+        MATERIAL_DRAG_TYPE,
+        material.id,
+        placement
+      ));
+      placement.setAttribute("role", "listitem");
+      const selectPlacement = services.element(
+        "button",
+        "layer-placement-name",
+        material.id
+      );
+      selectPlacement.type = "button";
+      selectPlacement.title = `Select ${material.id}`;
+      selectPlacement.addEventListener("click", () =>
+        services.selectInstance([materialIndex], material.src || null)
+      );
+      placement.append(selectPlacement);
+
+      for (const [direction, label, disabled] of [
+        [-1, "↑", layerIndex === 0],
+        [1, "↓", layerIndex === assignedMaterials.length - 1]
+      ]) {
+        const move = services.element("button", "placement-order-button", label);
+        move.type = "button";
+        move.disabled = disabled;
+        move.title = `Move ${material.id} ${direction < 0 ? "up" : "down"} in this layer`;
+        move.setAttribute(
+          "aria-label",
+          `Move ${material.id} ${direction < 0 ? "up" : "down"} in this layer`
+        );
+        move.addEventListener("click", () =>
+          services.moveMaterial(materialIndex, direction).catch(services.showFatalError)
+        );
+        placement.append(move);
       }
+      placementList.append(placement);
+    }
+  }
+
+  createDragHandle(label, type, value, row) {
+    const handle = this.services.element("button", "list-drag-handle", "⠿");
+    handle.type = "button";
+    handle.draggable = true;
+    handle.title = label;
+    handle.setAttribute("aria-label", label);
+    handle.addEventListener("dragstart", (event) => {
+      if (!event.dataTransfer) return;
+      event.dataTransfer.setData(type, value);
+      event.dataTransfer.effectAllowed = "move";
+      row.classList.add("is-dragging");
+    });
+    handle.addEventListener("dragend", () => {
+      row.classList.toggle("is-dragging", false);
+      this.clearDropIndicators();
+    });
+    return handle;
+  }
+
+  bindDropTarget(target, handlers) {
+    this.dropTargets.add(target);
+    target.addEventListener("dragover", (event) => {
+      const types = Array.from(event.dataTransfer?.types || []);
+      const handler = handlers.find((candidate) => types.includes(candidate.type));
+      if (!handler) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      this.clearDropIndicators();
+      if (handler.insertPosition) {
+        const bounds = target.getBoundingClientRect();
+        const insertAfter = event.clientY >= bounds.top + bounds.height / 2;
+        target.dataset.dropPosition = insertAfter ? "after" : "before";
+        target.classList.toggle("drop-before", !insertAfter);
+        target.classList.toggle("drop-after", insertAfter);
+      } else {
+        target.classList.toggle("drop-target", true);
+      }
+    });
+    target.addEventListener("drop", (event) => {
+      const types = Array.from(event.dataTransfer?.types || []);
+      const handler = handlers.find((candidate) => types.includes(candidate.type));
+      if (!handler) return;
+      event.preventDefault();
+      const value = event.dataTransfer.getData(handler.type);
+      const insertAfter = target.dataset.dropPosition === "after";
+      this.clearDropIndicators();
+      if (!value) return;
+      try {
+        Promise.resolve(handler.drop(value, insertAfter))
+          .catch(this.services.showFatalError);
+      } catch (error) {
+        this.services.showFatalError(error);
+      }
+    });
+  }
+
+  clearDropIndicators() {
+    for (const target of this.dropTargets || []) {
+      target.classList.toggle("drop-before", false);
+      target.classList.toggle("drop-after", false);
+      target.classList.toggle("drop-target", false);
     }
   }
 

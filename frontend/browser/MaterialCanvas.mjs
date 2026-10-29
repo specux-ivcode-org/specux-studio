@@ -35,6 +35,12 @@ export class MaterialCanvas {
     const frame = this.services.document.createElement("div");
     frame.className = "material-frame";
     frame.dataset.materialId = instance.id || "";
+    const layers = screen?.data?.layers || [];
+    const layerIndex = layers.findIndex((layer) => layer.id === instance.layer);
+    const layerRank = layerIndex < 0 ? 0 : layers.length - layerIndex;
+    frame.style.zIndex = String(
+      layerRank * ((screen?.data?.materials?.length || 0) + 1) + index
+    );
     frame.append(host);
 
     const fallbackPosition = defaultMaterialPosition(index);

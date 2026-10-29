@@ -39,7 +39,7 @@ Use the current prototype's page structure as a starting point: a global header 
 - **Global header:** Show the product and current Screen context, plus project-wide actions and status such as save, undo, and unsaved changes.
 - **Project files:** Provide a persistent, collapsible file explorer for project configuration, reusable Material files, and Screen files. Create Label instances through a direct control; open a Material file to edit its shared markup or place it on the current Screen.
 - **Main canvas:** Give the selected Screen canvas the primary workspace. Keep review results and interaction feedback close to the preview without obscuring it.
-- **Details inspector:** Place selection-specific details and editing controls beside the canvas. Show only the currently selected Theme, Screen, or Material; when nothing is selected, show a clear prompt.
+- **Details inspector:** Place selection-specific details and editing controls beside the canvas. In Screen editing, provide Properties and Layers tabs. The Layers tab separates a one-line layer list from a placements box for the selected layer; both lists support reordering, and placements can be assigned to another layer. Every Screen must have at least one layer. All layers, including the initial Base layer, can be renamed, reordered, hidden, and deleted unless they are the last layer; deleting a layer also deletes its placements. Show only the currently selected Theme, Screen, or Material in other editor views.
 - **Responsive behavior:** Preserve access to navigation and details on narrow screens by moving them into accessible collapsible panels or tabs. Do not simply remove these areas; prioritize the canvas and allow it to scroll or resize as needed.
 
 ## Prototype Context

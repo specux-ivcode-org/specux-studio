@@ -1,3 +1,5 @@
+import { normalizeScreenLayers } from "../../shared/ScreenLayers.mjs";
+
 export class ProjectRepository {
   constructor({ appRoot, fetcher, parseYaml, validation, templateFileExtension }) {
     this.appRoot = appRoot;
@@ -74,9 +76,38 @@ export class ProjectRepository {
   }
 
   validateScreenMaterials(screen, materialFiles = this.materialFiles) {
+    normalizeScreenLayers(screen.data);
     const ids = new Set();
     if (Object.hasOwn(screen.data, "elements")) {
       throw new Error(`${screen.file}: Screen elements are no longer supported; use materials.`);
+    }
+    const layerIds = new Set();
+    if (screen.data.layers !== undefined) {
+      if (!Array.isArray(screen.data.layers)) {
+        throw new Error(`${screen.file}: Screen layers must be a list.`);
+      }
+      for (const [index, layer] of screen.data.layers.entries()) {
+        const location = `${screen.file} layers[${index}]`;
+        if (!this.validation.isMapping(layer)) {
+          throw new Error(`${location}: Layer must be a mapping.`);
+        }
+        this.validation.validateElementId(layer.id, location);
+        if (layerIds.has(layer.id)) {
+          throw new Error(`${location}: Layer id "${layer.id}" is already used on this Screen.`);
+        }
+        layerIds.add(layer.id);
+        if (typeof layer.name !== "string" || !layer.name.trim()) {
+          throw new Error(`${location}: Layer name must be a non-empty string.`);
+        }
+        if (layer.visible !== undefined && typeof layer.visible !== "boolean") {
+          throw new Error(`${location}: Layer visible must be a boolean.`);
+        }
+        for (const property of Object.keys(layer)) {
+          if (!["id", "name", "visible"].includes(property)) {
+            throw new Error(`${location}: unsupported property "${property}".`);
+          }
+        }
+      }
     }
     if (!Array.isArray(screen.data.materials)) {
       throw new Error(`${screen.file}: Screen materials must be a list.`);
@@ -120,6 +151,9 @@ export class ProjectRepository {
       if (material.note !== undefined && typeof material.note !== "string") {
         throw new Error(`${location}: note must be a string.`);
       }
+      if (typeof material.layer !== "string" || !layerIds.has(material.layer)) {
+        throw new Error(`${location}: layer must reference a layer defined on this Screen.`);
+      }
       if (material.visibility !== undefined) {
         if (!this.validation.isMapping(material.visibility)) {
           throw new Error(`${location}: visibility must be a mapping of preview state ids to booleans.`);
@@ -134,7 +168,7 @@ export class ProjectRepository {
         throw new Error(`${location}: Materials are visual only; do not define behavior or interactions here.`);
       }
       const allowedProperties = new Set([
-        "id", "src", "attributes", "position", "size", "rotation", "visibility", "note"
+        "id", "src", "attributes", "position", "size", "rotation", "visibility", "note", "layer"
       ]);
       for (const property of Object.keys(material)) {
         if (!allowedProperties.has(property)) {

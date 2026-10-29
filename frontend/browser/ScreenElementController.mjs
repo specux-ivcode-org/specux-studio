@@ -1,4 +1,5 @@
 import { defaultMaterialPosition } from "./MaterialCanvas.mjs";
+import { BASE_LAYER_ID, BASE_LAYER_NAME } from "../../shared/ScreenLayers.mjs";
 
 export class ScreenElementController {
   constructor({ state, services }) {
@@ -32,7 +33,12 @@ export class ScreenElementController {
     const screen = {
       id,
       file,
-      data: { name, description: "", materials: [] },
+      data: {
+        name,
+        description: "",
+        layers: [{ id: BASE_LAYER_ID, name: BASE_LAYER_NAME }],
+        materials: []
+      },
       yamlSource: "",
       yamlSourceMode: "data",
       yamlParseVersion: 0,

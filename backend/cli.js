@@ -277,6 +277,7 @@ async function runInitCommand(args) {
     ["screens/home/screen.yml", YAML.stringify({
       name: "Home",
       description: "Starter Screen for the SpecUX project.",
+      layers: [{ id: "base", name: "Base" }],
       materials: [
         {
           id: "welcome",
@@ -284,7 +285,8 @@ async function runInitCommand(args) {
           attributes: { text: "Welcome to SpecUX" },
           position: { x: 48, y: 48 },
           size: { width: 360, height: 56 },
-          rotation: 0
+          rotation: 0,
+          layer: "base"
         },
         {
           id: "get-started",
@@ -292,7 +294,8 @@ async function runInitCommand(args) {
           attributes: { text: "Get started" },
           position: { x: 48, y: 128 },
           size: { width: 160, height: 48 },
-          rotation: 0
+          rotation: 0,
+          layer: "base"
         }
       ]
     })],
