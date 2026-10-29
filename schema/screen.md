@@ -11,10 +11,10 @@ The Screen ID is defined by the matching `screens[].id` in `project.yml`; do not
 | `note` | string | No | Implementation guidance for the Screen. |
 | `spec` | string | No | Path to this Screen's behavior spec: `screens/<screen-id>/specs/screen.md`. |
 | `layers` | list | Yes | Ordered layer stack, from topmost to bottommost. Every Screen must have at least one layer. |
-| `materials` | list | Yes | Ordered list of independent visual materials. An empty list is allowed while building the Screen. |
+| `materials` | list | Yes | Ordered list of visual Material placements and groups. An empty list is allowed while building the Screen. |
 | `preview-states` | list | No | Named visual states for previewing this Screen. If omitted, the Screen has an implicit `default` state. |
 
-Screen Materials are instances of reusable STML templates. Labels and buttons are visual only; they do not execute actions or accept user input. Each instance can override declared template variables and has its own absolute position, size, and rotation.
+Screen Material placements are instances of reusable STML templates. Labels and buttons are visual only; they do not execute actions or accept user input. Each instance can override declared template variables and has its own position, size, and rotation. Placements can also be grouped into Screen-local containers; groups are not reusable STML Materials.
 
 ## Preview States
 
@@ -30,25 +30,46 @@ Every non-default preview state must have a non-empty description. The implicit 
 
 When a Screen defines non-default preview states, each state ID must appear in a scenario step in a behavior spec linked to that Screen. Write the step as `- **SHOW** <state-id>` after that scenario's `THEN` step. `SHOW` records which preview state represents the scenario outcome; it does not make the state executable.
 
-## Materials
+## Material placements
 
 Each item in `materials` is a mapping with these properties:
 
 | Property | Type | Required | Definition |
 |---|---|---:|---|
-| `id` | string | Yes | Unique Material ID on this Screen. |
+| `id` | string | Yes | Unique placement ID on this Screen. |
 | `src` | string | Yes | Path to a reusable STML Material file under `materials/`. |
 | `attributes` | mapping | No | Instance-specific values for overridable variables declared in the Material's STML front matter. |
-| `position` | mapping | Yes | Absolute canvas position in CSS pixels from the top-left corner: `{x, y}`. |
+| `position` | mapping | Yes | Position in CSS pixels from the parent canvas or group coordinate space. Top-level placements use Screen-canvas coordinates. |
 | `size` | mapping | Yes | Material dimensions in CSS pixels: `{width, height}`, each at least `24`. |
 | `rotation` | number | No | Clockwise rotation in degrees around the material's center. Defaults to `0`. |
 | `visibility` | mapping | No | Optional state-specific visibility values keyed by `preview-states[].id`. A missing state value means visible. |
 | `note` | string | No | Optional implementation guidance. |
-| `layer` | string | Yes | ID of a layer in the Screen's `layers` list. Every placement belongs to an explicit layer. |
+| `layer` | string | Yes at the Screen root | ID of a layer in the Screen's `layers` list. Top-level placements require a layer; placements inside a group inherit the group's layer and must not define one. |
 
 Material markup and variable definitions are saved in the STML file; Screen YAML stores each instance's attribute overrides and transform. Edit a selected instance's variable fields to change only that placement. In the Studio, select one and drag it to move; use its handles to resize or rotate it. Open the Material file to edit its shared markup and variable definitions. A button Material is visual only and has no click behavior.
 
-IDs must use lowercase letters, numbers, and hyphens and be unique within the Screen. Each `src` must reference a discovered Material file. Do not use the former `elements` property or asset templates for Screen composition.
+## Groups
+
+A group is a Screen-local placement container with this shape:
+
+| Property | Type | Required | Definition |
+|---|---|---:|---|
+| `id` | string | Yes | Unique placement ID within the Screen, including IDs on nested descendants. |
+| `type` | string | Yes | The literal value `group`. |
+| `children` | list | Yes | Non-empty ordered list of Material placements or nested groups. |
+| `position` | mapping | Yes | Top-left position in the parent coordinate space. |
+| `size` | mapping | Yes | Group's unscaled width and height in CSS pixels, each at least `24`. The pivot is fixed at the center of this rectangle. |
+| `rotation` | number | No | Clockwise rotation in degrees around the fixed group pivot. Defaults to `0`. |
+| `scale` | number | No | Positive uniform scale applied to the group and all descendants. Defaults to `1`. |
+| `visibility` | mapping | No | State-specific visibility for the group. A hidden group hides all descendants. |
+| `note` | string | No | Optional implementation guidance. |
+| `layer` | string | Yes at the Screen root | Root group layer. Descendants inherit this layer; nested groups must not define `layer`. |
+
+Children use coordinates relative to their containing group's top-left corner. Group transforms compose from outermost to innermost; each group's rotation rotates descendant positions around its own fixed center pivot, and its uniform scale applies to all descendant positions and sizes. The order of each `children` list controls stacking within that group. Group IDs and Material placement IDs share one unique-ID namespace for the Screen.
+
+The Studio can create a group from a Ctrl multi-selection only when the selected placements are consecutive siblings in stacking order and belong to the same layer. Right-click a group and choose **Ungroup** to restore its children at that stack position while baking the group's transform into them.
+
+IDs must use lowercase letters, numbers, and hyphens and be unique across all placements and groups in the Screen. Each Material placement `src` must reference a discovered Material file. Do not use the former `elements` property or asset templates for Screen composition.
 
 ## Layers
 
@@ -95,6 +116,38 @@ materials:
       width: 180
       height: 48
     rotation: 0
+  - id: account-details
+    type: group
+    layer: base
+    position:
+      x: 420
+      y: 48
+    size:
+      width: 240
+      height: 96
+    rotation: 0
+    scale: 1
+    children:
+      - id: account-label
+        src: materials/label.stml
+        attributes:
+          text: Account
+        position:
+          x: 0
+          y: 0
+        size:
+          width: 180
+          height: 40
+      - id: account-action
+        src: materials/button.stml
+        attributes:
+          text: Manage
+        position:
+          x: 0
+          y: 48
+        size:
+          width: 180
+          height: 48
 ```
 
 This example puts a placement on a named layer:
@@ -129,9 +182,13 @@ preview-states:
   - id: message-visible
     name: Message visible
     description: Show the confirmation message.
+layers:
+  - id: base
+    name: Base
 materials:
   - id: confirmation
     src: materials/confirmation.stml
+    layer: base
     position:
       x: 48
       y: 220

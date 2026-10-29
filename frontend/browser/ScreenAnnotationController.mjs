@@ -126,6 +126,7 @@ export class ScreenAnnotationController {
   selectTool(tool) {
     if (!ANNOTATION_TOOLS.has(tool) || !this.screenId) return;
     this.tool = tool;
+    this.services.setSelectionTool?.("select");
     this.setEnabled(true);
   }
 

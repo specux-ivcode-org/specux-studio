@@ -78,6 +78,10 @@ async function withServer(run) {
     "export class ScreenAnnotationController {}\n"
   );
   await fs.writeFile(
+    path.join(rootDirectory, "browser", "ScreenSelectionController.mjs"),
+    "export class ScreenSelectionController {}\n"
+  );
+  await fs.writeFile(
     path.join(rootDirectory, "browser", "ScreenRulerController.mjs"),
     "export class ScreenRulerController {}\n"
   );
@@ -166,6 +170,7 @@ test("serves the editor root and the example project", async () => {
     const yamlModule = await fetch(`${baseUrl}/shared/yaml.js`);
     const validationModule = await fetch(`${baseUrl}/shared/validation.js`);
     const screenLayersModule = await fetch(`${baseUrl}/shared/ScreenLayers.mjs`);
+    const screenGroupsModule = await fetch(`${baseUrl}/shared/ScreenGroups.mjs`);
     const assetEditorModule = await fetch(`${baseUrl}/browser/AssetEditor.mjs`);
     const editorEventControllerModule = await fetch(`${baseUrl}/browser/EditorEventController.mjs`);
     const browserModule = await fetch(`${baseUrl}/browser/BrowserHistory.mjs`);
@@ -180,6 +185,7 @@ test("serves the editor root and the example project", async () => {
     const previewStateControllerModule = await fetch(`${baseUrl}/browser/PreviewStateController.mjs`);
     const responsiveToolbarControllerModule = await fetch(`${baseUrl}/browser/ResponsiveToolbarController.mjs`);
     const screenAnnotationControllerModule = await fetch(`${baseUrl}/browser/ScreenAnnotationController.mjs`);
+    const screenSelectionControllerModule = await fetch(`${baseUrl}/browser/ScreenSelectionController.mjs`);
     const screenRulerControllerModule = await fetch(`${baseUrl}/browser/ScreenRulerController.mjs`);
     const screenYamlEditorModule = await fetch(`${baseUrl}/browser/ScreenYamlEditor.mjs`);
     const screenInstanceRendererModule = await fetch(`${baseUrl}/browser/ScreenInstanceRenderer.mjs`);
@@ -204,6 +210,7 @@ test("serves the editor root and the example project", async () => {
     assert.equal(yamlModule.status, 200);
     assert.equal(validationModule.status, 200);
     assert.equal(screenLayersModule.status, 200);
+    assert.equal(screenGroupsModule.status, 200);
     assert.equal(appModule.status, 200);
     assert.equal(appModule.headers.get("content-type"), "text/javascript; charset=utf-8");
     assert.equal(imageCaptureLibrary.status, 404);
@@ -222,6 +229,7 @@ test("serves the editor root and the example project", async () => {
     assert.equal(previewStateControllerModule.status, 200);
     assert.equal(responsiveToolbarControllerModule.status, 200);
     assert.equal(screenAnnotationControllerModule.status, 200);
+    assert.equal(screenSelectionControllerModule.status, 200);
     assert.equal(screenRulerControllerModule.status, 200);
     assert.equal(screenYamlEditorModule.status, 200);
     assert.equal(screenInstanceRendererModule.status, 200);

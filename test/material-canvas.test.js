@@ -154,19 +154,22 @@ test("resizes and rotates materials with pointer handles", async () => {
   assert.deepEqual(instance.size, { width: 130, height: 80 });
 
   const rotate = frame.querySelector(".material-rotate-control");
+  const bounds = frame.getBoundingClientRect();
+  const centerX = bounds.left + bounds.width / 2;
+  const centerY = bounds.top + bounds.height / 2;
   rotate.listeners.get("pointerdown")(createPointerEvent({
-    clientX: 75,
-    clientY: 60,
+    clientX: centerX + 15,
+    clientY: centerY,
     target: rotate
   }));
   frame.listeners.get("pointermove")(createPointerEvent({
-    clientX: 75,
-    clientY: 110,
+    clientX: centerX,
+    clientY: centerY + 15,
     target: frame
   }));
   frame.listeners.get("pointerup")(createPointerEvent({
-    clientX: 75,
-    clientY: 110,
+    clientX: centerX,
+    clientY: centerY + 15,
     target: frame
   }));
   assert.equal(instance.rotation, 90);
@@ -176,18 +179,96 @@ test("resizes and rotates materials with pointer handles", async () => {
   const transform = {
     position: { x: 10, y: 20 },
     size: { width: 100, height: 60 },
-    rotation: 90
+    rotation: 90,
+    isGroup: false
   };
   const gesture = {
     direction: "e",
     startPosition: { x: 10, y: 20 },
     startSize: { width: 100, height: 60 },
-    startRotation: 90
+    startRotation: 90,
+    isGroup: false
   };
   const { MaterialCanvas } = await import("../frontend/browser/MaterialCanvas.mjs");
   new MaterialCanvas({ state: {}, services: {} }).resizeTransform(transform, gesture, 0, 10);
   assert.deepEqual(transform.size, { width: 110, height: 60 });
   assert.deepEqual(transform.position, { x: 10, y: 20 });
+});
+
+test("keeps grouped Material placements from being transformed independently", async () => {
+  const { MaterialCanvas } = await import("../frontend/browser/MaterialCanvas.mjs");
+  const canvas = new MaterialCanvas({
+    state: { isRenderOnly: false },
+    services: {
+      document: { createElement },
+      markEdited() {},
+      renderInspector() {},
+      selectInstance() {}
+    }
+  });
+  const content = createElement("div");
+  content.offsetWidth = 1000;
+  content.offsetHeight = 800;
+  content.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 800 });
+  const group = {
+    id: "group",
+    type: "group",
+    position: { x: 10, y: 20 },
+    size: { width: 200, height: 120 },
+    children: []
+  };
+  const child = {
+    id: "child",
+    src: "materials/card.stml",
+    position: { x: 0, y: 0 },
+    size: { width: 100, height: 60 },
+    rotation: 0
+  };
+  const nestedGroup = {
+    id: "nested-group",
+    type: "group",
+    position: { x: 10, y: 10 },
+    size: { width: 80, height: 40 },
+    children: []
+  };
+  group.children.push(child);
+  group.children.push(nestedGroup);
+  const screen = { file: "screens/home/screen.yml", data: { materials: [group] } };
+  const groupFrame = canvas.createFrame(
+    createElement("div"),
+    group,
+    0,
+    content,
+    screen,
+    [0]
+  );
+  const childHost = createElement("div");
+  const childFrame = canvas.createFrame(
+    childHost,
+    child,
+    0,
+    content,
+    screen,
+    [0, 0],
+    { scale: 1, rotation: 0 }
+  );
+  const nestedGroupFrame = canvas.createFrame(
+    createElement("div"),
+    nestedGroup,
+    1,
+    content,
+    screen,
+    [0, 1],
+    { scale: 1, rotation: 0 }
+  );
+
+  assert.equal(groupFrame.querySelectorAll(".material-resize-control").length, 8);
+  assert.equal(groupFrame.querySelector(".material-rotate-control") !== null, true);
+  assert.equal(childFrame.querySelectorAll(".material-resize-control").length, 0);
+  assert.equal(Boolean(childFrame.querySelector(".material-rotate-control")), false);
+  assert.equal(childHost.listeners.has("pointerdown"), false);
+  assert.equal(nestedGroupFrame.querySelectorAll(".material-resize-control").length, 0);
+  assert.equal(Boolean(nestedGroupFrame.querySelector(".material-rotate-control")), false);
 });
 
 test("keeps legacy slot compositions full-width on the canvas", async () => {

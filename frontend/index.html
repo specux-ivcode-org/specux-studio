@@ -140,6 +140,33 @@
             <select class="preview-state-select" id="preview-state-select"></select>
             <button class="preview-state-add" id="add-preview-state" type="button">Add state</button>
           </div>
+          <div class="screen-selection-tools" role="group" aria-label="Canvas selection tools" data-overflow-group data-overflow-priority="2">
+            <button
+              class="screen-selection-tool-button"
+              type="button"
+              data-selection-tool="select"
+              aria-label="Select"
+              title="Select"
+              aria-pressed="true"
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M5 3.5 15 11l-4.5.8L8 16.5z"></path>
+              </svg>
+            </button>
+            <button
+              class="screen-selection-tool-button"
+              type="button"
+              data-selection-tool="marquee"
+              aria-label="Drag to select"
+              title="Drag to select"
+              aria-pressed="false"
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <rect x="3.5" y="4.5" width="13" height="11" rx="1"></rect>
+                <path d="M7 4.5v2m6-2v2m3 2h-2m2 5h-2m-7 2v-2m-3-3h2"></path>
+              </svg>
+            </button>
+          </div>
           <button
             class="preview-state-add open-screen-preview-button"
             id="screen-preview-new-tab"
@@ -404,6 +431,10 @@
     <button id="asset-context-copy-details" type="button" role="menuitem" tabindex="-1">Copy Details</button>
     <div role="separator"></div>
     <button id="asset-context-delete" class="danger" type="button" role="menuitem" tabindex="-1">Delete Material</button>
+  </div>
+  <div class="asset-context-menu screen-placement-context-menu" id="screen-placement-context-menu" role="menu" aria-label="Placement actions" hidden>
+    <button id="screen-placement-context-group" type="button" role="menuitem" tabindex="-1">Group</button>
+    <button id="screen-placement-context-ungroup" type="button" role="menuitem" tabindex="-1">Ungroup</button>
   </div>
   <dialog class="asset-delete-dialog" id="asset-delete-dialog" aria-labelledby="asset-delete-title" aria-describedby="asset-delete-message">
     <h2 id="asset-delete-title">Delete asset?</h2>

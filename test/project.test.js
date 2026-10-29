@@ -209,6 +209,45 @@ test("validates Screen layers and placement layer references", async () => {
   }
 });
 
+test("validates recursive Screen placement groups and inherited layers", async () => {
+  const root = await createProject();
+  try {
+    const screenPath = path.join(root, "screens", "home", "screen.yml");
+    const screen = YAML.parse(await fs.readFile(screenPath, "utf8"));
+    const children = screen.materials.map(({ layer, ...material }) => material);
+    screen.materials = [{
+      id: "brand-group",
+      type: "group",
+      layer: "base",
+      position: { x: 10, y: 10 },
+      size: { width: 240, height: 100 },
+      rotation: 0,
+      scale: 1,
+      children
+    }];
+    await fs.writeFile(screenPath, YAML.stringify(screen));
+    let result = await validateProject(root);
+    assert.deepEqual(result.errors, []);
+
+    screen.materials[0].children[0].layer = "base";
+    await fs.writeFile(screenPath, YAML.stringify(screen));
+    result = await validateProject(root);
+    assert.ok(result.errors.some((error) =>
+      error.includes("nested placements inherit their layer from the group")
+    ));
+
+    delete screen.materials[0].children[0].layer;
+    screen.materials[0].scale = 0;
+    await fs.writeFile(screenPath, YAML.stringify(screen));
+    result = await validateProject(root);
+    assert.ok(result.errors.some((error) =>
+      error.includes("scale must be a positive number")
+    ));
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test("validates reusable Material front matter and single-root markup", async () => {
   const root = await createProject();
   try {

@@ -718,6 +718,7 @@ async function serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, res
     "/browser/PreviewStateController.mjs",
     "/browser/ResponsiveToolbarController.mjs",
     "/browser/ScreenAnnotationController.mjs",
+    "/browser/ScreenSelectionController.mjs",
     "/browser/ScreenRulerController.mjs",
     "/browser/ScreenYamlEditor.mjs",
     "/browser/ScreenInstanceRenderer.mjs",
@@ -736,7 +737,8 @@ async function serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, res
   } else if ([
     "/shared/yaml.js",
     "/shared/validation.js",
-    "/shared/ScreenLayers.mjs"
+    "/shared/ScreenLayers.mjs",
+    "/shared/ScreenGroups.mjs"
   ].includes(pathname)) {
     allowedRoot = sharedRoot;
     relativePath = pathname.slice("/shared/".length);

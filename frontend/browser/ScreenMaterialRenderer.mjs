@@ -1,34 +1,56 @@
+import { isScreenGroup } from "../../shared/ScreenGroups.mjs";
+
 export class ScreenMaterialRenderer {
   constructor({ state, services }) {
     this.state = state;
     this.services = services;
   }
 
-  render(material, index) {
+  render(material, index, path = [index]) {
     const { state, services } = this;
-    const definition = state.materialFiles.get(material.src);
-    if (!definition) {
+    const group = isScreenGroup(material);
+    const definition = group ? null : state.materialFiles.get(material.src);
+    if (!group && !definition) {
       throw new Error(`Screen placement "${material.id}" references unavailable Material "${material.src}".`);
     }
     const host = services.document.createElement("div");
-    host.className = "material-instance";
-    host.id = `specux-material-${index}`;
-    host.dataset.instancePath = JSON.stringify([index]);
+    host.className = `material-instance${group ? " material-group" : ""}`;
+    host.id = `specux-material-${path.join("-")}`;
+    host.dataset.instancePath = JSON.stringify(path);
     host.dataset.materialId = material.id;
-    host.dataset.materialSrc = material.src;
-    host.setAttribute("aria-label", `Material: ${definition.data.name}`);
+    if (material.src) host.dataset.materialSrc = material.src;
+    host.setAttribute("aria-label", group
+      ? `Group: ${material.id}`
+      : `Material: ${definition.data.name}`);
     if (!state.isRenderOnly) {
       host.tabIndex = 0;
       host.setAttribute("role", "group");
     }
-    if (!state.isRenderOnly && services.sameInstancePath(state.activeInstancePath, [index])) {
+    const selectedPaths = state.activeInstancePaths || [state.activeInstancePath || []];
+    if (!state.isRenderOnly && selectedPaths.some((selectedPath) =>
+      services.sameInstancePath(selectedPath, path)
+    )) {
       host.classList.add("selected");
     }
 
-    services.templateMarkupRenderer.mount(host, definition.html, definition.base, material, definition);
+    if (group) {
+      host.setAttribute("aria-label", `Group: ${material.id}`);
+    } else {
+      services.templateMarkupRenderer.mount(host, definition.html, definition.base, material, definition);
+    }
     if (!state.isRenderOnly) {
-      host.addEventListener("click", () => services.selectInstance([index], null));
-      host.addEventListener("focus", () => services.selectInstance([index], null));
+      host.addEventListener("click", (event) => {
+        if (event?.detail > 0 && !state.viewingSpec) return;
+        event?.stopPropagation?.();
+        services.selectInstance(path, material.src || null, {
+          toggle: Boolean(event?.ctrlKey)
+        });
+      });
+      host.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        services.selectInstance(path, material.src || null);
+      });
     }
     return host;
   }

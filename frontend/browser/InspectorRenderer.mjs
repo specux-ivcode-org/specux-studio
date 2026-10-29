@@ -1,4 +1,5 @@
 import { BASE_LAYER_ID } from "../../shared/ScreenLayers.mjs";
+import { isScreenGroup } from "../../shared/ScreenGroups.mjs";
 
 const LAYER_DRAG_TYPE = "application/x-specux-layer";
 const MATERIAL_DRAG_TYPE = "application/x-specux-material";
@@ -180,13 +181,15 @@ export class InspectorRenderer {
         {
           type: MATERIAL_DRAG_TYPE,
           drop: (materialId) => {
-            const materialIndex = screen.materials.findIndex(
-              (material) => material.id === materialId
-            );
-            if (materialIndex < 0) {
+            const path = this.parsePlacementPath(materialId);
+            if (!path) {
               throw new Error(`Material placement "${materialId}" is no longer available.`);
             }
-            return services.assignMaterialLayer(materialIndex, layer.id);
+            if (services.assignPlacementLayer) {
+              return services.assignPlacementLayer(path, layer.id);
+            }
+            if (path.length === 1) return services.assignMaterialLayer(path[0], layer.id);
+            throw new Error("A placement inside a group inherits its layer from that group.");
           }
         }
       ]);
@@ -293,72 +296,133 @@ export class InspectorRenderer {
     const { state, services } = this;
     const layer = screen.layers.find((candidate) => candidate.id === layerId);
     selectedLayerName.textContent = layer ? layer.name : "";
-    for (const child of placementList.children) this.dropTargets.delete(child);
+    for (const target of this.placementDropTargets || []) this.dropTargets.delete(target);
+    this.placementDropTargets = new Set();
     placementList.replaceChildren();
-    const assignedMaterials = screen.materials
-      .map((material, materialIndex) => ({ material, materialIndex }))
-      .filter(({ material }) => material.layer === layerId);
-    if (assignedMaterials.length === 0) {
+    const assignedPlacements = screen.materials
+      .map((placement, placementIndex) => ({ placement, placementIndex }))
+      .filter(({ placement }) => placement.layer === layerId);
+    if (assignedPlacements.length === 0) {
       placementList.append(services.element("div", "layer-empty-message", "No placements"));
       return;
     }
-    for (const [layerIndex, { material, materialIndex }] of assignedMaterials.entries()) {
-      const placement = services.element(
-        "div",
-        `screen-placement-row${state.activeInstancePath.length === 1 &&
-          state.activeInstancePath[0] === materialIndex ? " selected" : ""}`
-      );
-      placement.dataset.materialIndex = String(materialIndex);
-      this.bindDropTarget(placement, [{
-        type: MATERIAL_DRAG_TYPE,
-        insertPosition: true,
-        drop: (materialId, insertAfter) => {
-          const sourceIndex = screen.materials.findIndex(
-            (candidate) => candidate.id === materialId
-          );
-          if (sourceIndex < 0) {
-            throw new Error(`Material placement "${materialId}" is no longer available.`);
+    this.expandedGroups ||= new Set();
+    const selectedPaths = state.activeInstancePaths || [state.activeInstancePath || []];
+    const renderRows = (placements, parentPath = [], depth = 0, rootRows = false) => {
+      const visiblePlacements = rootRows
+        ? placements
+          .map((placement, index) => ({ placement, index }))
+          .filter(({ placement }) => placement.layer === layerId)
+        : placements.map((placement, index) => ({ placement, index }));
+      for (const [orderIndex, { placement: material, index: materialIndex }] of
+        visiblePlacements.entries()) {
+        const path = [...parentPath, materialIndex];
+        const group = isScreenGroup(material);
+        const selected = selectedPaths.some((selectedPath) =>
+          services.sameInstancePath
+            ? services.sameInstancePath(selectedPath, path)
+            : selectedPath.length === path.length &&
+              selectedPath.every((part, partIndex) => part === path[partIndex])
+        );
+        const row = services.element(
+          "div",
+          `screen-placement-row${selected ? " selected" : ""}${depth ? " nested" : ""}${group ? " has-group-toggle" : ""}`
+        );
+        row.style?.setProperty("--placement-depth", `${depth * 14}px`);
+        row.dataset.placementPath = JSON.stringify(path);
+        if (depth === 0) row.dataset.materialIndex = String(materialIndex);
+        row.setAttribute("role", "listitem");
+        row.setAttribute("aria-label", `${group ? "Group" : "Placement"} ${material.id}`);
+        row.tabIndex = 0;
+        this.bindDropTarget(row, [{
+          type: MATERIAL_DRAG_TYPE,
+          insertPosition: true,
+          drop: (sourcePathText, insertAfter) => {
+            const sourcePath = this.parsePlacementPath(sourcePathText);
+            if (!sourcePath) throw new Error("The dragged placement is no longer available.");
+            if (services.reorderPlacement) {
+              return services.reorderPlacement(sourcePath, path, insertAfter);
+            }
+            if (sourcePath.length === 1 && path.length === 1) {
+              return services.reorderMaterial(sourcePath[0], material.id, insertAfter);
+            }
+            throw new Error("Placements can only be reordered among siblings.");
           }
-          return services.reorderMaterial(sourceIndex, material.id, insertAfter);
+        }]);
+        this.placementDropTargets.add(row);
+        row.append(this.createDragHandle(
+          `Drag ${material.id} to reorder or move it to another layer`,
+          MATERIAL_DRAG_TYPE,
+          JSON.stringify(path),
+          row
+        ));
+        if (group) {
+          const expand = services.element(
+            "button",
+            "placement-expand-button",
+            this.expandedGroups.has(material.id) ? "▾" : "▸"
+          );
+          expand.type = "button";
+          expand.setAttribute(
+            "aria-label",
+            `${this.expandedGroups.has(material.id) ? "Collapse" : "Expand"} ${material.id}`
+          );
+          expand.setAttribute("aria-expanded", String(this.expandedGroups.has(material.id)));
+          expand.addEventListener("click", () => {
+            if (this.expandedGroups.has(material.id)) this.expandedGroups.delete(material.id);
+            else this.expandedGroups.add(material.id);
+            this.renderLayerPlacements(screen, layerId, selectedLayerName, placementList);
+          });
+          row.append(expand);
         }
-      }]);
-      placement.append(this.createDragHandle(
-        `Drag ${material.id} to reorder or move it to another layer`,
-        MATERIAL_DRAG_TYPE,
-        material.id,
-        placement
-      ));
-      placement.setAttribute("role", "listitem");
-      const selectPlacement = services.element(
-        "button",
-        "layer-placement-name",
-        material.id
-      );
-      selectPlacement.type = "button";
-      selectPlacement.title = `Select ${material.id}`;
-      selectPlacement.addEventListener("click", () =>
-        services.selectInstance([materialIndex], material.src || null)
-      );
-      placement.append(selectPlacement);
+        const selectPlacement = services.element(
+          "button",
+          `layer-placement-name${group ? " placement-group-name" : ""}`,
+          material.id
+        );
+        selectPlacement.type = "button";
+        selectPlacement.title = `Select ${material.id}`;
+        selectPlacement.addEventListener("click", (event) =>
+          services.selectInstance(path, material.src || null, { toggle: event.ctrlKey })
+        );
+        row.addEventListener("contextmenu", (event) =>
+          services.openScreenPlacementContextMenu?.(event, path)
+        );
+        row.append(selectPlacement);
 
-      for (const [direction, label, disabled] of [
-        [-1, "↑", layerIndex === 0],
-        [1, "↓", layerIndex === assignedMaterials.length - 1]
-      ]) {
-        const move = services.element("button", "placement-order-button", label);
-        move.type = "button";
-        move.disabled = disabled;
-        move.title = `Move ${material.id} ${direction < 0 ? "up" : "down"} in this layer`;
-        move.setAttribute(
-          "aria-label",
-          `Move ${material.id} ${direction < 0 ? "up" : "down"} in this layer`
-        );
-        move.addEventListener("click", () =>
-          services.moveMaterial(materialIndex, direction).catch(services.showFatalError)
-        );
-        placement.append(move);
+        const orderCount = visiblePlacements.length;
+        for (const [direction, label, disabled] of [
+          [-1, "↑", orderIndex === 0],
+          [1, "↓", orderIndex === orderCount - 1]
+        ]) {
+          const move = services.element("button", "placement-order-button", label);
+          move.type = "button";
+          move.disabled = disabled;
+          move.title = `Move ${material.id} ${direction < 0 ? "up" : "down"} in this group`;
+          move.setAttribute(
+            "aria-label",
+            `Move ${material.id} ${direction < 0 ? "up" : "down"} in this group`
+          );
+          move.addEventListener("click", () =>
+            services.movePlacement(path, direction).catch(services.showFatalError)
+          );
+          row.append(move);
+        }
+        placementList.append(row);
+        if (group && this.expandedGroups.has(material.id)) {
+          renderRows(material.children, path, depth + 1);
+        }
       }
-      placementList.append(placement);
+    };
+    renderRows(screen.materials, [], 0, true);
+  }
+
+  parsePlacementPath(value) {
+    try {
+      const path = JSON.parse(value);
+      return Array.isArray(path) && path.every(Number.isInteger) ? path : null;
+    } catch {
+      return null;
     }
   }
 
@@ -664,6 +728,10 @@ export class InspectorRenderer {
 
   renderInstanceDetails(panel, instance) {
     const { state, services } = this;
+    if (isScreenGroup(instance)) {
+      this.renderGroupPlacementDetails(panel, instance);
+      return;
+    }
     const material = state.materialFiles?.get(instance.src);
     if (material) {
       this.renderMaterialPlacementDetails(panel, instance, material);
@@ -707,9 +775,99 @@ export class InspectorRenderer {
     panel.append(deleteButton);
   }
 
+  renderGroupPlacementDetails(panel, group) {
+    const { state, services } = this;
+    const screen = state.screens[state.activeScreenIndex];
+    this.appendSection(panel, "Placement group");
+    this.appendDetail(panel, "Group ID", group.id);
+    this.appendDetail(panel, "Children", String(group.children.length));
+    if (state.activeInstancePath.length > 1) {
+      this.appendSection(panel, "Group transform");
+      this.appendDetail(
+        panel,
+        "Position",
+        `${group.position?.x ?? 0}, ${group.position?.y ?? 0}`
+      );
+      this.appendDetail(
+        panel,
+        "Size",
+        `${group.size?.width ?? "Auto"} × ${group.size?.height ?? "Auto"}`
+      );
+      this.appendDetail(panel, "Uniform scale", String(group.scale ?? 1));
+      this.appendDetail(panel, "Rotation", `${group.rotation ?? 0}°`);
+      this.appendDetail(
+        panel,
+        "Transform",
+        "This group is controlled by its containing group. Ungroup it to edit its transform."
+      );
+      return;
+    }
+    this.appendSection(panel, "Group transform");
+    for (const key of ["x", "y"]) {
+      services.appendEditableField(
+        panel,
+        `Position ${key.toUpperCase()}`,
+        group.position[key],
+        (value) => {
+          if (value === undefined) return;
+          group.position[key] = value;
+          services.markEdited(screen.file);
+          services.refreshActiveView();
+        },
+        { numberFormat: "integer" }
+      );
+    }
+    services.appendEditableField(
+      panel,
+      "Uniform scale",
+      group.scale ?? 1,
+      (value) => {
+        if (value === undefined) return;
+        if (value <= 0) {
+          services.showEditorMessage("Invalid scale", "Uniform scale must be greater than zero.");
+          return;
+        }
+        group.scale = value;
+        services.markEdited(screen.file);
+        services.refreshActiveView();
+      },
+      { numberFormat: "decimal" }
+    );
+    services.appendEditableField(
+      panel,
+      "Rotation",
+      group.rotation ?? 0,
+      (value) => {
+        if (value === undefined) return;
+        group.rotation = value;
+        services.markEdited(screen.file);
+        services.refreshActiveView();
+      },
+      { numberFormat: "decimal" }
+    );
+    const ungroupButton = services.element("button", "spec-action-button", "Ungroup");
+    ungroupButton.type = "button";
+    ungroupButton.addEventListener("click", () =>
+      services.ungroupPlacement([...state.activeInstancePath]).catch(services.showFatalError)
+    );
+    panel.append(ungroupButton);
+    const deleteButton = services.element(
+      "button",
+      "delete-instance-button",
+      "Delete group and contents"
+    );
+    deleteButton.type = "button";
+    deleteButton.addEventListener("click", () => {
+      if (!services.confirm("Delete this group and all of its placements?")) return;
+      services.deleteMaterial([...state.activeInstancePath]).catch(services.showFatalError);
+    });
+    panel.append(deleteButton);
+  }
+
   renderMaterialPlacementDetails(panel, instance, material) {
     const { state, services } = this;
     const screen = state.screens[state.activeScreenIndex];
+    const isGroupedPlacement = state.activeInstancePath.length > 1;
     this.appendSection(panel, "Material placement");
     this.appendDetail(panel, "Placement ID", instance.id);
     this.appendDetail(panel, "Material", material.data.name || material.id);
@@ -732,18 +890,37 @@ export class InspectorRenderer {
         const value = Object.hasOwn(instance.attributes || {}, name)
           ? instance.attributes[name]
           : definition.default;
-        services.appendEditableField(panel, name, value, (updated) => {
-          instance.attributes ||= {};
-          if (updated === undefined) delete instance.attributes[name];
-          else instance.attributes[name] = updated;
-          if (Object.keys(instance.attributes).length === 0) delete instance.attributes;
-          services.markEdited(screen.file);
-          services.refreshActiveView();
-        }, this.attributeInputOptions(definition));
+        if (isGroupedPlacement) {
+          this.appendDetail(panel, name, value === undefined ? "Not set" : String(value));
+        } else {
+          services.appendEditableField(panel, name, value, (updated) => {
+            instance.attributes ||= {};
+            if (updated === undefined) delete instance.attributes[name];
+            else instance.attributes[name] = updated;
+            if (Object.keys(instance.attributes).length === 0) delete instance.attributes;
+            services.markEdited(screen.file);
+            services.refreshActiveView();
+          }, this.attributeInputOptions(definition));
+        }
       }
     }
 
     this.appendSection(panel, "Placement transform");
+    if (isGroupedPlacement) {
+      this.appendDetail(panel, "Position", `${instance.position?.x ?? 0}, ${instance.position?.y ?? 0}`);
+      this.appendDetail(
+        panel,
+        "Size",
+        `${instance.size?.width ?? "Auto"} × ${instance.size?.height ?? "Auto"}`
+      );
+      this.appendDetail(panel, "Rotation", `${instance.rotation ?? 0}°`);
+      this.appendDetail(
+        panel,
+        "Transform",
+        "This placement is controlled by its group. Ungroup it to edit its transform."
+      );
+      return;
+    }
     const update = (property, key, value, minimum = null) => {
       if (value === undefined) return;
       if (minimum !== null && value < minimum) {

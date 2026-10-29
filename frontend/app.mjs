@@ -15,12 +15,18 @@ import { PreviewStateController } from "./browser/PreviewStateController.mjs";
 import { ResponsiveToolbarController } from "./browser/ResponsiveToolbarController.mjs";
 import { ScreenElementController } from "./browser/ScreenElementController.mjs";
 import { ScreenAnnotationController } from "./browser/ScreenAnnotationController.mjs";
+import { ScreenSelectionController } from "./browser/ScreenSelectionController.mjs";
 import { ScreenRulerController } from "./browser/ScreenRulerController.mjs";
 import { ScreenYamlEditor } from "./browser/ScreenYamlEditor.mjs";
 import { ScreenInstanceRenderer } from "./browser/ScreenInstanceRenderer.mjs";
 import { MaterialCanvas } from "./browser/MaterialCanvas.mjs";
 import { ScreenMaterialController } from "./browser/ScreenMaterialController.mjs";
 import { ScreenMaterialRenderer } from "./browser/ScreenMaterialRenderer.mjs";
+import {
+  canGroupScreenPlacements,
+  getScreenPlacementAtPath,
+  isScreenGroup
+} from "../shared/ScreenGroups.mjs";
 import { SpecEditor } from "./browser/SpecEditor.mjs";
 import { SplitViewLayout } from "./browser/SplitViewLayout.mjs";
 import { ThemeEditor } from "./browser/ThemeEditor.mjs";
@@ -59,6 +65,8 @@ let assetFiles = new Map();
 let activeAssetId = null;
 let activeMaterialFilePath = null;
 let activeInstancePath = [];
+let activeInstancePaths = [];
+let screenPlacementMenuTarget = null;
 let viewingAssetTemplate = false;
 let viewingMaterialFile = false;
 let viewingTheme = false;
@@ -185,7 +193,10 @@ const specEditor = new SpecEditor({
     get activeAssetId() { return activeAssetId; },
     set activeAssetId(value) { activeAssetId = value; },
     get activeInstancePath() { return activeInstancePath; },
-    set activeInstancePath(value) { activeInstancePath = value; },
+    set activeInstancePath(value) {
+      activeInstancePath = value;
+      activeInstancePaths = value.length ? [value] : [];
+    },
     get createdSpecFiles() { return createdSpecFiles; },
     get isSaving() { return isSaving; }
   },
@@ -219,6 +230,7 @@ const screenMaterialController = new ScreenMaterialController({
   state: {
     get screens() { return screens; },
     get activeScreenIndex() { return activeScreenIndex; },
+    get activeInstancePath() { return activeInstancePath; },
     get materialFiles() { return materialFiles; },
     get createdMaterialFiles() { return createdMaterialFiles; },
     get projectFilePaths() { return projectFilePaths; },
@@ -229,6 +241,7 @@ const screenMaterialController = new ScreenMaterialController({
     renderNavigation,
     renderScreen,
     selectInstance,
+    openScreenPlacementContextMenu,
     confirm: (message) => window.confirm(message)
   }
 });
@@ -396,7 +409,10 @@ const themeEditor = new ThemeEditor({
     set activeSpecPath(value) { activeSpecPath = value; },
     set activeSpecInstancePath(value) { activeSpecInstancePath = value; },
     set activeAssetId(value) { activeAssetId = value; },
-    set activeInstancePath(value) { activeInstancePath = value; }
+    set activeInstancePath(value) {
+      activeInstancePath = value;
+      activeInstancePaths = value.length ? [value] : [];
+    }
   },
   services: {
     appendSection,
@@ -421,7 +437,10 @@ const assetEditor = new AssetEditor({
     get activeAssetId() { return activeAssetId; },
     set activeAssetId(value) { activeAssetId = value; },
     get activeInstancePath() { return activeInstancePath; },
-    set activeInstancePath(value) { activeInstancePath = value; },
+    set activeInstancePath(value) {
+      activeInstancePath = value;
+      activeInstancePaths = value.length ? [value] : [];
+    },
     get viewingAssetTemplate() { return viewingAssetTemplate; },
     get viewingMaterialFile() { return viewingMaterialFile; },
     set viewingAssetTemplate(value) { viewingAssetTemplate = value; },
@@ -490,7 +509,10 @@ const materialFileEditor = new MaterialFileEditor({
     set assetPreviewVersion(value) { assetPreviewVersion = value; },
     get activeAssetId() { return activeAssetId; },
     set activeAssetId(value) { activeAssetId = value; },
-    set activeInstancePath(value) { activeInstancePath = value; },
+    set activeInstancePath(value) {
+      activeInstancePath = value;
+      activeInstancePaths = value.length ? [value] : [];
+    },
     set activeSpecPath(value) { activeSpecPath = value; },
     set activeSpecInstancePath(value) { activeSpecInstancePath = value; },
     get viewingMaterialFile() { return viewingMaterialFile; },
@@ -626,17 +648,27 @@ const projectFileNavigator = new ProjectFileNavigator({
 const materialCanvas = new MaterialCanvas({
   state: {
     get isRenderOnly() { return isRenderOnly; },
-    get viewingSpec() { return viewingSpec; }
+    get viewingSpec() { return viewingSpec; },
+    get activeInstancePath() { return activeInstancePath; },
+    get activeInstancePaths() { return activeInstancePaths; }
   },
-  services: { document, markEdited, renderInspector, selectInstance }
+  services: { document, markEdited, renderInspector, selectInstance, openScreenPlacementContextMenu }
 });
 const screenMaterialRenderer = new ScreenMaterialRenderer({
   state: {
     get activeInstancePath() { return activeInstancePath; },
+    get activeInstancePaths() { return activeInstancePaths; },
     get materialFiles() { return materialFiles; },
-    get isRenderOnly() { return isRenderOnly; }
+    get isRenderOnly() { return isRenderOnly; },
+    get viewingSpec() { return viewingSpec; }
   },
-  services: { document, sameInstancePath, selectInstance, templateMarkupRenderer }
+  services: {
+    document,
+    sameInstancePath,
+    selectInstance,
+    openScreenPlacementContextMenu,
+    templateMarkupRenderer
+  }
 });
 const workspaceViewRenderer = new WorkspaceViewRenderer({
   state: {
@@ -659,7 +691,10 @@ const workspaceViewRenderer = new WorkspaceViewRenderer({
     set activeSpecPath(value) { activeSpecPath = value; },
     set activeSpecInstancePath(value) { activeSpecInstancePath = value; },
     set activeAssetId(value) { activeAssetId = value; },
-    set activeInstancePath(value) { activeInstancePath = value; },
+    set activeInstancePath(value) {
+      activeInstancePath = value;
+      activeInstancePaths = value.length ? [value] : [];
+    },
     get assets() { return assets; },
     get theme() { return theme; },
     get specSources() { return specSources; }
@@ -678,11 +713,21 @@ const workspaceViewRenderer = new WorkspaceViewRenderer({
     configureScreenYamlEditor,
     syncScreenViewMode,
     setScreenDomContext,
-    renderMaterial: (material, index) => screenMaterialRenderer.render(material, index),
+    renderMaterial: (material, index, path) => screenMaterialRenderer.render(material, index, path),
     getActivePreviewStateId,
     isInstanceVisible,
-    createMaterialFrame: (host, instance, index, content, screen) =>
-      materialCanvas.createFrame(host, instance, index, content, screen),
+    createMaterialFrame: (host, instance, index, content, screen, path, parentTransform, rootContent) =>
+      materialCanvas.createFrame(
+        host,
+        instance,
+        index,
+        content,
+        screen,
+        path,
+        parentTransform,
+        rootContent
+      ),
+    closeScreenPlacementContextMenu,
     renderInspector,
     setPreviewMessage,
     hidePreviewStateControls
@@ -696,7 +741,19 @@ const screenAnnotationController = new ScreenAnnotationController({
     window,
     fetcher: (url, options) => fetch(url, options),
     prompt: (message, value) => window.prompt(message, value),
-    getActivePreviewStateId: (screenId) => activePreviewStateIds.get(screenId) || "default"
+    getActivePreviewStateId: (screenId) => activePreviewStateIds.get(screenId) || "default",
+    setSelectionTool: (tool) => screenSelectionController?.selectTool(tool)
+  }
+});
+const screenSelectionController = new ScreenSelectionController({
+  state: { isRenderOnly },
+  services: {
+    byId,
+    document,
+    selectInstances,
+    openPlacementContextMenu: openScreenPlacementContextMenu,
+    closePlacementContextMenu: closeScreenPlacementContextMenu,
+    disableAnnotationMode: () => screenAnnotationController.setEnabled(false)
   }
 });
 const screenRulerController = new ScreenRulerController({
@@ -722,6 +779,7 @@ const responsiveToolbarController = new ResponsiveToolbarController({
 if (!isRenderOnly) screenRulerController.bind();
 if (!isRenderOnly) responsiveToolbarController.bind();
 if (!isRenderOnly) screenAnnotationController.bind();
+if (!isRenderOnly) screenSelectionController.bind();
 const inspectorRenderer = new InspectorRenderer({
   state: {
     get project() { return project; },
@@ -735,6 +793,7 @@ const inspectorRenderer = new InspectorRenderer({
     get activeMaterialFilePath() { return activeMaterialFilePath; },
     get materialFiles() { return materialFiles; },
     get activeInstancePath() { return activeInstancePath; },
+    get activeInstancePaths() { return activeInstancePaths; },
     get activeSpecOwner() { return activeSpecOwner; },
     get activeSpecPath() { return activeSpecPath; },
     get activeSpecInstancePath() { return activeSpecInstancePath; },
@@ -777,9 +836,16 @@ const inspectorRenderer = new InspectorRenderer({
     moveLayer: (...args) => screenMaterialController.moveLayer(...args),
     reorderLayer: (...args) => screenMaterialController.reorderLayer(...args),
     moveMaterial: (...args) => screenMaterialController.moveMaterial(...args),
+    movePlacement: (...args) => screenMaterialController.movePlacement(...args),
     reorderMaterial: (...args) => screenMaterialController.reorderMaterial(...args),
+    reorderPlacement: (...args) => screenMaterialController.reorderPlacement(...args),
     deleteLayer: (...args) => screenMaterialController.deleteLayer(...args),
     assignMaterialLayer: (...args) => screenMaterialController.assignMaterialLayer(...args),
+    assignPlacementLayer: (...args) => screenMaterialController.assignPlacementLayer(...args),
+    groupPlacements: (...args) => screenMaterialController.group(...args),
+    ungroupPlacement: (...args) => screenMaterialController.ungroup(...args),
+    openScreenPlacementContextMenu,
+    closeScreenPlacementContextMenu,
     selectInstance,
     confirm: (message) => window.confirm(message),
     renderNavigation,
@@ -1234,7 +1300,7 @@ async function ensureAssetOnScreen(template, screen) {
 
 function getInstanceAtPath(screen, path) {
   const materials = screen.data?.materials || screen.materials || [];
-  return path.length === 1 && Number.isInteger(path[0]) ? materials[path[0]] || null : null;
+  return getScreenPlacementAtPath(materials, path);
 }
 
 function getSiblingList(screen, parentPath, slotId) {
@@ -1314,10 +1380,11 @@ function findAssetInstances(root, instances = []) {
 }
 
 function selectInstanceInPreview(path) {
-  const selectedPath = JSON.stringify(path);
+  const selectedPaths = (Array.isArray(path?.[0]) ? path : [path])
+    .map((selectedPath) => JSON.stringify(selectedPath));
   let selectedNode = null;
   for (const node of byId("screen-preview").querySelectorAll(".material-instance")) {
-    const selected = node.dataset.instancePath === selectedPath;
+    const selected = selectedPaths.includes(node.dataset.instancePath);
     node.classList.toggle("selected", selected);
     if (selected) selectedNode = node;
   }
@@ -1332,6 +1399,7 @@ async function renderScreen(index, options = {}) {
   await workspaceViewRenderer.renderScreen(index, options);
   if (!isRenderOnly) {
     await screenAnnotationController.setScreen(screens[index]);
+    screenSelectionController.setScreen(screens[index]);
     publishSelection();
   }
 }
@@ -1430,11 +1498,33 @@ function updateScreenDomContext(screen) {
   ].forEach((node) => setScreenDomContext(node, screen));
 }
 
-function selectInstance(path, assetId) {
-  activeAssetId = assetId;
-  activeInstancePath = path;
+function selectInstance(path, assetId, options = {}) {
+  const selectedPath = Array.isArray(path) ? path : [];
+  if (Array.isArray(options.paths)) {
+    activeInstancePaths = options.paths
+      .filter((candidate) => Array.isArray(candidate) && candidate.length)
+      .map((candidate) => [...candidate]);
+    activeInstancePath = activeInstancePaths.at(-1) || [];
+  } else if (options.toggle && selectedPath.length) {
+    const existingIndex = activeInstancePaths.findIndex((candidate) =>
+      sameInstancePath(candidate, selectedPath)
+    );
+    if (existingIndex >= 0) activeInstancePaths.splice(existingIndex, 1);
+    else activeInstancePaths.push([...selectedPath]);
+    activeInstancePath = activeInstancePaths.at(-1) || [];
+  } else {
+    activeInstancePath = [...selectedPath];
+    activeInstancePaths = selectedPath.length ? [[...selectedPath]] : [];
+  }
+  const activeInstance = getInstanceAtPath(
+    screens[activeScreenIndex],
+    activeInstancePath
+  );
+  activeAssetId = activeInstancePath.length
+    ? activeInstance?.src || assetId || null
+    : null;
   if (viewingSpec) {
-    selectInstanceInPreview(path);
+    selectInstanceInPreview(activeInstancePaths);
     return;
   }
   viewingAssetTemplate = false;
@@ -1447,9 +1537,67 @@ function selectInstance(path, assetId) {
   byId("main").classList.remove("spec-editing");
   byId("spec-editor-panel").hidden = true;
   byId("spec-source").oninput = null;
-  selectInstanceInPreview(path);
+  selectInstanceInPreview(activeInstancePaths);
   updateNavigationSelection();
   renderInspector();
+}
+
+function selectInstances(paths) {
+  const selectedPaths = Array.isArray(paths)
+    ? paths.filter((path) => Array.isArray(path) && path.length)
+    : [];
+  selectInstance(selectedPaths.at(-1) || [], null, { paths: selectedPaths });
+}
+
+function openScreenPlacementContextMenu(event, path) {
+  if (isRenderOnly || !Array.isArray(path) || path.length === 0) return;
+  event.preventDefault();
+  const placement = getInstanceAtPath(screens[activeScreenIndex], path);
+  if (!placement) return;
+  if (!activeInstancePaths.some((selectedPath) => sameInstancePath(selectedPath, path))) {
+    selectInstance(path, placement.src || null);
+  }
+  screenPlacementMenuTarget = [...path];
+  const menu = byId("screen-placement-context-menu");
+  const groupButton = byId("screen-placement-context-group");
+  const ungroupButton = byId("screen-placement-context-ungroup");
+  const placements = screens[activeScreenIndex]?.data?.materials || [];
+  groupButton.hidden = !canGroupScreenPlacements(placements, activeInstancePaths);
+  ungroupButton.hidden = !isScreenGroup(placement);
+  if (groupButton.hidden && ungroupButton.hidden) {
+    closeScreenPlacementContextMenu();
+    return;
+  }
+  menu.hidden = false;
+  menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - 210))}px`;
+  menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - 96))}px`;
+  (groupButton.hidden ? ungroupButton : groupButton).focus();
+}
+
+function closeScreenPlacementContextMenu() {
+  const menu = byId("screen-placement-context-menu");
+  if (menu) menu.hidden = true;
+  screenPlacementMenuTarget = null;
+}
+
+function bindScreenPlacementContextMenu() {
+  const menu = byId("screen-placement-context-menu");
+  byId("screen-placement-context-group").addEventListener("click", () => {
+    const paths = activeInstancePaths.map((path) => [...path]);
+    closeScreenPlacementContextMenu();
+    screenMaterialController.group(paths).catch(showFatalError);
+  });
+  byId("screen-placement-context-ungroup").addEventListener("click", () => {
+    const path = screenPlacementMenuTarget;
+    closeScreenPlacementContextMenu();
+    if (path) screenMaterialController.ungroup(path).catch(showFatalError);
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!menu.hidden && !menu.contains(event.target)) closeScreenPlacementContextMenu();
+  }, true);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !menu.hidden) closeScreenPlacementContextMenu();
+  });
 }
 
 function updateNavigationSelection() {
@@ -1645,6 +1793,7 @@ const editorEventController = new EditorEventController({
   }
 });
 editorEventController.bind();
+bindScreenPlacementContextMenu();
 
 function renderThemeView(filePath = project?.theme) {
   screenAnnotationController?.setEnabled(false);

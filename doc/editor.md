@@ -4,6 +4,8 @@
 
 The browser editor prototype is at the repository root; its sample project is in `specux/`. The prototype is exploratory and is used to try ideas and evaluate the intended experience. Its implementation choices and limitations are not requirements for the final product. This document describes the target product and should evolve as those requirements are refined.
 
+Screen-editor-specific behavior is maintained separately in the [Screen Editor Requirements](screen-editor-requirements.md). Update that document when Screen-editor requirements change; this document remains the broader, non-normative product direction.
+
 | ID | Target requirement |
 |---|---|
 | ED-001 | Open a SpecUX project and resolve its Screens, reusable Material STML files, Theme, optional project- and Screen-level Markdown behavior specs, and supporting resources. Screen composition uses Material references with placement-specific transforms, not an Asset registry or layout template library. |
@@ -39,7 +41,7 @@ Use the current prototype's page structure as a starting point: a global header 
 - **Global header:** Show the product and current Screen context, plus project-wide actions and status such as save, undo, and unsaved changes.
 - **Project files:** Provide a persistent, collapsible file explorer for project configuration, reusable Material files, and Screen files. Create Label instances through a direct control; open a Material file to edit its shared markup or place it on the current Screen.
 - **Main canvas:** Give the selected Screen canvas the primary workspace. Keep review results and interaction feedback close to the preview without obscuring it.
-- **Details inspector:** Place selection-specific details and editing controls beside the canvas. In Screen editing, provide Properties and Layers tabs. The Layers tab separates a one-line layer list from a placements box for the selected layer; both lists support reordering, and placements can be assigned to another layer. Every Screen must have at least one layer. All layers, including the initial Base layer, can be renamed, reordered, hidden, and deleted unless they are the last layer; deleting a layer also deletes its placements. Show only the currently selected Theme, Screen, or Material in other editor views.
+- **Details inspector:** Place selection-specific details and editing controls beside the canvas. In Screen editing, follow the [Screen Editor Requirements](screen-editor-requirements.md) for the Properties and Layers tabs. Show only the currently selected Theme, Screen, or Material in other editor views.
 - **Responsive behavior:** Preserve access to navigation and details on narrow screens by moving them into accessible collapsible panels or tabs. Do not simply remove these areas; prioritize the canvas and allow it to scroll or resize as needed.
 
 ## Prototype Context

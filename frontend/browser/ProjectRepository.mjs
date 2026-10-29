@@ -1,4 +1,5 @@
 import { normalizeScreenLayers } from "../../shared/ScreenLayers.mjs";
+import { isScreenGroup } from "../../shared/ScreenGroups.mjs";
 
 export class ProjectRepository {
   constructor({ appRoot, fetcher, parseYaml, validation, templateFileExtension }) {
@@ -115,67 +116,122 @@ export class ProjectRepository {
     const previewStateIds = new Set(
       this.validation.validatePreviewStates(screen.data, screen.file).map(({ id }) => id)
     );
-    for (const [index, material] of screen.data.materials.entries()) {
-      const location = `${screen.file} materials[${index}]`;
-      if (!material || typeof material !== "object" || Array.isArray(material)) {
+    const validateVisibility = (placement, location) => {
+      if (placement.visibility === undefined) return;
+      if (!this.validation.isMapping(placement.visibility)) {
+        throw new Error(`${location}: visibility must be a mapping of preview state ids to booleans.`);
+      }
+      for (const [stateId, visible] of Object.entries(placement.visibility)) {
+        if (!previewStateIds.has(stateId) || typeof visible !== "boolean") {
+          throw new Error(`${location}: visibility for "${stateId}" must reference a preview state and be a boolean.`);
+        }
+      }
+    };
+    const validatePlacement = (placement, path, parentLayer = null) => {
+      const location = `${screen.file} materials[${path[0]}]` +
+        path.slice(1).map((index) => `.children[${index}]`).join("");
+      if (!this.validation.isMapping(placement)) {
         throw new Error(`${location}: Material must be a mapping.`);
       }
-      this.validation.validateElementId(material.id, location);
-      if (ids.has(material.id)) {
-        throw new Error(`${location}: Material id "${material.id}" is already used on this Screen.`);
+      this.validation.validateElementId(placement.id, location);
+      if (ids.has(placement.id)) {
+        throw new Error(`${location}: Material id "${placement.id}" is already used on this Screen.`);
       }
-      ids.add(material.id);
-      if (typeof material.src !== "string" || !materialFiles.has(material.src)) {
-        throw new Error(`${location}: src must reference a discovered Material STML file.`);
-      }
-      const materialDefinition = materialFiles.get(material.src);
-      if (materialDefinition) {
-        this.validation.validateMaterialInstanceAttributes(
-          material,
-          materialDefinition.data,
-          location
-        );
-      }
-      if (!this.validation.isMapping(material.position) ||
-          !Number.isFinite(material.position.x) || !Number.isFinite(material.position.y)) {
-        throw new Error(`${location}: position must contain numeric x and y values.`);
-      }
-      if (!this.validation.isMapping(material.size) ||
-          !Number.isFinite(material.size.width) || material.size.width < 24 ||
-          !Number.isFinite(material.size.height) || material.size.height < 24) {
-        throw new Error(`${location}: size must contain width and height values of at least 24.`);
-      }
-      if (material.rotation !== undefined && !Number.isFinite(material.rotation)) {
-        throw new Error(`${location}: rotation must be a number.`);
-      }
-      if (material.note !== undefined && typeof material.note !== "string") {
+      ids.add(placement.id);
+      if (placement.note !== undefined && typeof placement.note !== "string") {
         throw new Error(`${location}: note must be a string.`);
       }
-      if (typeof material.layer !== "string" || !layerIds.has(material.layer)) {
-        throw new Error(`${location}: layer must reference a layer defined on this Screen.`);
-      }
-      if (material.visibility !== undefined) {
-        if (!this.validation.isMapping(material.visibility)) {
-          throw new Error(`${location}: visibility must be a mapping of preview state ids to booleans.`);
-        }
-        for (const [stateId, visible] of Object.entries(material.visibility)) {
-          if (!previewStateIds.has(stateId) || typeof visible !== "boolean") {
-            throw new Error(`${location}: visibility for "${stateId}" must reference a preview state and be a boolean.`);
-          }
-        }
-      }
-      if (Object.hasOwn(material, "spec") || Object.hasOwn(material, "interactions")) {
+      if (placement.visibility !== undefined) validateVisibility(placement, location);
+      if (Object.hasOwn(placement, "spec") || Object.hasOwn(placement, "interactions")) {
         throw new Error(`${location}: Materials are visual only; do not define behavior or interactions here.`);
       }
+      if (isScreenGroup(placement)) {
+        const allowedProperties = new Set([
+          "id", "type", "children", "position", "size", "rotation", "scale",
+          "visibility", "note", "layer"
+        ]);
+        for (const property of Object.keys(placement)) {
+          if (!allowedProperties.has(property)) {
+            throw new Error(`${location}: unsupported property "${property}".`);
+          }
+        }
+        const layer = path.length === 1 ? placement.layer : parentLayer;
+        if (path.length === 1 &&
+            (typeof layer !== "string" || !layerIds.has(layer))) {
+          throw new Error(`${location}: layer must reference a layer defined on this Screen.`);
+        }
+        if (path.length > 1 && Object.hasOwn(placement, "layer")) {
+          throw new Error(`${location}: nested placements inherit their layer from the group.`);
+        }
+        if (!this.validation.isMapping(placement.position) ||
+            !Number.isFinite(placement.position.x) || !Number.isFinite(placement.position.y)) {
+          throw new Error(`${location}: position must contain numeric x and y values.`);
+        }
+        if (!this.validation.isMapping(placement.size) ||
+            !Number.isFinite(placement.size.width) || placement.size.width < 24 ||
+            !Number.isFinite(placement.size.height) || placement.size.height < 24) {
+          throw new Error(`${location}: size must contain width and height values of at least 24.`);
+        }
+        if (placement.rotation !== undefined && !Number.isFinite(placement.rotation)) {
+          throw new Error(`${location}: rotation must be a number.`);
+        }
+        if (placement.scale !== undefined &&
+            (!Number.isFinite(placement.scale) || placement.scale <= 0)) {
+          throw new Error(`${location}: scale must be a positive number.`);
+        }
+        if (!Array.isArray(placement.children) || placement.children.length === 0) {
+          throw new Error(`${location}: group children must be a non-empty list.`);
+        }
+        placement.children.forEach((child, index) =>
+          validatePlacement(child, [...path, index], layer)
+        );
+        return;
+      }
+
       const allowedProperties = new Set([
-        "id", "src", "attributes", "position", "size", "rotation", "visibility", "note", "layer"
+        "id", "src", "attributes", "position", "size", "rotation",
+        "visibility", "note", "layer"
       ]);
-      for (const property of Object.keys(material)) {
+      for (const property of Object.keys(placement)) {
         if (!allowedProperties.has(property)) {
           throw new Error(`${location}: unsupported property "${property}".`);
         }
       }
-    }
+      const layer = path.length === 1 ? placement.layer : parentLayer;
+      if (path.length === 1 &&
+          (typeof layer !== "string" || !layerIds.has(layer))) {
+        throw new Error(`${location}: layer must reference a layer defined on this Screen.`);
+      }
+      if (path.length > 1 && Object.hasOwn(placement, "layer")) {
+        throw new Error(`${location}: nested placements inherit their layer from the group.`);
+      }
+      if (typeof placement.src !== "string" || !materialFiles.has(placement.src)) {
+        throw new Error(`${location}: src must reference a discovered Material STML file.`);
+      }
+      const materialDefinition = materialFiles.get(placement.src);
+      if (materialDefinition) {
+        this.validation.validateMaterialInstanceAttributes(
+          placement,
+          materialDefinition.data,
+          location
+        );
+      }
+      if (!this.validation.isMapping(placement.position) ||
+          !Number.isFinite(placement.position.x) || !Number.isFinite(placement.position.y)) {
+        throw new Error(`${location}: position must contain numeric x and y values.`);
+      }
+      if (!this.validation.isMapping(placement.size) ||
+          !Number.isFinite(placement.size.width) || placement.size.width < 24 ||
+          !Number.isFinite(placement.size.height) || placement.size.height < 24) {
+        throw new Error(`${location}: size must contain width and height values of at least 24.`);
+      }
+      if (placement.rotation !== undefined && !Number.isFinite(placement.rotation)) {
+        throw new Error(`${location}: rotation must be a number.`);
+      }
+    };
+    screen.data.materials.forEach((placement, index) =>
+      validatePlacement(placement, [index])
+    );
   }
 
   findInstancePathById(instances, elementId, parentPath = []) {
@@ -183,6 +239,14 @@ export class ProjectRepository {
       const instance = instances[index];
       const instancePath = [...parentPath, index];
       if (instance.id === elementId) return instancePath;
+      if (isScreenGroup(instance)) {
+        const childPath = this.findInstancePathById(
+          instance.children,
+          elementId,
+          instancePath
+        );
+        if (childPath) return childPath;
+      }
       for (const [slotId, children] of Object.entries(instance.slots || {})) {
         if (!Array.isArray(children)) continue;
         const childPath = this.findInstancePathById(children, elementId, [...instancePath, slotId]);

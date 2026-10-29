@@ -1,3 +1,5 @@
+import { isScreenGroup } from "../../shared/ScreenGroups.mjs";
+
 export class WorkspaceViewRenderer {
   constructor({ state, services }) {
     this.state = state;
@@ -72,13 +74,45 @@ export class WorkspaceViewRenderer {
         "Screen canvas with positioned materials"
       );
       const stateId = services.getActivePreviewStateId(selected.data);
-      const layers = selected.data.layers || [];
-      for (const [materialIndex, material] of selected.data.materials.entries()) {
-        if (!services.isInstanceVisible(material, stateId)) continue;
-        if (layers.find((layer) => layer.id === material.layer)?.visible === false) continue;
-        const host = services.renderMaterial(material, materialIndex);
-        content.append(services.createMaterialFrame(host, material, materialIndex, content, selected));
-      }
+      const renderPlacements = (
+        placements,
+        parent,
+        parentPath = [],
+        parentTransform = { scale: 1, rotation: 0 }
+      ) => {
+        for (const [placementIndex, placement] of placements.entries()) {
+          const path = [...parentPath, placementIndex];
+          if (!services.isInstanceVisible(placement, stateId)) continue;
+          if (path.length === 1 &&
+              selected.data.layers?.find((layer) => layer.id === placement.layer)?.visible === false) {
+            continue;
+          }
+          const host = services.renderMaterial(placement, placementIndex, path);
+          const frame = services.createMaterialFrame(
+            host,
+            placement,
+            placementIndex,
+            parent,
+            selected,
+            path,
+            parentTransform,
+            content
+          );
+          parent.append(frame);
+          if (isScreenGroup(placement)) {
+            renderPlacements(
+              placement.children,
+              host,
+              path,
+              {
+                scale: parentTransform.scale * (placement.scale ?? 1),
+                rotation: parentTransform.rotation + (placement.rotation || 0)
+              }
+            );
+          }
+        }
+      };
+      renderPlacements(selected.data.materials, content);
       services.renderInspector();
     } catch (error) {
       services.setPreviewMessage("error", error.message);

@@ -1,0 +1,221 @@
+const assert = require("node:assert/strict");
+const test = require("node:test");
+const validation = require("../shared/validation");
+
+function material(id, position, size = { width: 100, height: 40 }, layer = "base") {
+  return {
+    id,
+    src: `materials/${id}.stml`,
+    layer,
+    position: { ...position },
+    size: { ...size },
+    rotation: 0
+  };
+}
+
+test("groups consecutive same-layer placements and leaves other layers in place", async () => {
+  const {
+    canGroupScreenPlacements,
+    createScreenPlacementGroup
+  } = await import("../shared/ScreenGroups.mjs");
+  const placements = [
+    material("first", { x: 100, y: 100 }),
+    material("overlay", { x: 0, y: 0 }, undefined, "overlay"),
+    material("second", { x: 250, y: 100 }),
+    material("third", { x: 500, y: 100 })
+  ];
+
+  assert.equal(canGroupScreenPlacements(placements, [[0], [2]]), true);
+  assert.equal(canGroupScreenPlacements(placements, [[0], [3]]), false);
+  assert.equal(canGroupScreenPlacements(placements, [[0], [1]]), false);
+
+  const { group, path } = createScreenPlacementGroup(placements, [[2], [0]], "group");
+  assert.deepEqual(path, [0]);
+  assert.deepEqual(placements.map(({ id }) => id), ["group", "overlay", "third"]);
+  assert.equal(group.layer, "base");
+  assert.deepEqual(group.position, { x: 100, y: 100 });
+  assert.deepEqual(group.size, { width: 250, height: 40 });
+  assert.deepEqual(group.children.map(({ id, position, layer }) => ({
+    id,
+    position,
+    layer
+  })), [
+    { id: "first", position: { x: 0, y: 0 }, layer: undefined },
+    { id: "second", position: { x: 150, y: 0 }, layer: undefined }
+  ]);
+});
+
+test("ungroup bakes rotation and uniform scale into children and restores the layer", async () => {
+  const { ungroupScreenPlacement } = await import("../shared/ScreenGroups.mjs");
+  const placements = [
+    {
+      id: "group",
+      type: "group",
+      layer: "base",
+      position: { x: 100, y: 50 },
+      size: { width: 250, height: 40 },
+      scale: 2,
+      rotation: 90,
+      children: [
+        material("first", { x: 0, y: 0 }),
+        material("second", { x: 150, y: 0 })
+      ]
+    }
+  ];
+
+  const childPaths = ungroupScreenPlacement(placements, [0]);
+  assert.deepEqual(childPaths, [[0], [1]]);
+  assert.deepEqual(placements.map(({ id }) => id), ["first", "second"]);
+  assert.deepEqual(placements[0], {
+    id: "first",
+    src: "materials/first.stml",
+    layer: "base",
+    position: { x: 125, y: -120 },
+    size: { width: 200, height: 80 },
+    rotation: 90
+  });
+  assert.deepEqual(placements[1], {
+    id: "second",
+    src: "materials/second.stml",
+    layer: "base",
+    position: { x: 125, y: 180 },
+    size: { width: 200, height: 80 },
+    rotation: 90
+  });
+});
+
+test("nested group transforms compose and preserve child-local transforms on ungroup", async () => {
+  const {
+    getScreenParentTransform,
+    getScreenPlacementAtPath,
+    ungroupScreenPlacement
+  } = await import("../shared/ScreenGroups.mjs");
+  const nestedChild = material("inside", { x: 4, y: 5 });
+  delete nestedChild.layer;
+  const placements = [{
+    id: "outer",
+    type: "group",
+    layer: "base",
+    position: { x: 10, y: 20 },
+    size: { width: 100, height: 100 },
+    scale: 2,
+    rotation: 0,
+    children: [{
+      id: "inner",
+      type: "group",
+      position: { x: 10, y: 10 },
+      size: { width: 30, height: 30 },
+      scale: 1.5,
+      rotation: 15,
+      children: [nestedChild]
+    }]
+  }];
+
+  const parentTransform = getScreenParentTransform(placements, [0, 0, 0]);
+  assert.equal(parentTransform.scale, 3);
+  assert.equal(parentTransform.rotation, 15);
+  ungroupScreenPlacement(placements, [0]);
+  assert.deepEqual(placements[0], {
+    id: "inner",
+    type: "group",
+    position: { x: -5, y: 5 },
+    size: { width: 30, height: 30 },
+    scale: 3,
+    rotation: 15,
+    children: [{
+      id: "inside",
+      src: "materials/inside.stml",
+      position: { x: 4, y: 5 },
+      size: { width: 100, height: 40 },
+      rotation: 0
+    }],
+    layer: "base"
+  });
+  assert.equal(getScreenPlacementAtPath(placements, [0, 0]).id, "inside");
+});
+
+test("frontend Screen validation accepts recursive groups and rejects child layer overrides", async () => {
+  const { ProjectRepository } = await import("../frontend/browser/ProjectRepository.mjs");
+  const repository = new ProjectRepository({
+    appRoot: new URL("http://localhost/specux/"),
+    validation,
+    parseYaml: () => ({}),
+    fetcher: async () => ({ ok: true, text: async () => "" }),
+    templateFileExtension: ".stml"
+  });
+  const first = material("first", { x: 0, y: 0 });
+  const second = material("second", { x: 100, y: 0 });
+  delete first.layer;
+  delete second.layer;
+  const screen = {
+    file: "screens/home/screen.yml",
+    data: {
+      layers: [{ id: "base", name: "Base" }],
+      materials: [{
+        id: "group",
+        type: "group",
+        layer: "base",
+        position: { x: 20, y: 20 },
+        size: { width: 200, height: 50 },
+        scale: 1.5,
+        children: [first, second]
+      }]
+    }
+  };
+  const materialFiles = new Map([
+    ["materials/first.stml", { data: { attributes: {} } }],
+    ["materials/second.stml", { data: { attributes: {} } }]
+  ]);
+  repository.validateScreenMaterials(screen, materialFiles);
+
+  screen.data.materials[0].children[0].layer = "base";
+  assert.throws(
+    () => repository.validateScreenMaterials(screen, materialFiles),
+    /nested placements inherit their layer from the group/
+  );
+  delete screen.data.materials[0].children[0].layer;
+});
+
+test("ScreenMaterialController groups and ungroups selected placement paths", async () => {
+  const { ScreenMaterialController } = await import(
+    "../frontend/browser/ScreenMaterialController.mjs"
+  );
+  const screen = {
+    file: "screens/home/screen.yml",
+    data: {
+      layers: [{ id: "base", name: "Base" }],
+      materials: [
+        material("first", { x: 10, y: 20 }),
+        material("second", { x: 120, y: 20 })
+      ]
+    }
+  };
+  const state = {
+    screens: [screen],
+    activeScreenIndex: 0,
+    activeInstancePath: [0]
+  };
+  const controller = new ScreenMaterialController({
+    state,
+    services: {
+      markEdited() {},
+      async renderScreen() {},
+      selectInstance(path) {
+        state.activeInstancePath = path;
+      }
+    }
+  });
+
+  const groupPath = await controller.group([[0], [1]]);
+  assert.deepEqual(groupPath, [0]);
+  assert.equal(screen.data.materials[0].type, "group");
+  assert.equal(screen.data.materials[0].layer, "base");
+  assert.deepEqual(state.activeInstancePath, [0]);
+
+  screen.data.materials[0].rotation = 90;
+  const childPaths = await controller.ungroup([0]);
+  assert.deepEqual(childPaths, [[0], [1]]);
+  assert.equal(screen.data.materials[0].layer, "base");
+  assert.equal(screen.data.materials[1].layer, "base");
+  assert.deepEqual(state.activeInstancePath, [0]);
+});

@@ -39,6 +39,7 @@ function pushError(errors, source, error) {
 async function validateProject(projectRoot) {
   const { normalizeScreenLayers } =
     await import("../shared/ScreenLayers.mjs");
+  const { isScreenGroup } = await import("../shared/ScreenGroups.mjs");
   const errors = [];
   const assets = new Map();
   const materialFiles = new Map();
@@ -403,8 +404,25 @@ async function validateProject(projectRoot) {
       errors.push(`${screen.file}: Screen "${screen.id}" materials must be a list.`);
       continue;
     }
-    function validateMaterial(material, index) {
-      const location = `${screen.file} materials[${index}]`;
+    function validateVisibility(placement, location) {
+      if (placement.visibility === undefined) return;
+      if (!validation.isMapping(placement.visibility)) {
+        errors.push(`${location}: visibility must be a mapping of preview state ids to booleans.`);
+        return;
+      }
+      for (const [stateId, visible] of Object.entries(placement.visibility)) {
+        if (!previewStateIds.has(stateId)) {
+          errors.push(`${location}: visibility references unknown preview state "${stateId}".`);
+        }
+        if (typeof visible !== "boolean") {
+          errors.push(`${location}: visibility for preview state "${stateId}" must be a boolean.`);
+        }
+      }
+    }
+
+    function validateMaterial(material, path, parentLayer = null) {
+      const location = `${screen.file} materials[${path[0]}]` +
+        path.slice(1).map((index) => `.children[${index}]`).join("");
       if (!validation.isMapping(material)) {
         errors.push(`${location}: Material must be a mapping.`);
         return;
@@ -418,11 +436,74 @@ async function validateProject(projectRoot) {
       } catch (error) {
         pushError(errors, location, error);
       }
+      if (material.note !== undefined && typeof material.note !== "string") {
+        errors.push(`${location}: note must be a string.`);
+      }
+      validateVisibility(material, location);
+      if (Object.hasOwn(material, "spec") || Object.hasOwn(material, "interactions")) {
+        errors.push(`${location}: Materials are visual only; do not define behavior or interactions here.`);
+      }
+
+      if (isScreenGroup(material)) {
+        const allowedProperties = new Set([
+          "id", "type", "children", "position", "size", "rotation", "scale",
+          "visibility", "note", "layer"
+        ]);
+        for (const property of Object.keys(material)) {
+          if (!allowedProperties.has(property)) {
+            errors.push(`${location}: unsupported property "${property}".`);
+          }
+        }
+        const layer = path.length === 1 ? material.layer : parentLayer;
+        if (path.length === 1 &&
+            (typeof layer !== "string" || !layerIds.has(layer))) {
+          errors.push(`${location}: layer must reference a layer defined on this Screen.`);
+        }
+        if (path.length > 1 && Object.hasOwn(material, "layer")) {
+          errors.push(`${location}: nested placements inherit their layer from the group.`);
+        }
+        if (!validation.isMapping(material.position) ||
+            !Number.isFinite(material.position.x) || !Number.isFinite(material.position.y)) {
+          errors.push(`${location}: position must contain numeric x and y values.`);
+        }
+        if (!validation.isMapping(material.size) ||
+            !Number.isFinite(material.size.width) || material.size.width < 24 ||
+            !Number.isFinite(material.size.height) || material.size.height < 24) {
+          errors.push(`${location}: size must contain width and height values of at least 24.`);
+        }
+        if (material.rotation !== undefined && !Number.isFinite(material.rotation)) {
+          errors.push(`${location}: rotation must be a number.`);
+        }
+        if (material.scale !== undefined &&
+            (!Number.isFinite(material.scale) || material.scale <= 0)) {
+          errors.push(`${location}: scale must be a positive number.`);
+        }
+        if (!Array.isArray(material.children) || material.children.length === 0) {
+          errors.push(`${location}: group children must be a non-empty list.`);
+          return;
+        }
+        material.children.forEach((child, index) =>
+          validateMaterial(child, [...path, index], layer)
+        );
+        return;
+      }
+
       const allowedProperties = new Set([
-        "id", "src", "attributes", "position", "size", "rotation", "visibility", "note", "layer"
+        "id", "src", "attributes", "position", "size", "rotation",
+        "visibility", "note", "layer"
       ]);
       for (const property of Object.keys(material)) {
-        if (!allowedProperties.has(property)) errors.push(`${location}: unsupported property "${property}".`);
+        if (!allowedProperties.has(property)) {
+          errors.push(`${location}: unsupported property "${property}".`);
+        }
+      }
+      const layer = path.length === 1 ? material.layer : parentLayer;
+      if (path.length === 1 &&
+          (typeof layer !== "string" || !layerIds.has(layer))) {
+        errors.push(`${location}: layer must reference a layer defined on this Screen.`);
+      }
+      if (path.length > 1 && Object.hasOwn(material, "layer")) {
+        errors.push(`${location}: nested placements inherit their layer from the group.`);
       }
       const materialDefinition = materialFiles.get(material.src);
       if (materialDefinition) {
@@ -434,12 +515,6 @@ async function validateProject(projectRoot) {
       }
       if (typeof material.src !== "string" || !materialFiles.has(material.src)) {
         errors.push(`${location}: src must reference a discovered Material STML file.`);
-      }
-      if (material.note !== undefined && typeof material.note !== "string") {
-        errors.push(`${location}: note must be a string.`);
-      }
-      if (typeof material.layer !== "string" || !layerIds.has(material.layer)) {
-        errors.push(`${location}: layer must reference a layer defined on this Screen.`);
       }
       if (!validation.isMapping(material.position) ||
           !Number.isFinite(material.position.x) || !Number.isFinite(material.position.y)) {
@@ -453,25 +528,11 @@ async function validateProject(projectRoot) {
       if (material.rotation !== undefined && !Number.isFinite(material.rotation)) {
         errors.push(`${location}: rotation must be a number.`);
       }
-      if (material.visibility !== undefined) {
-        if (!validation.isMapping(material.visibility)) {
-          errors.push(`${location}: visibility must be a mapping of preview state ids to booleans.`);
-        } else {
-          for (const [stateId, visible] of Object.entries(material.visibility)) {
-            if (!previewStateIds.has(stateId)) {
-              errors.push(`${location}: visibility references unknown preview state "${stateId}".`);
-            }
-            if (typeof visible !== "boolean") {
-              errors.push(`${location}: visibility for preview state "${stateId}" must be a boolean.`);
-            }
-          }
-        }
-      }
     }
 
     const elementSpecIds = new Set();
     let elementSpecPaths = [];
-    screen.data.materials.forEach(validateMaterial);
+    screen.data.materials.forEach((material, index) => validateMaterial(material, [index]));
     try {
       elementSpecPaths = await listElementSpecPaths(screen.id);
     } catch (error) {

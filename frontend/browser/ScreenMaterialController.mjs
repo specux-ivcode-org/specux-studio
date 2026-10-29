@@ -1,6 +1,14 @@
 import { nextMaterialPosition } from "./MaterialCanvas.mjs";
 import { getMaterialDefaultSize } from "./MaterialDefaults.mjs";
 import { BASE_LAYER_ID, normalizeScreenLayers } from "../../shared/ScreenLayers.mjs";
+import {
+  createScreenPlacementGroup,
+  getScreenPlacementAtPath,
+  getScreenPlacementLocation,
+  getScreenPlacementPathById,
+  isScreenGroup,
+  ungroupScreenPlacement
+} from "../../shared/ScreenGroups.mjs";
 
 export class ScreenMaterialController {
   constructor({ state, services }) {
@@ -66,7 +74,7 @@ export class ScreenMaterialController {
     const materials = screen.data.materials;
     const baseId = definition.id;
     let id = baseId;
-    for (let suffix = 2; materials.some((material) => material.id === id); suffix += 1) {
+    for (let suffix = 2; getScreenPlacementPathById(materials, id); suffix += 1) {
       id = `${baseId}-${suffix}`;
     }
     const attributes = Object.fromEntries(
@@ -152,58 +160,60 @@ export class ScreenMaterialController {
   }
 
   async moveMaterial(materialIndex, direction) {
+    return this.movePlacement([materialIndex], direction);
+  }
+
+  async movePlacement(path, direction) {
     const screen = this.getActiveScreen();
-    const materials = screen.data.materials;
-    const material = materials[materialIndex];
-    if (!material) throw new Error("The Material placement is no longer available.");
-    const layerMaterials = materials
-      .map((candidate, index) => ({ candidate, index }))
-      .filter(({ candidate }) => candidate.layer === material.layer);
-    const layerIndex = layerMaterials.findIndex(({ index }) => index === materialIndex);
-    const next = layerMaterials[layerIndex + direction];
+    const { siblings, index } = getScreenPlacementLocation(screen.data.materials, path);
+    const selectedId = getScreenPlacementAtPath(
+      screen.data.materials,
+      this.state.activeInstancePath || []
+    )?.id;
+    const layerId = screen.data.materials[path[0]]?.layer;
+    const ordered = siblings
+      .map((candidate, siblingIndex) => ({ candidate, siblingIndex }))
+      .filter(({ candidate }) =>
+        path.length > 1 || candidate.layer === layerId
+      );
+    const layerIndex = ordered.findIndex(({ siblingIndex }) => siblingIndex === index);
+    const next = ordered[layerIndex + direction];
     if (!next) return;
-    [materials[materialIndex], materials[next.index]] =
-      [materials[next.index], materials[materialIndex]];
-    const selectedIndex = this.state.activeInstancePath?.length === 1
-      ? this.state.activeInstancePath[0]
-      : null;
-    if (selectedIndex === materialIndex || selectedIndex === next.index) {
-      const nextSelectedIndex = selectedIndex === materialIndex ? next.index : materialIndex;
-      const selectedMaterial = materials[nextSelectedIndex];
-      this.services.selectInstance?.([nextSelectedIndex], selectedMaterial.src || null);
-    }
-    await this.commitLayerChange(screen);
+    [siblings[index], siblings[next.siblingIndex]] =
+      [siblings[next.siblingIndex], siblings[index]];
+    await this.commitPlacementChange(screen, selectedId);
   }
 
   async reorderMaterial(materialIndex, targetMaterialId, insertAfter) {
     const screen = this.getActiveScreen();
+    return this.reorderPlacement([materialIndex], [screen.data.materials.findIndex(
+      (material) => material.id === targetMaterialId
+    )], insertAfter);
+  }
+
+  async reorderPlacement(path, targetPath, insertAfter) {
+    const screen = this.getActiveScreen();
     const materials = screen.data.materials;
-    const moving = materials[materialIndex];
-    if (!moving) throw new Error("The Material placement is no longer available.");
-    if (moving.id === targetMaterialId) return;
-    const target = materials.find((material) => material.id === targetMaterialId);
-    if (!target) throw new Error(`Material placement "${targetMaterialId}" is no longer available.`);
-    const selectedMaterialId = this.state.activeInstancePath?.length === 1
-      ? materials[this.state.activeInstancePath[0]]?.id
-      : null;
-    const previousOrder = materials.map((material) => `${material.id}:${material.layer}`);
-    materials.splice(materialIndex, 1);
-    const targetIndex = materials.findIndex((material) => material.id === targetMaterialId);
-    moving.layer = target.layer;
-    materials.splice(targetIndex + (insertAfter ? 1 : 0), 0, moving);
-    if (materials.every((material, index) =>
-      `${material.id}:${material.layer}` === previousOrder[index]
-    )) return;
-    if (selectedMaterialId) {
-      const selectedIndex = materials.findIndex((material) => material.id === selectedMaterialId);
-      if (selectedIndex >= 0) {
-        this.services.selectInstance?.(
-          [selectedIndex],
-          materials[selectedIndex].src || null
-        );
-      }
+    const { parentPath, siblings, index, placement: moving } =
+      getScreenPlacementLocation(materials, path);
+    const targetLocation = getScreenPlacementLocation(materials, targetPath);
+    const selectedId = getScreenPlacementAtPath(
+      materials,
+      this.state.activeInstancePath || []
+    )?.id;
+    if (parentPath.length !== targetLocation.parentPath.length ||
+        !parentPath.every((part, partIndex) => part === targetLocation.parentPath[partIndex])) {
+      throw new Error("Placements can only be reordered among siblings.");
     }
-    await this.commitLayerChange(screen);
+    if (!moving) throw new Error("The Material placement is no longer available.");
+    const target = targetLocation.placement;
+    if (!target) throw new Error("The target placement is no longer available.");
+    if (moving === target) return;
+    siblings.splice(index, 1);
+    const targetIndex = siblings.indexOf(target);
+    if (parentPath.length === 0) moving.layer = target.layer;
+    siblings.splice(targetIndex + (insertAfter ? 1 : 0), 0, moving);
+    await this.commitPlacementChange(screen, selectedId);
   }
 
   async deleteLayer(layerId) {
@@ -216,47 +226,76 @@ export class ScreenMaterialController {
     }
     layers.splice(index, 1);
     const materials = screen.data.materials;
-    const selectedIndex = this.state.activeInstancePath?.length === 1
-      ? this.state.activeInstancePath[0]
-      : null;
-    const selectedMaterial = selectedIndex === null ? null : materials[selectedIndex];
+    const selectedId = getScreenPlacementAtPath(
+      materials,
+      this.state.activeInstancePath || []
+    )?.id;
     for (let materialIndex = materials.length - 1; materialIndex >= 0; materialIndex -= 1) {
       if (materials[materialIndex].layer === layerId) materials.splice(materialIndex, 1);
     }
-    if (selectedMaterial) {
-      if (selectedMaterial.layer === layerId) {
-        this.services.selectInstance?.([], null);
-      } else {
-        const nextSelectedIndex = materials.indexOf(selectedMaterial);
-        this.services.selectInstance?.(
-          [nextSelectedIndex],
-          selectedMaterial.src || null
-        );
-      }
-    }
     await this.commitLayerChange(screen);
+    if (selectedId && getScreenPlacementPathById(materials, selectedId)) {
+      await this.selectPlacementById(materials, selectedId);
+    } else {
+      this.services.selectInstance?.([], null);
+    }
   }
 
   async assignMaterialLayer(materialIndex, layerId) {
+    return this.assignPlacementLayer([materialIndex], layerId);
+  }
+
+  async assignPlacementLayer(path, layerId) {
     const screen = this.getActiveScreen();
-    const material = screen.data.materials[materialIndex];
+    if (path.length !== 1) {
+      throw new Error("A placement inside a group inherits its layer from that group.");
+    }
+    const material = getScreenPlacementAtPath(screen.data.materials, path);
     if (!material) throw new Error("The Material placement is no longer available.");
     this.getLayer(screen, layerId);
     material.layer = layerId;
     await this.commitLayerChange(screen);
   }
 
+  async group(paths) {
+    const screen = this.getActiveScreen();
+    const id = this.getUniqueGroupId(screen.data.materials);
+    const { path } = createScreenPlacementGroup(screen.data.materials, paths, id);
+    await this.commitLayerChange(screen);
+    this.services.selectInstance?.(path, null);
+    return path;
+  }
+
+  async ungroup(path) {
+    const screen = this.getActiveScreen();
+    const children = ungroupScreenPlacement(screen.data.materials, path);
+    await this.commitLayerChange(screen);
+    const first = children[0];
+    const instance = getScreenPlacementAtPath(screen.data.materials, first);
+    this.services.selectInstance?.(first, instance?.src || null);
+    return children;
+  }
+
   async delete(path) {
     const { state, services } = this;
     const screen = state.screens[state.activeScreenIndex];
-    if (!screen || path.length !== 1 || !Number.isInteger(path[0])) {
+    if (!screen || !Array.isArray(path) || path.length === 0) {
       throw new Error("Select a Material placement before deleting it.");
     }
-    const [index] = path;
-    if (index < 0 || index >= screen.data.materials.length) {
-      throw new Error("The selected Material is no longer available.");
+    const location = getScreenPlacementLocation(screen.data.materials, path);
+    const id = location.placement.id;
+    location.siblings.splice(location.index, 1);
+    let parentPath = location.parentPath;
+    while (parentPath.length) {
+      const parent = getScreenPlacementAtPath(screen.data.materials, parentPath);
+      if (!isScreenGroup(parent) || parent.children.length > 0) break;
+      const parentLocation = getScreenPlacementLocation(screen.data.materials, parentPath);
+      parentLocation.siblings.splice(parentLocation.index, 1);
+      parentPath = parentLocation.parentPath;
     }
-    screen.data.materials.splice(index, 1);
+    if (!getScreenPlacementPathById(screen.data.materials, id)) {
+      services.selectInstance?.([], null);
+    }
     services.markEdited(screen.file);
     await services.renderScreen(state.activeScreenIndex);
   }
@@ -277,5 +316,29 @@ export class ScreenMaterialController {
   async commitLayerChange(screen) {
     this.services.markEdited(screen.file);
     await this.services.renderScreen(this.state.activeScreenIndex);
+  }
+
+  getUniqueGroupId(placements) {
+    let suffix = 1;
+    let id = "group";
+    while (getScreenPlacementPathById(placements, id)) {
+      suffix += 1;
+      id = `group-${suffix}`;
+    }
+    return id;
+  }
+
+  async commitPlacementChange(screen, placementId) {
+    await this.commitLayerChange(screen);
+    if (!placementId) return;
+    const path = getScreenPlacementPathById(screen.data.materials, placementId);
+    const placement = path && getScreenPlacementAtPath(screen.data.materials, path);
+    this.services.selectInstance?.(path || [], placement?.src || null);
+  }
+
+  async selectPlacementById(placements, id) {
+    const path = getScreenPlacementPathById(placements, id);
+    const placement = path && getScreenPlacementAtPath(placements, path);
+    this.services.selectInstance?.(path || [], placement?.src || null);
   }
 }
