@@ -4,6 +4,7 @@ import {
   getScreenPlacementMatrix,
   invertAffineMatrix,
   isScreenGroup,
+  multiplyAffineMatrices,
   serializeScale
 } from "../../shared/ScreenGroups.mjs";
 
@@ -94,6 +95,14 @@ export class MaterialCanvas {
       isGroup: isScreenGroup(instance)
     };
 
+    rootContent._materialFrames ||= new Map();
+    rootContent._materialFrames.set(JSON.stringify(path), {
+      frame,
+      host,
+      instance,
+      transform,
+      path
+    });
     this.applyTransform(frame, host, transform);
     if (!this.state.isRenderOnly && !this.state.viewingSpec) {
       const isNestedPlacement = path.length > 1;
@@ -332,9 +341,32 @@ export class MaterialCanvas {
         groupGeometry: transform.isGroup
           ? this.captureGroupGeometry(instance, frame, path)
           : [],
+        multiSelection: mode !== "move"
+          ? this.captureMultiSelection(rootContent, path)
+          : null,
         captured: false,
         changed: false
       };
+      if (gesture.multiSelection?.items.length > 1) {
+        const selection = gesture.multiSelection;
+        if (mode === "resize") {
+          gesture.startSelectionPointer = {
+            x: (event.clientX - canvasBounds.left) / gesture.canvasScaleX,
+            y: (event.clientY - canvasBounds.top) / gesture.canvasScaleY
+          };
+        } else if (mode === "rotate") {
+          const center = {
+            x: selection.bounds.x + selection.bounds.width / 2,
+            y: selection.bounds.y + selection.bounds.height / 2
+          };
+          gesture.selectionCenter = center;
+          const pointer = {
+            x: (event.clientX - canvasBounds.left) / gesture.canvasScaleX,
+            y: (event.clientY - canvasBounds.top) / gesture.canvasScaleY
+          };
+          gesture.startAngle = Math.atan2(pointer.y - center.y, pointer.x - center.x);
+        }
+      }
       frame._materialGesture = gesture;
       if (mode !== "move") {
         frame.setPointerCapture(event.pointerId);
@@ -385,10 +417,13 @@ export class MaterialCanvas {
       if (!gesture || gesture.pointerId !== event.pointerId) return;
       const canvasDeltaX = (event.clientX - gesture.startX) / gesture.canvasScaleX;
       const canvasDeltaY = (event.clientY - gesture.startY) / gesture.canvasScaleY;
+      const currentCanvasBounds = rootContent.getBoundingClientRect();
       const parentDelta = this.transformVector(
         gesture.inverseParentMatrix,
         { x: canvasDeltaX, y: canvasDeltaY }
       );
+      const isMultiSelection = gesture.multiSelection?.items.length > 1 &&
+        gesture.mode !== "move";
       if (gesture.mode === "move" && !gesture.changed &&
           Math.abs(canvasDeltaX) < 3 && Math.abs(canvasDeltaY) < 3) {
         return;
@@ -399,7 +434,19 @@ export class MaterialCanvas {
         gesture.captured = true;
       }
 
-      if (gesture.mode === "move") {
+      if (isMultiSelection && gesture.mode === "resize") {
+        const pointer = {
+          x: (event.clientX - currentCanvasBounds.left) / gesture.canvasScaleX,
+          y: (event.clientY - currentCanvasBounds.top) / gesture.canvasScaleY
+        };
+        this.resizeSelection(gesture, pointer);
+      } else if (isMultiSelection && gesture.mode === "rotate") {
+        const pointer = {
+          x: (event.clientX - currentCanvasBounds.left) / gesture.canvasScaleX,
+          y: (event.clientY - currentCanvasBounds.top) / gesture.canvasScaleY
+        };
+        this.rotateSelection(gesture, pointer);
+      } else if (gesture.mode === "move") {
         transform.position = {
           x: Math.round(gesture.startPosition.x + parentDelta.x),
           y: Math.round(gesture.startPosition.y + parentDelta.y)
@@ -425,10 +472,21 @@ export class MaterialCanvas {
       }
 
       gesture.changed = true;
-      this.persistTransform(instance, transform);
-      this.applyTransform(frame, host, transform);
-      if (gesture.mode === "resize" && gesture.scaleType === "xy" && gesture.isGroup) {
-        this.updateGroupGeometryFrames(gesture.groupGeometry);
+      if (isMultiSelection) {
+        for (const item of gesture.multiSelection.items) {
+          Object.assign(item.liveTransform, item.transform);
+          this.persistTransform(item.instance, item.transform);
+          this.applyTransform(item.frame, item.host, item.liveTransform);
+          if (gesture.mode === "resize" && gesture.scaleType === "xy" && item.transform.isGroup) {
+            this.updateGroupGeometryFrames(item.groupGeometry);
+          }
+        }
+      } else {
+        this.persistTransform(instance, transform);
+        this.applyTransform(frame, host, transform);
+        if (gesture.mode === "resize" && gesture.scaleType === "xy" && gesture.isGroup) {
+          this.updateGroupGeometryFrames(gesture.groupGeometry);
+        }
       }
     });
 
@@ -514,6 +572,179 @@ export class MaterialCanvas {
         y: Math.round(gesture.startPosition.y + oldCenter.y - newCenter.y +
           oldOffset.y - newOffset.y)
       };
+    }
+  }
+
+  captureMultiSelection(rootContent, activePath) {
+    const selectedPaths = this.state.activeInstancePaths || [];
+    const paths = selectedPaths.length ? selectedPaths : [activePath];
+    const frames = rootContent._materialFrames;
+    if (!frames) return null;
+    const uniquePaths = new Map();
+    for (const path of paths) {
+      if (!Array.isArray(path) || path.length !== 1) continue;
+      uniquePaths.set(JSON.stringify(path), path);
+    }
+    if (!uniquePaths.has(JSON.stringify(activePath)) && activePath.length === 1) {
+      uniquePaths.set(JSON.stringify(activePath), activePath);
+    }
+
+    const items = [...uniquePaths.values()].map((path) => {
+      const entry = frames.get(JSON.stringify(path));
+      if (!entry) return null;
+      const { frame, host, instance } = entry;
+      const transform = {
+        ...entry.transform,
+        position: { ...entry.transform.position },
+        size: entry.transform.size
+          ? { ...entry.transform.size }
+          : {
+            width: frame.offsetWidth || Number.parseFloat(frame.style.width),
+            height: frame.offsetHeight || Number.parseFloat(frame.style.height)
+          },
+        scale: getScaleComponents(entry.transform.scale),
+        affine: { ...(entry.transform.affine || IDENTITY_MATRIX) }
+      };
+      if (!transform.size || !Number.isFinite(transform.size.width) ||
+          !Number.isFinite(transform.size.height)) return null;
+      const startPlacement = {
+        ...transform,
+        ...instance,
+        position: { ...transform.position },
+        size: { ...transform.size },
+        scale: transform.scale,
+        affine: transform.affine
+      };
+      return {
+        frame,
+        host,
+        instance,
+        liveTransform: entry.transform,
+        transform,
+        startPosition: { ...transform.position },
+        startSize: { ...transform.size },
+        startScale: { ...transform.scale },
+        rotationStart: transform.rotation,
+        startMatrix: getScreenPlacementMatrix(startPlacement),
+        groupGeometry: transform.isGroup
+          ? this.captureGroupGeometry(instance, frame, path)
+          : []
+      };
+    }).filter(Boolean);
+    if (items.length < 2) return { items, bounds: null };
+
+    const bounds = items.map((item) => getScreenPlacementBounds({
+      ...item.transform,
+      position: item.startPosition,
+      size: item.startSize
+    })).reduce((result, next) => {
+      const left = Math.min(result.x, next.x);
+      const top = Math.min(result.y, next.y);
+      const right = Math.max(result.x + result.width, next.x + next.width);
+      const bottom = Math.max(result.y + result.height, next.y + next.height);
+      return { x: left, y: top, width: right - left, height: bottom - top };
+    });
+    return { items, bounds };
+  }
+
+  resizeSelection(gesture, pointer) {
+    const { bounds, items } = gesture.multiSelection;
+    let width = bounds.width;
+    let height = bounds.height;
+    const deltaX = pointer.x - gesture.startSelectionPointer.x;
+    const deltaY = pointer.y - gesture.startSelectionPointer.y;
+    if (gesture.direction.includes("e")) width += deltaX;
+    if (gesture.direction.includes("w")) width -= deltaX;
+    if (gesture.direction.includes("s")) height += deltaY;
+    if (gesture.direction.includes("n")) height -= deltaY;
+
+    let ratioX = width / bounds.width;
+    let ratioY = height / bounds.height;
+    const minimumRatioX = Math.max(
+      ...items.map((item) => MIN_SIZE / item.startSize.width)
+    );
+    const minimumRatioY = Math.max(
+      ...items.map((item) => MIN_SIZE / item.startSize.height)
+    );
+    ratioX = Math.max(minimumRatioX, ratioX);
+    ratioY = Math.max(minimumRatioY, ratioY);
+    const anchor = {
+      x: gesture.direction.includes("e")
+        ? bounds.x
+        : gesture.direction.includes("w") ? bounds.x + bounds.width : bounds.x + bounds.width / 2,
+      y: gesture.direction.includes("s")
+        ? bounds.y
+        : gesture.direction.includes("n") ? bounds.y + bounds.height : bounds.y + bounds.height / 2
+    };
+
+    for (const item of items) {
+      const { transform } = item;
+      const center = {
+        x: item.startPosition.x + item.startSize.width / 2,
+        y: item.startPosition.y + item.startSize.height / 2
+      };
+      const nextCenter = {
+        x: anchor.x + (center.x - anchor.x) * ratioX,
+        y: anchor.y + (center.y - anchor.y) * ratioY
+      };
+      if (gesture.scaleType === "xy") {
+        transform.size = {
+          width: Math.max(MIN_SIZE, item.startSize.width * ratioX),
+          height: Math.max(MIN_SIZE, item.startSize.height * ratioY)
+        };
+        if (transform.isGroup) {
+          this.applyGroupGeometryScale(item.groupGeometry, ratioX, ratioY);
+        }
+      } else {
+        const scale = {
+          x: item.startScale.x * ratioX,
+          y: item.startScale.y * ratioY
+        };
+        const baseMatrix = getScreenPlacementMatrix({
+          rotation: transform.rotation,
+          scale,
+          affine: IDENTITY_MATRIX
+        });
+        const worldScale = { a: ratioX, b: 0, c: 0, d: ratioY };
+        const nextMatrix = multiplyAffineMatrices(worldScale, item.startMatrix);
+        transform.scale = scale;
+        transform.affine = multiplyAffineMatrices(
+          invertAffineMatrix(baseMatrix),
+          nextMatrix
+        );
+      }
+      transform.position = {
+        x: nextCenter.x - transform.size.width / 2,
+        y: nextCenter.y - transform.size.height / 2
+      };
+    }
+  }
+
+  rotateSelection(gesture, pointer) {
+    const center = gesture.selectionCenter;
+    const angle = Math.atan2(pointer.y - center.y, pointer.x - center.x);
+    let radians = angle - gesture.startAngle;
+    while (radians > Math.PI) radians -= Math.PI * 2;
+    while (radians < -Math.PI) radians += Math.PI * 2;
+    const degrees = radians * (180 / Math.PI);
+    const cosine = Math.cos(radians);
+    const sine = Math.sin(radians);
+    for (const item of gesture.multiSelection.items) {
+      const placementCenter = {
+        x: item.startPosition.x + item.startSize.width / 2,
+        y: item.startPosition.y + item.startSize.height / 2
+      };
+      const offsetX = placementCenter.x - center.x;
+      const offsetY = placementCenter.y - center.y;
+      const nextCenter = {
+        x: center.x + cosine * offsetX - sine * offsetY,
+        y: center.y + sine * offsetX + cosine * offsetY
+      };
+      item.transform.position = {
+        x: nextCenter.x - item.startSize.width / 2,
+        y: nextCenter.y - item.startSize.height / 2
+      };
+      item.transform.rotation = item.rotationStart + degrees;
     }
   }
 

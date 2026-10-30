@@ -131,6 +131,40 @@ async function createHarness(scaleType = "xy") {
   return { canvas, content, frame, host, instance, calls, screen };
 }
 
+async function createMultiHarness(scaleType = "xy") {
+  const content = createElement("div");
+  content.offsetWidth = 1000;
+  content.offsetHeight = 800;
+  content.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 800 });
+  const calls = { edited: 0 };
+  const { MaterialCanvas } = await import("../frontend/browser/MaterialCanvas.mjs");
+  const canvas = new MaterialCanvas({
+    state: {
+      isRenderOnly: false,
+      scaleType,
+      activeInstancePaths: [[0], [1]]
+    },
+    services: {
+      document: createDocument(),
+      markEdited() { calls.edited += 1; },
+      renderInspector() {},
+      selectInstance() {}
+    }
+  });
+  const screen = { file: "screens/home/screen.yml" };
+  const placements = [
+    { id: "first", position: { x: 100, y: 100 }, size: { width: 100, height: 50 }, rotation: 0 },
+    { id: "second", position: { x: 300, y: 100 }, size: { width: 100, height: 50 }, rotation: 0 }
+  ];
+  const frames = placements.map((instance, index) => {
+    const host = createElement("div");
+    host.offsetWidth = instance.size.width;
+    host.offsetHeight = instance.size.height;
+    return canvas.createFrame(host, instance, index, content, screen, [index]);
+  });
+  return { canvas, content, frames, placements, calls };
+}
+
 test("moves a selected material in canvas coordinates and persists its position", async () => {
   const { frame, host, instance, calls } = await createHarness();
   host.listeners.get("pointerdown")(createPointerEvent({
@@ -248,6 +282,129 @@ test("transform resize saves scale factors without changing placement dimensions
   assert.deepEqual(instance.size, { width: 100, height: 60 });
   assert.deepEqual(instance.scale, { x: 1.2, y: 1 });
   assert.equal(frame.style.transform, "rotate(0deg) scale(1.2, 1)");
+});
+
+test("resizes all selected placements from their combined bounds in X/Y mode", async () => {
+  const { frames, placements } = await createMultiHarness();
+  const east = frames[0].querySelectorAll(".material-resize-control")
+    .find((handle) => handle.dataset.resizeDirection === "e");
+  east.listeners.get("pointerdown")(createPointerEvent({
+    clientX: 400,
+    clientY: 125,
+    target: east
+  }));
+  frames[0].listeners.get("pointermove")(createPointerEvent({
+    clientX: 460,
+    clientY: 125,
+    target: frames[0]
+  }));
+
+  assert.ok(Math.abs(placements[0].size.width - 120) < 1e-10);
+  assert.ok(Math.abs(placements[1].size.width - 120) < 1e-10);
+  assert.ok(Math.abs(placements[0].position.x - 100) < 1e-10);
+  assert.ok(Math.abs(placements[1].position.x - 340) < 1e-10);
+});
+
+test("keeps multi-selection resize dimensions when a placement is moved afterward", async () => {
+  const { frames, placements } = await createMultiHarness();
+  const east = frames[0].querySelectorAll(".material-resize-control")
+    .find((handle) => handle.dataset.resizeDirection === "e");
+  east.listeners.get("pointerdown")(createPointerEvent({
+    clientX: 400,
+    clientY: 125,
+    target: east
+  }));
+  frames[0].listeners.get("pointermove")(createPointerEvent({
+    clientX: 460,
+    clientY: 125,
+    target: frames[0]
+  }));
+  frames[0].listeners.get("pointerup")(createPointerEvent({
+    clientX: 460,
+    clientY: 125,
+    target: frames[0]
+  }));
+
+  const host = frames[0].children[0];
+  host.listeners.get("pointerdown")(createPointerEvent({
+    clientX: 140,
+    clientY: 125,
+    target: host
+  }));
+  frames[0].listeners.get("pointermove")(createPointerEvent({
+    clientX: 160,
+    clientY: 125,
+    target: frames[0]
+  }));
+
+  assert.deepEqual(placements[0].size, { width: 120, height: 50 });
+  assert.ok(Math.abs(placements[0].position.x - 120) < 1e-10);
+});
+
+test("transform-resizes all selected placements without changing their dimensions", async () => {
+  const { frames, placements } = await createMultiHarness("transform");
+  const east = frames[0].querySelectorAll(".material-resize-control")
+    .find((handle) => handle.dataset.resizeDirection === "e");
+  east.listeners.get("pointerdown")(createPointerEvent({
+    clientX: 400,
+    clientY: 125,
+    target: east
+  }));
+  frames[0].listeners.get("pointermove")(createPointerEvent({
+    clientX: 460,
+    clientY: 125,
+    target: frames[0]
+  }));
+  frames[0].listeners.get("pointerup")(createPointerEvent({
+    clientX: 460,
+    clientY: 125,
+    target: frames[0]
+  }));
+
+  assert.deepEqual(placements.map(({ size }) => size), [
+    { width: 100, height: 50 },
+    { width: 100, height: 50 }
+  ]);
+  assert.deepEqual(placements.map(({ scale }) => scale), [
+    { x: 1.2, y: 1 },
+    { x: 1.2, y: 1 }
+  ]);
+  assert.ok(Math.abs(placements[1].position.x - 350) < 1e-10);
+
+  const host = frames[0].children[0];
+  host.listeners.get("pointerdown")(createPointerEvent({
+    clientX: 160,
+    clientY: 125,
+    target: host
+  }));
+  frames[0].listeners.get("pointermove")(createPointerEvent({
+    clientX: 180,
+    clientY: 125,
+    target: frames[0]
+  }));
+  assert.deepEqual(placements[0].scale, { x: 1.2, y: 1 });
+  assert.ok(Math.abs(placements[0].position.x - 130) < 1e-10);
+});
+
+test("rotates all selected placements around their shared bounds center", async () => {
+  const { frames, placements } = await createMultiHarness();
+  const rotate = frames[0].querySelector(".material-rotate-control");
+  rotate.listeners.get("pointerdown")(createPointerEvent({
+    clientX: 350,
+    clientY: 125,
+    target: rotate
+  }));
+  frames[0].listeners.get("pointermove")(createPointerEvent({
+    clientX: 250,
+    clientY: 225,
+    target: frames[0]
+  }));
+
+  assert.deepEqual(placements.map(({ rotation }) => rotation), [90, 90]);
+  assert.ok(Math.abs(placements[0].position.x - 200) < 1e-10);
+  assert.ok(Math.abs(placements[0].position.y) < 1e-10);
+  assert.ok(Math.abs(placements[1].position.x - 200) < 1e-10);
+  assert.ok(Math.abs(placements[1].position.y - 200) < 1e-10);
 });
 
 test("sizes selection outlines to transformed bounds without transforming them", async () => {
