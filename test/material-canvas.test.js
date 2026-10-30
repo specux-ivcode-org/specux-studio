@@ -1013,6 +1013,7 @@ test("shows one-line layers above placements for the selected layer", async () =
       className,
       textContent,
       children,
+      disabled: false,
       dataset: {},
       listeners,
       attributes,
@@ -1035,6 +1036,8 @@ test("shows one-line layers above placements for the selected layer", async () =
   }
   const dragCalls = [];
   const deletionMessages = [];
+  const visibilityCalls = [];
+  let activeStateId = "default";
   const screen = {
     layers: [{ id: "overlay", name: "Overlay" }, { id: "base", name: "Base" }],
     materials: [
@@ -1051,6 +1054,11 @@ test("shows one-line layers above placements for the selected layer", async () =
     },
     services: {
       element,
+      getActivePreviewStateId: () => activeStateId,
+      isInstanceVisible: (instance) => instance.id !== "background",
+      setInstanceVisible: (...args) => { visibilityCalls.push(args); },
+      markEdited() {},
+      renderScreen: async () => {},
       createLayer: async () => {},
       setLayerVisibility: async () => {},
       renameLayer: async () => {},
@@ -1080,7 +1088,17 @@ test("shows one-line layers above placements for the selected layer", async () =
     child.className === "layer-delete-button"
   ));
   assert.equal(placementList.children[0].dataset.materialIndex, "1");
-  assert.equal(placementList.children[0].children.length, 4);
+  assert.equal(placementList.children[0].children.length, 5);
+  const footerVisibility = placementList.children[1].children
+    .find((child) => child.className.startsWith("placement-visibility-toggle"));
+  assert.equal(footerVisibility.textContent, "Visible");
+  assert.equal(footerVisibility.disabled, false);
+  footerVisibility.listeners.get("click")();
+  assert.deepEqual(visibilityCalls[0].slice(1), [
+    screen.materials[2],
+    false,
+    "default"
+  ]);
   assert.ok(placementList.children[0].children.every((child) =>
     child.className !== "layer-placement-assignment"
   ));
@@ -1148,7 +1166,113 @@ test("shows one-line layers above placements for the selected layer", async () =
   const singleLayerDelete = singleLayerRow.children
     .find((child) => child.className === "layer-delete-button");
   assert.equal(singleLayerDelete.disabled, true);
+
+  activeStateId = "dialog";
+  const namedStatePanel = element("div");
+  renderer.renderLayersDetails(namedStatePanel, screen);
+  const namedStatePlacementList = namedStatePanel.children[1].children[2];
+  const namedStateVisibility = namedStatePlacementList.children[0].children
+    .find((child) => child.className.startsWith("placement-visibility-toggle"));
+  assert.equal(namedStateVisibility.disabled, false);
+  namedStateVisibility.listeners.get("click")();
+  assert.equal(visibilityCalls[1][3], "dialog");
   assert.equal(singleLayerDelete.title, "At least one layer must remain");
+});
+
+test("selects and resets one named-state change from Preview State details", async () => {
+  const { InspectorRenderer } = await import("../frontend/browser/InspectorRenderer.mjs");
+  function element(tagName, className = "", textContent = "") {
+    const listeners = new Map();
+    const attributes = new Map();
+    const children = [];
+    return {
+      tagName,
+      className,
+      textContent,
+      children,
+      listeners,
+      attributes,
+      disabled: false,
+      type: "",
+      append(...nodes) { children.push(...nodes); },
+      replaceChildren(...nodes) { children.splice(0, children.length, ...nodes); },
+      addEventListener(type, callback) { listeners.set(type, callback); },
+      setAttribute(name, value) { attributes.set(name, value); }
+    };
+  }
+  const screen = {
+    file: "screens/home/screen.yml",
+    data: {
+      layers: [{ id: "base", name: "Base" }],
+      materials: [{ id: "dialog-title", label: "Dialog title" }],
+      "preview-states": [{
+        id: "dialog",
+        name: "Dialog",
+        description: "Show a dialog."
+      }]
+    }
+  };
+  const override = {
+    key: "placement:dialog-title:position",
+    kind: "placement",
+    placementId: "dialog-title",
+    property: "position",
+    value: { x: 20, y: 30 }
+  };
+  const resetCalls = [];
+  const editedFiles = [];
+  const renderedScreens = [];
+  let renderer;
+  const panel = element("div");
+  renderer = new InspectorRenderer({
+    state: { screens: [screen], activeScreenIndex: 0 },
+    services: {
+      element,
+      getActivePreviewStateId: () => "dialog",
+      getScreenPreviewStates: (data) => data["preview-states"],
+      appendEditableField() {},
+      listPreviewStateOverrides: () => [override],
+      getElementLabel: (placement) => placement.label,
+      renderInspector() {
+        panel.replaceChildren();
+        renderer.renderPreviewStateDetails(panel);
+      },
+      resetPreviewStateOverride: (...args) => { resetCalls.push(args); },
+      markEdited: (file) => editedFiles.push(file),
+      renderScreen: async (...args) => { renderedScreens.push(args); },
+      deletePreviewState: async () => {},
+      renamePreviewState() {},
+      describePreviewState() {},
+      showFatalError(error) { throw error; }
+    }
+  });
+
+  renderer.renderPreviewStateDetails(panel);
+  const findElement = (node, predicate) => {
+    if (predicate(node)) return node;
+    for (const child of node.children || []) {
+      const match = findElement(child, predicate);
+      if (match) return match;
+    }
+    return null;
+  };
+  const select = findElement(panel, (node) =>
+    node.className === "preview-state-override-select"
+  );
+  assert.equal(select.textContent, "Placement · Dialog title · Position");
+  select.listeners.get("click")();
+
+  const reset = findElement(panel, (node) => node.textContent === "Reset selected change");
+  assert.equal(reset.disabled, false);
+  reset.listeners.get("click")();
+  await Promise.resolve();
+
+  assert.equal(resetCalls.length, 1);
+  assert.equal(resetCalls[0][0], screen);
+  assert.equal(resetCalls[0][1], "dialog");
+  assert.equal(resetCalls[0][2], override);
+  assert.deepEqual(editedFiles, [screen.file]);
+  assert.deepEqual(renderedScreens, [[0, { previewStateSelected: true }]]);
 });
 
 test("reuses one Material file with independent placement transforms", async () => {

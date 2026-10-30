@@ -476,6 +476,7 @@ export class MaterialCanvas {
         for (const item of gesture.multiSelection.items) {
           Object.assign(item.liveTransform, item.transform);
           this.persistTransform(item.instance, item.transform);
+          this.services.persistPlacementState?.(item.instance);
           this.applyTransform(item.frame, item.host, item.liveTransform);
           if (gesture.mode === "resize" && gesture.scaleType === "xy" && item.transform.isGroup) {
             this.updateGroupGeometryFrames(item.groupGeometry);
@@ -483,6 +484,7 @@ export class MaterialCanvas {
         }
       } else {
         this.persistTransform(instance, transform);
+        this.services.persistPlacementState?.(instance);
         this.applyTransform(frame, host, transform);
         if (gesture.mode === "resize" && gesture.scaleType === "xy" && gesture.isGroup) {
           this.updateGroupGeometryFrames(gesture.groupGeometry);
@@ -753,6 +755,8 @@ export class MaterialCanvas {
     instance.scale = serializeScale(getScaleComponents(transform.scale));
     instance.size = { ...transform.size };
     instance.rotation = transform.rotation;
+    if (transform.affine) instance.affine = { ...transform.affine };
+    else delete instance.affine;
   }
 
   transformVector(matrix, vector) {

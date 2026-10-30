@@ -20,6 +20,7 @@ export class ScreenMaterialController {
     if (!this.state.screens[this.state.activeScreenIndex]) {
       throw new Error("Select a Screen before adding a Material.");
     }
+    this.requireDefaultState();
     if (type !== "label") throw new Error(`Unsupported material type "${type}".`);
     let definition = [...this.state.materialFiles.values()]
       .find((material) =>
@@ -67,6 +68,7 @@ export class ScreenMaterialController {
     const screen = state.screens[state.activeScreenIndex];
     const definition = state.materialFiles.get(filePath);
     if (!screen) throw new Error("Select a Screen before adding a Material.");
+    this.requireDefaultState(screen);
     if (!definition) throw new Error(`Material file "${filePath}" is not available.`);
     normalizeScreenLayers(screen.data);
     const size = getMaterialDefaultSize(definition.data.type);
@@ -106,6 +108,7 @@ export class ScreenMaterialController {
 
   async createLayer() {
     const screen = this.getActiveScreen();
+    this.requireDefaultState(screen);
     normalizeScreenLayers(screen.data);
     let suffix = 1;
     while (screen.data.layers.some((layer) => layer.id === `layer-${suffix}`)) suffix += 1;
@@ -117,6 +120,7 @@ export class ScreenMaterialController {
 
   async renameLayer(layerId, name) {
     const screen = this.getActiveScreen();
+    this.requireDefaultState(screen);
     const layer = this.getLayer(screen, layerId);
     const nextName = name.trim();
     if (!nextName) throw new Error("Layer names cannot be empty.");
@@ -127,13 +131,17 @@ export class ScreenMaterialController {
   async setLayerVisibility(layerId, visible) {
     const screen = this.getActiveScreen();
     const layer = this.getLayer(screen, layerId);
-    if (visible) delete layer.visible;
+    const stateId = this.services.getActivePreviewStateId?.(screen.data) || "default";
+    if (this.services.setPreviewLayerVisibility) {
+      this.services.setPreviewLayerVisibility(screen, layer, visible, stateId);
+    } else if (visible) delete layer.visible;
     else layer.visible = false;
     await this.commitLayerChange(screen);
   }
 
   async moveLayer(layerId, direction) {
     const screen = this.getActiveScreen();
+    this.requireDefaultState(screen);
     const layers = screen.data.layers || [];
     const index = layers.findIndex((layer) => layer.id === layerId);
     const nextIndex = index + direction;
@@ -144,6 +152,7 @@ export class ScreenMaterialController {
 
   async reorderLayer(layerId, targetLayerId, insertAfter) {
     const screen = this.getActiveScreen();
+    this.requireDefaultState(screen);
     const layers = screen.data.layers;
     if (layerId === targetLayerId) return;
     const fromIndex = layers.findIndex((layer) => layer.id === layerId);
@@ -165,6 +174,7 @@ export class ScreenMaterialController {
 
   async movePlacement(path, direction) {
     const screen = this.getActiveScreen();
+    this.requireDefaultState(screen);
     const { siblings, index } = getScreenPlacementLocation(screen.data.materials, path);
     const selectedId = getScreenPlacementAtPath(
       screen.data.materials,
@@ -193,6 +203,7 @@ export class ScreenMaterialController {
 
   async reorderPlacement(path, targetPath, insertAfter) {
     const screen = this.getActiveScreen();
+    this.requireDefaultState(screen);
     const materials = screen.data.materials;
     const { parentPath, siblings, index, placement: moving } =
       getScreenPlacementLocation(materials, path);
@@ -218,6 +229,7 @@ export class ScreenMaterialController {
 
   async deleteLayer(layerId) {
     const screen = this.getActiveScreen();
+    this.requireDefaultState(screen);
     const layers = screen.data.layers || [];
     const index = layers.findIndex((layer) => layer.id === layerId);
     if (index < 0) throw new Error(`Layer "${layerId}" is no longer available.`);
@@ -230,9 +242,13 @@ export class ScreenMaterialController {
       materials,
       this.state.activeInstancePath || []
     )?.id;
+    const removedPlacementIds = materials
+      .filter((material) => material.layer === layerId)
+      .flatMap((material) => this.getPlacementIds(material));
     for (let materialIndex = materials.length - 1; materialIndex >= 0; materialIndex -= 1) {
       if (materials[materialIndex].layer === layerId) materials.splice(materialIndex, 1);
     }
+    this.services.removePlacementStateOverrides?.(screen, removedPlacementIds, [layerId]);
     await this.commitLayerChange(screen);
     if (selectedId && getScreenPlacementPathById(materials, selectedId)) {
       await this.selectPlacementById(materials, selectedId);
@@ -247,6 +263,7 @@ export class ScreenMaterialController {
 
   async assignPlacementLayer(path, layerId) {
     const screen = this.getActiveScreen();
+    this.requireDefaultState(screen);
     if (path.length !== 1) {
       throw new Error("A placement inside a group inherits its layer from that group.");
     }
@@ -259,8 +276,16 @@ export class ScreenMaterialController {
 
   async group(paths) {
     const screen = this.getActiveScreen();
+    this.requireDefaultState(screen);
     const id = this.getUniqueGroupId(screen.data.materials);
+    const stateSnapshots = this.captureNamedStatePlacements(screen);
+    for (const { stateId, placements } of stateSnapshots) {
+      createScreenPlacementGroup(placements, paths, id);
+    }
     const { path } = createScreenPlacementGroup(screen.data.materials, paths, id);
+    for (const { stateId, placements } of stateSnapshots) {
+      this.services.persistStatePlacements?.(screen, placements, stateId);
+    }
     await this.commitLayerChange(screen);
     this.services.selectInstance?.(path, null);
     return path;
@@ -268,7 +293,44 @@ export class ScreenMaterialController {
 
   async ungroup(path) {
     const screen = this.getActiveScreen();
+    this.requireDefaultState(screen);
+    const groupId = getScreenPlacementAtPath(screen.data.materials, path)?.id;
+    const stateSnapshots = this.captureNamedStatePlacements(screen);
+    const stateChildVisibility = [];
+    for (const { stateId, placements } of stateSnapshots) {
+      const stateGroup = getScreenPlacementAtPath(placements, path);
+      if (stateGroup) {
+        const groupVisible = this.services.isInstanceVisible
+          ? this.services.isInstanceVisible(stateGroup, stateId, screen.data)
+          : true;
+        stateGroup.children.forEach((child) => {
+          const childVisible = this.services.isInstanceVisible
+            ? this.services.isInstanceVisible(child, stateId, screen.data)
+            : true;
+          stateChildVisibility.push({
+            id: child.id,
+            stateId,
+            visible: groupVisible && childVisible
+          });
+        });
+      }
+      ungroupScreenPlacement(placements, path);
+    }
+    const baseGroup = getScreenPlacementAtPath(screen.data.materials, path);
+    if (baseGroup && this.services.isInstanceVisible &&
+        !this.services.isInstanceVisible(baseGroup, "default", screen.data)) {
+      baseGroup.children.forEach((child) => { child.visible = false; });
+    }
     const children = ungroupScreenPlacement(screen.data.materials, path);
+    if (groupId) this.services.removePlacementStateOverrides?.(screen, [groupId]);
+    for (const { stateId, placements } of stateSnapshots) {
+      this.services.persistStatePlacements?.(screen, placements, stateId);
+    }
+    for (const { id, stateId, visible } of stateChildVisibility) {
+      const childPath = getScreenPlacementPathById(screen.data.materials, id);
+      const child = childPath && getScreenPlacementAtPath(screen.data.materials, childPath);
+      if (child) this.services.setInstanceVisible?.(screen, child, visible, stateId);
+    }
     await this.commitLayerChange(screen);
     const first = children[0];
     const instance = getScreenPlacementAtPath(screen.data.materials, first);
@@ -282,17 +344,21 @@ export class ScreenMaterialController {
     if (!screen || !Array.isArray(path) || path.length === 0) {
       throw new Error("Select a Material placement before deleting it.");
     }
+    this.requireDefaultState(screen);
     const location = getScreenPlacementLocation(screen.data.materials, path);
     const id = location.placement.id;
+    const removedPlacementIds = this.getPlacementIds(location.placement);
     location.siblings.splice(location.index, 1);
     let parentPath = location.parentPath;
     while (parentPath.length) {
       const parent = getScreenPlacementAtPath(screen.data.materials, parentPath);
       if (!isScreenGroup(parent) || parent.children.length > 0) break;
+      removedPlacementIds.push(parent.id);
       const parentLocation = getScreenPlacementLocation(screen.data.materials, parentPath);
       parentLocation.siblings.splice(parentLocation.index, 1);
       parentPath = parentLocation.parentPath;
     }
+    this.services.removePlacementStateOverrides?.(screen, removedPlacementIds);
     if (!getScreenPlacementPathById(screen.data.materials, id)) {
       services.selectInstance?.([], null);
     }
@@ -305,6 +371,12 @@ export class ScreenMaterialController {
     if (!screen) throw new Error("Select a Screen before editing layers.");
     normalizeScreenLayers(screen.data);
     return screen;
+  }
+
+  requireDefaultState(screen = this.getActiveScreen()) {
+    if ((this.services.getActivePreviewStateId?.(screen.data) || "default") !== "default") {
+      throw new Error("Placement and layer structure can only be edited in the Default state.");
+    }
   }
 
   getLayer(screen, layerId) {
@@ -326,6 +398,31 @@ export class ScreenMaterialController {
       id = `group-${suffix}`;
     }
     return id;
+  }
+
+  getPlacementIds(placement) {
+    return [
+      placement.id,
+      ...(placement.children || []).flatMap((child) => this.getPlacementIds(child))
+    ];
+  }
+
+  captureNamedStatePlacements(screen) {
+    const states = this.services.getScreenPreviewStates?.(screen.data) || [];
+    return states
+      .filter((previewState) => previewState.id !== "default")
+      .map((previewState) => ({
+        stateId: previewState.id,
+        placements: screen.data.materials.map((placement) =>
+          this.services.resolvePlacementForState
+            ? this.services.resolvePlacementForState(
+              placement,
+              previewState.id,
+              screen.data
+            )
+            : structuredClone(placement)
+        )
+      }));
   }
 
   async commitPlacementChange(screen, placementId) {

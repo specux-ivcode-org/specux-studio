@@ -242,6 +242,17 @@ const screenMaterialController = new ScreenMaterialController({
     renderScreen,
     selectInstance,
     openScreenPlacementContextMenu,
+    getScreenPreviewStates,
+    getActivePreviewStateId,
+    resolvePlacementForState,
+    persistStatePlacements,
+    isInstanceVisible,
+    setInstanceVisible: (screen, instance, visible, stateId) =>
+      previewStateController.setInstanceVisible(screen.data, instance, visible, stateId),
+    setPreviewLayerVisibility: (screen, layer, visible, stateId) =>
+      previewStateController.setLayerVisible(screen.data, layer, visible, stateId),
+    removePlacementStateOverrides: (screen, placementIds, layerIds) =>
+      previewStateController.removeStructuralOverrides(screen.data, placementIds, layerIds),
     confirm: (message) => window.confirm(message)
   }
 });
@@ -653,7 +664,14 @@ const materialCanvas = new MaterialCanvas({
     get activeInstancePaths() { return activeInstancePaths; },
     get scaleType() { return screenSelectionController?.scaleType || "xy"; }
   },
-  services: { document, markEdited, renderInspector, selectInstance, openScreenPlacementContextMenu }
+  services: {
+    document,
+    markEdited,
+    renderInspector,
+    selectInstance,
+    openScreenPlacementContextMenu,
+    persistPlacementState
+  }
 });
 const screenMaterialRenderer = new ScreenMaterialRenderer({
   state: {
@@ -717,6 +735,8 @@ const workspaceViewRenderer = new WorkspaceViewRenderer({
     renderMaterial: (material, index, path) => screenMaterialRenderer.render(material, index, path),
     getActivePreviewStateId,
     isInstanceVisible,
+    isLayerVisible,
+    resolvePlacementForState,
     createMaterialFrame: (host, instance, index, content, screen, path, parentTransform, rootContent) =>
       materialCanvas.createFrame(
         host,
@@ -821,6 +841,15 @@ const inspectorRenderer = new InspectorRenderer({
     showFatalError,
     getElementLabel,
     isInstanceVisible,
+    isLayerVisible,
+    resolvePlacementForState,
+    persistPlacementState,
+    setInstanceVisible: (screen, instance, visible, stateId) =>
+      previewStateController.setInstanceVisible(screen.data, instance, visible, stateId),
+    listPreviewStateOverrides: (screen, stateId) =>
+      previewStateController.listStateOverrides(screen, stateId),
+    resetPreviewStateOverride: (screen, stateId, selectedOverride) =>
+      previewStateController.resetStateOverride(screen, stateId, selectedOverride),
     markEdited,
     renderScreen,
     renderMaterialFile,
@@ -879,8 +908,36 @@ function getActivePreviewStateId(screen) {
   return previewStateController.getActiveId(screen);
 }
 
-function isInstanceVisible(instance, stateId) {
-  return previewStateController.isInstanceVisible(instance, stateId);
+function isInstanceVisible(instance, stateId, screen = screens[activeScreenIndex]?.data) {
+  return previewStateController.isInstanceVisible(
+    instance,
+    stateId,
+    screen
+  );
+}
+
+function isLayerVisible(layer, stateId, screen = screens[activeScreenIndex]?.data) {
+  return previewStateController.isLayerVisible(layer, stateId, screen);
+}
+
+function resolvePlacementForState(instance, stateId, screen = screens[activeScreenIndex]?.data) {
+  return previewStateController.resolvePlacement(instance, stateId, screen);
+}
+
+function persistPlacementState(instance) {
+  const screen = screens[activeScreenIndex];
+  if (!screen) throw new Error("Select a Screen before editing a placement.");
+  previewStateController.savePlacement(
+    screen,
+    instance,
+    getActivePreviewStateId(screen.data)
+  );
+}
+
+function persistStatePlacements(screen, placements, stateId) {
+  for (const placement of placements) {
+    previewStateController.savePlacement(screen, placement, stateId);
+  }
 }
 
 function getTemplateByPath(filePath) {
@@ -1552,8 +1609,13 @@ function selectInstances(paths) {
 
 function openScreenPlacementContextMenu(event, path) {
   if (isRenderOnly || !Array.isArray(path) || path.length === 0) return;
+  const screen = screens[activeScreenIndex];
+  if (getActivePreviewStateId(screen?.data) !== "default") {
+    closeScreenPlacementContextMenu();
+    return;
+  }
   event.preventDefault();
-  const placement = getInstanceAtPath(screens[activeScreenIndex], path);
+  const placement = getInstanceAtPath(screen, path);
   if (!placement) return;
   if (!activeInstancePaths.some((selectedPath) => sameInstancePath(selectedPath, path))) {
     selectInstance(path, placement.src || null);

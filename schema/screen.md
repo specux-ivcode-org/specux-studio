@@ -12,7 +12,7 @@ The Screen ID is defined by the matching `screens[].id` in `project.yml`; do not
 | `spec` | string | No | Path to this Screen's behavior spec: `screens/<screen-id>/specs/screen.md`. |
 | `layers` | list | Yes | Ordered layer stack, from topmost to bottommost. Every Screen must have at least one layer. |
 | `materials` | list | Yes | Ordered list of visual Material placements and groups. An empty list is allowed while building the Screen. |
-| `preview-states` | list | No | Named visual states for previewing this Screen. If omitted, the Screen has an implicit `default` state. |
+| `preview-states` | list | No | Named visual states. Each state inherits the Screen's Default values and stores only its visual overrides. If omitted, the Screen has an implicit `default` state. |
 
 Screen Material placements are instances of reusable STML templates. Labels and buttons are visual only; they do not execute actions or accept user input. Each instance can override declared template variables and has its own position, size, and rotation. Placements can also be grouped into Screen-local containers; groups are not reusable STML Materials.
 
@@ -23,10 +23,14 @@ Each item in `preview-states` is a mapping with these properties:
 | Property | Type | Required | Definition |
 |---|---|---:|---|
 | `id` | string | Yes | Unique state identifier using lowercase letters, numbers, and hyphens. The `default` state is required. |
-| `name` | string | Yes | Non-empty label shown in the Studio preview-state selector. |
+| `name` | string | Yes | Non-empty label shown in the Studio state selector. |
 | `description` | string | Yes, except for `default` | Non-empty description of the visual state. |
+| `layers` | mapping | No | Sparse layer visibility overrides keyed by layer ID, with each value shaped as `{visible: boolean}`. |
+| `placements` | mapping | No | Sparse visual overrides keyed by placement ID. Values may override `visible`, `attributes`, `position`, `size`, `rotation`, `scale`, and `affine`; omitted values inherit from Default. |
 
-Every non-default preview state must have a non-empty description. The implicit or explicit `default` state does not require one. Preview states are visual configurations; they do not define application navigation or executable behavior. Select another state to preview its material visibility configuration without changing the Screen's authored defaults.
+Every non-default state must have a non-empty description. The implicit or explicit `default` state does not require one and cannot contain overrides. A named state inherits all base placements and layers, including placements added later, unless it has an override for that item. Attribute override values may be `null` to remove an attribute inherited from Default. Legacy per-placement `visibility` mappings remain supported; new edits use `preview-states[].placements.<placement-id>.visible`. States are visual configurations; they do not define application navigation or executable behavior.
+
+The Default state is the structural source of truth. Adding or deleting placements, changing layers, and grouping or ungrouping are available only in Default. In a named state, users may change placement visibility, Material attributes, placement transforms, and layer visibility. These edits are saved as state overrides through the normal Screen save flow.
 
 When a Screen defines non-default preview states, each state ID must appear in a scenario step in a behavior spec linked to that Screen. Write the step as `- **SHOW** <state-id>` after that scenario's `THEN` step. `SHOW` records which preview state represents the scenario outcome; it does not make the state executable.
 
@@ -44,7 +48,8 @@ Each item in `materials` is a mapping with these properties:
 | `rotation` | number | No | Clockwise rotation in degrees around the material's center. Defaults to `0`. |
 | `scale` | number or mapping | No | Positive transform scale. A number applies uniformly; `{x, y}` sets positive X/Y factors. Defaults to `1`. |
 | `affine` | mapping | No | Non-singular linear transform matrix `{a, b, c, d}`. Used to retain shear when group transforms are baked into placements during ungrouping. |
-| `visibility` | mapping | No | Optional state-specific visibility values keyed by `preview-states[].id`. A missing state value means visible. |
+| `visible` | boolean | No | Default-state placement visibility. Defaults to `true`. |
+| `visibility` | mapping | No | Legacy state-specific visibility values keyed by `preview-states[].id`. A missing value inherits the placement's Default visibility. New state edits are stored in the matching state override instead. |
 | `note` | string | No | Optional implementation guidance. |
 | `layer` | string | Yes at the Screen root | ID of a layer in the Screen's `layers` list. Top-level placements require a layer; placements inside a group inherit the group's layer and must not define one. |
 
@@ -64,7 +69,8 @@ A group is a Screen-local placement container with this shape:
 | `rotation` | number | No | Clockwise rotation in degrees around the fixed group pivot. Defaults to `0`. |
 | `scale` | number or mapping | No | Positive transform scale applied to the group and all descendants. A number applies uniformly; `{x, y}` sets positive X/Y factors. Defaults to `1`. |
 | `affine` | mapping | No | Non-singular linear transform matrix `{a, b, c, d}`. Used to retain shear when group transforms are baked into groups during ungrouping. |
-| `visibility` | mapping | No | State-specific visibility for the group. A hidden group hides all descendants. |
+| `visible` | boolean | No | Default-state group visibility. A hidden group hides all descendants. Defaults to `true`. |
+| `visibility` | mapping | No | Legacy state-specific visibility for the group. A hidden group hides all descendants; a missing value inherits the group's Default visibility. |
 | `note` | string | No | Optional implementation guidance. |
 | `layer` | string | Yes at the Screen root | Root group layer. Descendants inherit this layer; nested groups must not define `layer`. |
 

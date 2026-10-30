@@ -264,3 +264,156 @@ test("ScreenMaterialController groups and ungroups selected placement paths", as
   assert.equal(screen.data.materials[1].layer, "base");
   assert.deepEqual(state.activeInstancePath, [0]);
 });
+
+test("grouping and ungrouping preserve named-state transforms and hidden groups", async () => {
+  const { PreviewStateController } = await import(
+    "../frontend/browser/PreviewStateController.mjs"
+  );
+  const { ScreenMaterialController } = await import(
+    "../frontend/browser/ScreenMaterialController.mjs"
+  );
+  const screen = {
+    file: "screens/home/screen.yml",
+    data: {
+      layers: [{ id: "base", name: "Base" }],
+      "preview-states": [
+        { id: "default", name: "Default" },
+        {
+          id: "dialog",
+          name: "Dialog",
+          description: "Show the dialog.",
+          placements: { first: { position: { x: 20, y: 20 } } }
+        }
+      ],
+      materials: [
+        material("first", { x: 10, y: 20 }),
+        material("second", { x: 120, y: 20 })
+      ]
+    }
+  };
+  const state = {
+    screens: [screen],
+    activeScreenIndex: 0,
+    activeInstancePath: [0],
+    activePreviewStateIds: new Map()
+  };
+  const previewStates = new PreviewStateController({
+    state,
+    services: { getScreenPreviewStates: validation.getPreviewStates }
+  });
+  const screenController = new ScreenMaterialController({
+    state,
+    services: {
+      getScreenPreviewStates: validation.getPreviewStates,
+      getActivePreviewStateId: () => "default",
+      resolvePlacementForState: (...args) => previewStates.resolvePlacement(...args),
+      persistStatePlacements: (target, placements, stateId) => {
+        placements.forEach((placement) =>
+          previewStates.savePlacement(target, placement, stateId)
+        );
+      },
+      isInstanceVisible: (...args) => previewStates.isInstanceVisible(...args),
+      setInstanceVisible: (...args) => previewStates.setInstanceVisible(...args),
+      removePlacementStateOverrides: (target, placementIds, layerIds) =>
+        previewStates.removeStructuralOverrides(target.data, placementIds, layerIds),
+      markEdited() {},
+      async renderScreen() {},
+      selectInstance(path) {
+        state.activeInstancePath = path;
+      }
+    }
+  });
+
+  const originalResolved = screen.data.materials.map((placement) =>
+    previewStates.resolvePlacement(placement, "dialog", screen.data)
+  );
+  await screenController.group([[0], [1]]);
+  let stateGroup = previewStates.resolvePlacement(
+    screen.data.materials[0],
+    "dialog",
+    screen.data
+  );
+  assert.equal(stateGroup.position.x + stateGroup.children[0].position.x, originalResolved[0].position.x);
+  assert.equal(stateGroup.position.x + stateGroup.children[1].position.x, originalResolved[1].position.x);
+
+  previewStates.setInstanceVisible({ data: screen.data }, screen.data.materials[0], false, "dialog");
+  await screenController.ungroup([0]);
+  const resolvedChildren = screen.data.materials.map((placement) =>
+    previewStates.resolvePlacement(placement, "dialog", screen.data)
+  );
+  assert.deepEqual(resolvedChildren.map((placement) => placement.visible), [undefined, undefined]);
+  assert.deepEqual(resolvedChildren.map((placement) =>
+    previewStates.isInstanceVisible(placement, "dialog", screen.data)
+  ), [false, false]);
+  assert.equal(screen.data["preview-states"][1].placements.group, undefined);
+  assert.equal(resolvedChildren[0].position.x, originalResolved[0].position.x);
+  assert.equal(resolvedChildren[1].position.x, originalResolved[1].position.x);
+});
+
+test("ungrouping preserves a named state that shows a hidden Default group", async () => {
+  const { PreviewStateController } = await import(
+    "../frontend/browser/PreviewStateController.mjs"
+  );
+  const { ScreenMaterialController } = await import(
+    "../frontend/browser/ScreenMaterialController.mjs"
+  );
+  const screen = {
+    file: "screens/home/screen.yml",
+    data: {
+      layers: [{ id: "base", name: "Base" }],
+      materials: [
+        material("first", { x: 10, y: 20 }),
+        material("second", { x: 120, y: 20 })
+      ]
+    }
+  };
+  const state = {
+    screens: [screen],
+    activeScreenIndex: 0,
+    activeInstancePath: [0],
+    activePreviewStateIds: new Map()
+  };
+  const previewStates = new PreviewStateController({
+    state,
+    services: { getScreenPreviewStates: validation.getPreviewStates }
+  });
+  const screenController = new ScreenMaterialController({
+    state,
+    services: {
+      getScreenPreviewStates: validation.getPreviewStates,
+      getActivePreviewStateId: () => "default",
+      resolvePlacementForState: (...args) => previewStates.resolvePlacement(...args),
+      persistStatePlacements: (target, placements, stateId) => {
+        placements.forEach((placement) =>
+          previewStates.savePlacement(target, placement, stateId)
+        );
+      },
+      isInstanceVisible: (...args) => previewStates.isInstanceVisible(...args),
+      setInstanceVisible: (...args) => previewStates.setInstanceVisible(...args),
+      removePlacementStateOverrides: (target, placementIds, layerIds) =>
+        previewStates.removeStructuralOverrides(target.data, placementIds, layerIds),
+      markEdited() {},
+      async renderScreen() {},
+      selectInstance(path) {
+        state.activeInstancePath = path;
+      }
+    }
+  });
+
+  await screenController.group([[0], [1]]);
+  screen.data.materials[0].visible = false;
+  screen.data["preview-states"] = [
+    { id: "default", name: "Default" },
+    {
+      id: "dialog",
+      name: "Dialog",
+      description: "Show the placements.",
+      placements: { group: { visible: true } }
+    }
+  ];
+
+  await screenController.ungroup([0]);
+  assert.deepEqual(screen.data.materials.map((placement) =>
+    previewStates.isInstanceVisible(placement, "dialog", screen.data)
+  ), [true, true]);
+});

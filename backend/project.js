@@ -344,6 +344,7 @@ async function validateProject(projectRoot) {
     const linkedSpecPaths = new Set();
     linkedSpecsByScreen.set(screen.file, linkedSpecPaths);
     const materialIds = new Set();
+    const placementsById = new Map();
     let previewStateIds = new Set(["default"]);
     let previewStates = [{ id: "default", name: "Default" }];
     try {
@@ -434,11 +435,15 @@ async function validateProject(projectRoot) {
           errors.push(`${location}: Material id "${material.id}" is already used on this Screen.`);
         }
         materialIds.add(material.id);
+        placementsById.set(material.id, material);
       } catch (error) {
         pushError(errors, location, error);
       }
       if (material.note !== undefined && typeof material.note !== "string") {
         errors.push(`${location}: note must be a string.`);
+      }
+      if (material.visible !== undefined && typeof material.visible !== "boolean") {
+        errors.push(`${location}: visible must be a boolean.`);
       }
       validateVisibility(material, location);
       if (Object.hasOwn(material, "spec") || Object.hasOwn(material, "interactions")) {
@@ -448,7 +453,7 @@ async function validateProject(projectRoot) {
       if (isScreenGroup(material)) {
         const allowedProperties = new Set([
           "id", "type", "children", "position", "size", "rotation", "scale", "affine",
-          "visibility", "note", "layer"
+          "visible", "visibility", "note", "layer"
         ]);
         for (const property of Object.keys(material)) {
           if (!allowedProperties.has(property)) {
@@ -494,7 +499,7 @@ async function validateProject(projectRoot) {
 
       const allowedProperties = new Set([
         "id", "src", "attributes", "position", "size", "rotation", "scale", "affine",
-        "visibility", "note", "layer"
+        "visible", "visibility", "note", "layer"
       ]);
       for (const property of Object.keys(material)) {
         if (!allowedProperties.has(property)) {
@@ -543,6 +548,80 @@ async function validateProject(projectRoot) {
     const elementSpecIds = new Set();
     let elementSpecPaths = [];
     screen.data.materials.forEach((material, index) => validateMaterial(material, [index]));
+    for (const previewState of previewStates) {
+      for (const [layerId, layerOverride] of Object.entries(previewState.layers || {})) {
+        if (!layerIds.has(layerId)) {
+          errors.push(`${screen.file} preview state "${previewState.id}" references unknown layer "${layerId}".`);
+        }
+        if (!validation.isMapping(layerOverride) ||
+            Object.keys(layerOverride).some((key) => key !== "visible") ||
+            typeof layerOverride.visible !== "boolean") {
+          errors.push(`${screen.file} preview state "${previewState.id}" layer "${layerId}" must contain a boolean visible value.`);
+        }
+      }
+      for (const [placementId, override] of Object.entries(previewState.placements || {})) {
+        const material = placementsById.get(placementId);
+        const location = `${screen.file} preview state "${previewState.id}" placement "${placementId}"`;
+        if (!material) {
+          errors.push(`${location} does not reference a placement on this Screen.`);
+          continue;
+        }
+        if (!validation.isMapping(override)) {
+          errors.push(`${location} override must be a mapping.`);
+          continue;
+        }
+        const allowed = new Set([
+          "visible", "attributes", "position", "size", "rotation", "scale", "affine"
+        ]);
+        for (const property of Object.keys(override)) {
+          if (!allowed.has(property)) errors.push(`${location} has unsupported override "${property}".`);
+        }
+        if (override.visible !== undefined && typeof override.visible !== "boolean") {
+          errors.push(`${location} visible override must be a boolean.`);
+        }
+        if (override.position !== undefined &&
+            (!validation.isMapping(override.position) ||
+             !Number.isFinite(override.position.x) || !Number.isFinite(override.position.y))) {
+          errors.push(`${location} position override must contain numeric x and y values.`);
+        }
+        if (override.size !== undefined &&
+            (!validation.isMapping(override.size) ||
+             !Number.isFinite(override.size.width) || override.size.width < 24 ||
+             !Number.isFinite(override.size.height) || override.size.height < 24)) {
+          errors.push(`${location} size override must contain width and height values of at least 24.`);
+        }
+        if (override.rotation !== undefined && !Number.isFinite(override.rotation)) {
+          errors.push(`${location} rotation override must be a number.`);
+        }
+        if (override.scale !== undefined && !isValidScale(override.scale)) {
+          errors.push(`${location} scale override must be a positive number or positive x/y factors.`);
+        }
+        if (override.affine !== undefined && !isValidAffineMatrix(override.affine)) {
+          errors.push(`${location} affine override must contain a non-singular a/b/c/d matrix.`);
+        }
+        if (override.attributes !== undefined) {
+          if (!validation.isMapping(override.attributes) || isScreenGroup(material)) {
+            errors.push(`${location} attributes override must be a mapping on a Material placement.`);
+          } else {
+            const attributes = Object.fromEntries(
+              Object.entries(override.attributes).filter(([, value]) => value !== null)
+            );
+            const materialDefinition = materialFiles.get(material.src);
+            if (materialDefinition) {
+              try {
+                validation.validateMaterialInstanceAttributes(
+                  { attributes },
+                  materialDefinition.data,
+                  location
+                );
+              } catch (error) {
+                pushError(errors, location, error);
+              }
+            }
+          }
+        }
+      }
+    }
     try {
       elementSpecPaths = await listElementSpecPaths(screen.id);
     } catch (error) {

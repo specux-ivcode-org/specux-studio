@@ -1,3 +1,8 @@
+import {
+  getScreenPlacementAtPath,
+  getScreenPlacementPathById
+} from "../../shared/ScreenGroups.mjs";
+
 export class PreviewStateController {
   constructor({ state, services }) {
     this.state = state;
@@ -12,8 +17,347 @@ export class PreviewStateController {
     return states.some((entry) => entry.id === activeId) ? activeId : "default";
   }
 
-  isInstanceVisible(instance, stateId = this.getActiveId()) {
-    return instance.visibility?.[stateId] !== false;
+  getState(screen, stateId) {
+    if (!screen) return null;
+    return this.services.getScreenPreviewStates(screen)
+      .find((entry) => entry.id === stateId) || null;
+  }
+
+  isInstanceVisible(instance, stateId = this.getActiveId(), screen = this.getActiveScreenData()) {
+    const stateVisibility = this.getState(screen, stateId)?.placements?.[instance.id]?.visible;
+    if (typeof stateVisibility === "boolean") return stateVisibility;
+    if (stateId === "default" && typeof instance.visible === "boolean") {
+      return instance.visible;
+    }
+    if (typeof instance.visibility?.[stateId] === "boolean") {
+      return instance.visibility[stateId];
+    }
+    if (stateId !== "default" && typeof instance.visible === "boolean") {
+      return instance.visible;
+    }
+    if (stateId !== "default" && typeof instance.visibility?.default === "boolean") {
+      return instance.visibility.default;
+    }
+    return true;
+  }
+
+  isLayerVisible(layer, stateId = this.getActiveId(), screen = this.getActiveScreenData()) {
+    if (!layer) return true;
+    const stateVisibility = this.getState(screen, stateId)?.layers?.[layer.id]?.visible;
+    return typeof stateVisibility === "boolean"
+      ? stateVisibility
+      : layer.visible !== false;
+  }
+
+  resolvePlacement(instance, stateId = this.getActiveId(), screen = this.getActiveScreenData()) {
+    if (stateId === "default" || !screen) return instance;
+    const override = this.getState(screen, stateId)?.placements?.[instance.id];
+    const resolved = { ...instance };
+    for (const property of ["attributes", "position", "size", "scale", "affine"]) {
+      if (instance[property] && typeof instance[property] === "object") {
+        resolved[property] = this.copyValue(instance[property]);
+      }
+    }
+    if (override) {
+      for (const property of ["position", "size", "scale", "affine"]) {
+        if (override[property] === undefined) continue;
+        const baseValue = instance[property];
+        resolved[property] = baseValue && typeof baseValue === "object" &&
+            typeof override[property] === "object"
+          ? { ...baseValue, ...override[property] }
+          : override[property];
+      }
+      if (override.rotation !== undefined) resolved.rotation = override.rotation;
+      if (override.attributes) {
+        resolved.attributes = { ...(instance.attributes || {}) };
+        for (const [name, value] of Object.entries(override.attributes)) {
+          if (value === null) delete resolved.attributes[name];
+          else resolved.attributes[name] = value;
+        }
+        if (Object.keys(resolved.attributes).length === 0) delete resolved.attributes;
+      }
+    }
+    if (Array.isArray(instance.children)) {
+      resolved.children = instance.children.map((child) =>
+        this.resolvePlacement(child, stateId, screen)
+      );
+    }
+    return resolved;
+  }
+
+  savePlacement(screen, instance, stateId = this.getActiveId(screen.data)) {
+    const path = getScreenPlacementPathById(screen.data.materials, instance.id);
+    const basePlacement = path && getScreenPlacementAtPath(screen.data.materials, path);
+    if (!basePlacement) {
+      throw new Error(`Placement "${instance.id}" is no longer available on this Screen.`);
+    }
+    if (stateId === "default") {
+      this.copyPlacementValues(basePlacement, instance);
+      return;
+    }
+    const previewState = this.getState(screen.data, stateId);
+    if (!previewState) throw new Error(`Unknown preview state "${stateId}".`);
+    previewState.placements ||= {};
+    this.savePlacementOverrides(previewState.placements, basePlacement, instance);
+    if (Object.keys(previewState.placements).length === 0) delete previewState.placements;
+  }
+
+  copyPlacementValues(target, source) {
+    for (const property of ["attributes", "position", "size", "rotation", "scale", "affine"]) {
+      if (source[property] === undefined) delete target[property];
+      else target[property] = this.copyValue(source[property]);
+    }
+    if (Array.isArray(target.children) && Array.isArray(source.children)) {
+      const sourceById = new Map(source.children.map((child) => [child.id, child]));
+      for (const child of target.children) {
+        const resolvedChild = sourceById.get(child.id);
+        if (resolvedChild) this.copyPlacementValues(child, resolvedChild);
+      }
+    }
+  }
+
+  savePlacementOverrides(overrides, base, resolved) {
+    const current = { ...(overrides[base.id] || {}) };
+    for (const property of ["position", "size", "rotation", "scale", "affine"]) {
+      if (this.valuesEqual(base[property], resolved[property])) delete current[property];
+      else if (resolved[property] === undefined) delete current[property];
+      else current[property] = this.copyValue(resolved[property]);
+    }
+    const baseAttributes = base.attributes || {};
+    const resolvedAttributes = resolved.attributes || {};
+    const attributeOverrides = { ...(current.attributes || {}) };
+    for (const name of new Set([
+      ...Object.keys(baseAttributes),
+      ...Object.keys(resolvedAttributes),
+      ...Object.keys(attributeOverrides)
+    ])) {
+      if (this.valuesEqual(baseAttributes[name], resolvedAttributes[name]) &&
+          Object.hasOwn(baseAttributes, name) === Object.hasOwn(resolvedAttributes, name)) {
+        delete attributeOverrides[name];
+      } else if (Object.hasOwn(resolvedAttributes, name)) {
+        attributeOverrides[name] = this.copyValue(resolvedAttributes[name]);
+      } else {
+        attributeOverrides[name] = null;
+      }
+    }
+    if (Object.keys(attributeOverrides).length) current.attributes = attributeOverrides;
+    else delete current.attributes;
+
+    if (Array.isArray(base.children) && Array.isArray(resolved.children)) {
+      const resolvedById = new Map(resolved.children.map((child) => [child.id, child]));
+      for (const child of base.children) {
+        const resolvedChild = resolvedById.get(child.id);
+        if (resolvedChild) this.savePlacementOverrides(overrides, child, resolvedChild);
+      }
+    }
+    if (Object.keys(current).length) overrides[base.id] = current;
+    else delete overrides[base.id];
+  }
+
+  setInstanceVisible(screen, instance, visible, stateId = this.getActiveId(screen.data)) {
+    if (stateId === "default") {
+      if (visible) delete instance.visible;
+      else instance.visible = false;
+      if (instance.visibility) {
+        delete instance.visibility.default;
+        if (Object.keys(instance.visibility).length === 0) delete instance.visibility;
+      }
+      return;
+    }
+    const previewState = this.getState(screen.data, stateId);
+    if (!previewState) throw new Error(`Unknown preview state "${stateId}".`);
+    const baseVisible = this.isInstanceVisible(instance, "default", screen.data);
+    if (visible === baseVisible) {
+      if (instance.visibility) {
+        delete instance.visibility[stateId];
+        if (Object.keys(instance.visibility).length === 0) delete instance.visibility;
+      }
+      const override = previewState.placements?.[instance.id];
+      if (override) delete override.visible;
+      this.pruneStateEntry(previewState.placements, instance.id);
+      if (previewState.placements && Object.keys(previewState.placements).length === 0) {
+        delete previewState.placements;
+      }
+      return;
+    }
+    previewState.placements ||= {};
+    previewState.placements[instance.id] ||= {};
+    previewState.placements[instance.id].visible = visible;
+    if (instance.visibility) {
+      delete instance.visibility[stateId];
+      if (Object.keys(instance.visibility).length === 0) delete instance.visibility;
+    }
+  }
+
+  setLayerVisible(screen, layer, visible, stateId = this.getActiveId(screen.data)) {
+    if (stateId === "default") {
+      if (visible) delete layer.visible;
+      else layer.visible = false;
+      return;
+    }
+    const previewState = this.getState(screen.data, stateId);
+    if (!previewState) throw new Error(`Unknown preview state "${stateId}".`);
+    if (visible === this.isLayerVisible(layer, "default", screen.data)) {
+      if (previewState.layers) {
+        delete previewState.layers[layer.id];
+        if (Object.keys(previewState.layers).length === 0) delete previewState.layers;
+      }
+      return;
+    }
+    previewState.layers ||= {};
+    previewState.layers[layer.id] = { visible };
+  }
+
+  listStateOverrides(screen, stateId) {
+    const previewState = this.getState(screen, stateId);
+    if (!previewState || stateId === "default") return [];
+    const overrides = [];
+    const placements = [];
+    const collectPlacements = (items) => {
+      for (const placement of items || []) {
+        placements.push(placement);
+        collectPlacements(placement.children);
+      }
+    };
+    collectPlacements(screen.materials);
+
+    for (const placement of placements) {
+      const placementOverride = previewState.placements?.[placement.id] || {};
+      const addPlacementOverride = (property, value, attributeName = null, legacy = false) => {
+        overrides.push({
+          key: `placement:${placement.id}:${property}${attributeName === null ? "" : `:${attributeName}`}`,
+          kind: "placement",
+          placementId: placement.id,
+          property,
+          ...(attributeName === null ? {} : { attributeName }),
+          ...(legacy ? { legacy: true } : {}),
+          value: this.copyValue(value)
+        });
+      };
+      for (const property of ["visible", "position", "size", "rotation", "scale", "affine"]) {
+        if (placementOverride[property] !== undefined) {
+          addPlacementOverride(property, placementOverride[property]);
+        } else if (property === "visible" &&
+            typeof placement.visibility?.[stateId] === "boolean") {
+          addPlacementOverride(property, placement.visibility[stateId], null, true);
+        }
+      }
+      for (const [attributeName, value] of Object.entries(placementOverride.attributes || {})) {
+        addPlacementOverride("attributes", value, attributeName);
+      }
+    }
+
+    for (const [layerId, layerOverride] of Object.entries(previewState.layers || {})) {
+      if (layerOverride?.visible === undefined) continue;
+      overrides.push({
+        key: `layer:${layerId}:visible`,
+        kind: "layer",
+        layerId,
+        property: "visible",
+        value: layerOverride.visible
+      });
+    }
+    return overrides;
+  }
+
+  resetStateOverride(screen, stateId, selectedOverride) {
+    if (stateId === "default") {
+      throw new Error("The Default state cannot contain overrides.");
+    }
+    const previewState = this.getState(screen.data, stateId);
+    if (!previewState) throw new Error(`Unknown preview state "${stateId}".`);
+    if (selectedOverride?.kind === "layer") {
+      const layerOverride = previewState.layers?.[selectedOverride.layerId];
+      if (!layerOverride ||
+          !Object.hasOwn(layerOverride, selectedOverride.property)) {
+        throw new Error("The selected layer override is no longer available.");
+      }
+      delete previewState.layers[selectedOverride.layerId];
+      if (Object.keys(previewState.layers).length === 0) delete previewState.layers;
+      return;
+    }
+
+    if (selectedOverride?.kind !== "placement") {
+      throw new Error("Select a valid state override to reset.");
+    }
+    if (selectedOverride.property === "visible" && selectedOverride.legacy) {
+      const path = getScreenPlacementPathById(screen.data.materials, selectedOverride.placementId);
+      const placement = path && getScreenPlacementAtPath(screen.data.materials, path);
+      if (!placement?.visibility ||
+          !Object.hasOwn(placement.visibility, stateId)) {
+        throw new Error("The selected legacy visibility override is no longer available.");
+      }
+      delete placement.visibility[stateId];
+      if (Object.keys(placement.visibility).length === 0) delete placement.visibility;
+      return;
+    }
+    const placementOverride = previewState.placements?.[selectedOverride.placementId];
+    if (!placementOverride) throw new Error("The selected placement override is no longer available.");
+    if (selectedOverride.property === "attributes") {
+      const attributes = placementOverride.attributes;
+      if (!attributes || !Object.hasOwn(attributes, selectedOverride.attributeName)) {
+        throw new Error("The selected attribute override is no longer available.");
+      }
+      delete attributes[selectedOverride.attributeName];
+      if (Object.keys(attributes).length === 0) delete placementOverride.attributes;
+    } else {
+      if (!["visible", "position", "size", "rotation", "scale", "affine"]
+        .includes(selectedOverride.property) ||
+          !Object.hasOwn(placementOverride, selectedOverride.property)) {
+        throw new Error("The selected placement override is no longer available.");
+      }
+      delete placementOverride[selectedOverride.property];
+      if (selectedOverride.property === "visible") {
+        const path = getScreenPlacementPathById(screen.data.materials, selectedOverride.placementId);
+        const placement = path && getScreenPlacementAtPath(screen.data.materials, path);
+        if (placement?.visibility) {
+          delete placement.visibility[stateId];
+          if (Object.keys(placement.visibility).length === 0) delete placement.visibility;
+        }
+      }
+    }
+    this.pruneStateEntry(previewState.placements, selectedOverride.placementId);
+    if (previewState.placements && Object.keys(previewState.placements).length === 0) {
+      delete previewState.placements;
+    }
+  }
+
+  removeStructuralOverrides(screen, placementIds = [], layerIds = []) {
+    const placements = new Set(placementIds);
+    const layers = new Set(layerIds);
+    for (const previewState of this.services.getScreenPreviewStates(screen)) {
+      for (const id of placements) {
+        if (previewState.placements) delete previewState.placements[id];
+      }
+      for (const id of layers) {
+        if (previewState.layers) delete previewState.layers[id];
+      }
+      if (previewState.placements && Object.keys(previewState.placements).length === 0) {
+        delete previewState.placements;
+      }
+      if (previewState.layers && Object.keys(previewState.layers).length === 0) {
+        delete previewState.layers;
+      }
+    }
+  }
+
+  pruneStateEntry(entries, id) {
+    if (!entries || Object.keys(entries[id] || {}).length > 0) return;
+    delete entries[id];
+  }
+
+  getActiveScreenData() {
+    return this.state.screens[this.state.activeScreenIndex]?.data || null;
+  }
+
+  copyValue(value) {
+    return value && typeof value === "object"
+      ? structuredClone(value)
+      : value;
+  }
+
+  valuesEqual(left, right) {
+    return JSON.stringify(left) === JSON.stringify(right);
   }
 
   renderControls(screen) {
@@ -103,6 +447,7 @@ export class PreviewStateController {
     for (const children of Object.values(instance.slots || {})) {
       if (Array.isArray(children)) children.forEach((child) => this.removeVisibility(child, stateId));
     }
+    for (const child of instance.children || []) this.removeVisibility(child, stateId);
   }
 
   renderInstanceTree(panel, instances, parentPath = [], depth = 0, stateId = "default") {
@@ -135,7 +480,7 @@ export class PreviewStateController {
     const screen = state.screens[state.activeScreenIndex];
     const states = services.getScreenPreviewStates(screen.data);
     const item = states.find((candidate) => candidate.id === stateId);
-    if (!item || !services.confirm(`Delete the "${item.name}" preview state and its visibility settings?`)) {
+    if (!item || !services.confirm(`Delete the "${item.name}" preview state and its overrides?`)) {
       return;
     }
     const instancePath = [...state.activeInstancePath];

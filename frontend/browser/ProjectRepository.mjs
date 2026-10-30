@@ -83,6 +83,7 @@ export class ProjectRepository {
   validateScreenMaterials(screen, materialFiles = this.materialFiles) {
     normalizeScreenLayers(screen.data);
     const ids = new Set();
+    const placementsById = new Map();
     if (Object.hasOwn(screen.data, "elements")) {
       throw new Error(`${screen.file}: Screen elements are no longer supported; use materials.`);
     }
@@ -142,8 +143,12 @@ export class ProjectRepository {
         throw new Error(`${location}: Material id "${placement.id}" is already used on this Screen.`);
       }
       ids.add(placement.id);
+      placementsById.set(placement.id, placement);
       if (placement.note !== undefined && typeof placement.note !== "string") {
         throw new Error(`${location}: note must be a string.`);
+      }
+      if (placement.visible !== undefined && typeof placement.visible !== "boolean") {
+        throw new Error(`${location}: visible must be a boolean.`);
       }
       if (placement.visibility !== undefined) validateVisibility(placement, location);
       if (Object.hasOwn(placement, "spec") || Object.hasOwn(placement, "interactions")) {
@@ -152,7 +157,7 @@ export class ProjectRepository {
       if (isScreenGroup(placement)) {
         const allowedProperties = new Set([
           "id", "type", "children", "position", "size", "rotation", "scale", "affine",
-          "visibility", "note", "layer"
+          "visible", "visibility", "note", "layer"
         ]);
         for (const property of Object.keys(placement)) {
           if (!allowedProperties.has(property)) {
@@ -197,7 +202,7 @@ export class ProjectRepository {
 
       const allowedProperties = new Set([
         "id", "src", "attributes", "position", "size", "rotation", "scale", "affine",
-        "visibility", "note", "layer"
+        "visible", "visibility", "note", "layer"
       ]);
       for (const property of Object.keys(placement)) {
         if (!allowedProperties.has(property)) {
@@ -245,6 +250,77 @@ export class ProjectRepository {
     screen.data.materials.forEach((placement, index) =>
       validatePlacement(placement, [index])
     );
+    for (const previewState of this.validation.validatePreviewStates(screen.data, screen.file)) {
+      for (const [layerId, layerOverride] of Object.entries(previewState.layers || {})) {
+        if (!layerIds.has(layerId)) {
+          throw new Error(`${screen.file} preview state "${previewState.id}" references unknown layer "${layerId}".`);
+        }
+        if (!this.validation.isMapping(layerOverride) ||
+            Object.keys(layerOverride).some((key) => key !== "visible") ||
+            typeof layerOverride.visible !== "boolean") {
+          throw new Error(`${screen.file} preview state "${previewState.id}" layer "${layerId}" must contain a boolean visible value.`);
+        }
+      }
+      for (const [placementId, override] of Object.entries(previewState.placements || {})) {
+        const placement = placementsById.get(placementId);
+        const location = `${screen.file} preview state "${previewState.id}" placement "${placementId}"`;
+        if (!placement) throw new Error(`${location} does not reference a placement on this Screen.`);
+        if (!this.validation.isMapping(override)) {
+          throw new Error(`${location} override must be a mapping.`);
+        }
+        const allowed = new Set([
+          "visible", "attributes", "position", "size", "rotation", "scale", "affine"
+        ]);
+        for (const property of Object.keys(override)) {
+          if (!allowed.has(property)) {
+            throw new Error(`${location} has unsupported override "${property}".`);
+          }
+        }
+        if (override.visible !== undefined && typeof override.visible !== "boolean") {
+          throw new Error(`${location} visible override must be a boolean.`);
+        }
+        if (override.position !== undefined &&
+            (!this.validation.isMapping(override.position) ||
+             !Number.isFinite(override.position.x) || !Number.isFinite(override.position.y))) {
+          throw new Error(`${location} position override must contain numeric x and y values.`);
+        }
+        if (override.size !== undefined &&
+            (!this.validation.isMapping(override.size) ||
+             !Number.isFinite(override.size.width) || override.size.width < 24 ||
+             !Number.isFinite(override.size.height) || override.size.height < 24)) {
+          throw new Error(`${location} size override must contain width and height values of at least 24.`);
+        }
+        if (override.rotation !== undefined && !Number.isFinite(override.rotation)) {
+          throw new Error(`${location} rotation override must be a number.`);
+        }
+        if (override.scale !== undefined && !isValidScale(override.scale)) {
+          throw new Error(`${location} scale override must be a positive number or positive x/y factors.`);
+        }
+        if (override.affine !== undefined && !isValidAffineMatrix(override.affine)) {
+          throw new Error(`${location} affine override must contain a non-singular a/b/c/d matrix.`);
+        }
+        if (override.attributes !== undefined) {
+          if (!this.validation.isMapping(override.attributes)) {
+            throw new Error(`${location} attributes override must be a mapping.`);
+          }
+          if (isScreenGroup(placement)) {
+            throw new Error(`${location} cannot override attributes on a group.`);
+          }
+          const attributes = Object.fromEntries(
+            Object.entries(override.attributes).filter(([, value]) => value !== null)
+          );
+          const materialDefinition = materialFiles.get(placement.src);
+          if (!materialDefinition) {
+            throw new Error(`${location} references an unavailable Material "${placement.src}".`);
+          }
+          this.validation.validateMaterialInstanceAttributes(
+            { attributes },
+            materialDefinition.data,
+            location
+          );
+        }
+      }
+    }
   }
 
   findInstancePathById(instances, elementId, parentPath = []) {

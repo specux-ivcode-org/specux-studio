@@ -209,6 +209,46 @@ test("validates Screen layers and placement layer references", async () => {
   }
 });
 
+test("validates sparse named-state placement and layer overrides", async () => {
+  const root = await createProject();
+  try {
+    const screenPath = path.join(root, "screens", "home", "screen.yml");
+    const screen = YAML.parse(await fs.readFile(screenPath, "utf8"));
+    screen["preview-states"][1].layers = { base: { visible: false } };
+    screen["preview-states"][1].placements = {
+      "continue-button": {
+        visible: true,
+        attributes: { text: "Continue in dialog" },
+        position: { x: 30, y: 80 },
+        size: { width: 180, height: 48 },
+        rotation: 5,
+        scale: { x: 1.1, y: 1 },
+        affine: { a: 1, b: 0, c: 0, d: 1 }
+      }
+    };
+    await fs.writeFile(screenPath, YAML.stringify(screen));
+    let result = await validateProject(root);
+    assert.deepEqual(result.errors, []);
+
+    screen["preview-states"][1].placements.missing = { visible: false };
+    await fs.writeFile(screenPath, YAML.stringify(screen));
+    result = await validateProject(root);
+    assert.ok(result.errors.some((error) =>
+      error.includes('placement "missing" does not reference a placement on this Screen')
+    ));
+
+    delete screen["preview-states"][1].placements.missing;
+    screen["preview-states"][0].layers = { base: { visible: false } };
+    await fs.writeFile(screenPath, YAML.stringify(screen));
+    result = await validateProject(root);
+    assert.ok(result.errors.some((error) =>
+      error.includes("default preview state cannot contain overrides")
+    ));
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test("validates recursive Screen placement groups and inherited layers", async () => {
   const root = await createProject();
   try {

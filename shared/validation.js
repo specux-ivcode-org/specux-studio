@@ -55,7 +55,19 @@
           (typeof state.description !== "string" || !state.description.trim())) {
         throw new Error(`${source} preview state "${state.id}" description must be a non-empty string.`);
       }
-      if (Object.keys(state).some((key) => key !== "id" && key !== "name" && key !== "description")) {
+      if (state.layers !== undefined && !isMapping(state.layers)) {
+        throw new Error(`${source} preview state "${state.id}" layers must be a mapping.`);
+      }
+      if (state.placements !== undefined && !isMapping(state.placements)) {
+        throw new Error(`${source} preview state "${state.id}" placements must be a mapping.`);
+      }
+      if (state.id === "default" &&
+          (Object.keys(state.layers || {}).length || Object.keys(state.placements || {}).length)) {
+        throw new Error(`${source} default preview state cannot contain overrides.`);
+      }
+      if (Object.keys(state).some((key) =>
+        !["id", "name", "description", "layers", "placements"].includes(key)
+      )) {
         throw new Error(`${source} preview state "${state.id}" has an unsupported property.`);
       }
       ids.add(state.id);

@@ -84,13 +84,22 @@ export class WorkspaceViewRenderer {
         parentPath = [],
         parentTransform = { matrix: { a: 1, b: 0, c: 0, d: 1 } }
       ) => {
-        for (const [placementIndex, placement] of placements.entries()) {
+        for (const [placementIndex, basePlacement] of placements.entries()) {
           const path = [...parentPath, placementIndex];
-          if (!services.isInstanceVisible(placement, stateId)) continue;
+          if (!services.isInstanceVisible(basePlacement, stateId, selected.data)) continue;
           if (path.length === 1 &&
-              selected.data.layers?.find((layer) => layer.id === placement.layer)?.visible === false) {
+              !services.isLayerVisible(
+                selected.data.layers?.find((layer) => layer.id === basePlacement.layer),
+                stateId,
+                selected.data
+              )) {
             continue;
           }
+          const placement = services.resolvePlacementForState(
+            basePlacement,
+            stateId,
+            selected.data
+          );
           const host = services.renderMaterial(placement, placementIndex, path);
           const frame = services.createMaterialFrame(
             host,

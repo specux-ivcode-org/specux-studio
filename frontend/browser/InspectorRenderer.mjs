@@ -15,6 +15,9 @@ export class InspectorRenderer {
     this.screenDetailsTab = "properties";
     this.selectedScreenFile = null;
     this.selectedScreenLayerId = BASE_LAYER_ID;
+    this.selectedPreviewStateOverrideKey = null;
+    this.selectedPreviewStateOverrideStateId = null;
+    this.selectedPreviewStateOverrideScreenFile = null;
   }
 
   render() {
@@ -38,8 +41,12 @@ export class InspectorRenderer {
     } else {
       const screen = state.screens[state.activeScreenIndex]?.data;
       if (!screen) return;
-      const instance = state.activeInstancePath.length
+      const baseInstance = state.activeInstancePath.length
         ? services.getInstanceAtPath({ data: screen }, state.activeInstancePath)
+        : null;
+      const stateId = services.getActivePreviewStateId(screen);
+      const instance = baseInstance
+        ? services.resolvePlacementForState(baseInstance, stateId, screen)
         : null;
       const template = instance?.type === "template"
         ? services.getTemplateByPath(instance.src)
@@ -116,6 +123,8 @@ export class InspectorRenderer {
   renderLayersDetails(panel, screen) {
     const { state, services } = this;
     this.dropTargets = new Set();
+    const activeStateId = services.getActivePreviewStateId?.(screen) || "default";
+    const structureEditable = activeStateId === "default";
     const layers = screen.layers || [];
     const activeScreenFile = state.screens[state.activeScreenIndex]?.file;
     if (this.selectedScreenFile !== activeScreenFile) {
@@ -133,6 +142,7 @@ export class InspectorRenderer {
     layerList.setAttribute("role", "list");
     const addLayer = services.element("button", "spec-action-button", "Create layer");
     addLayer.type = "button";
+    addLayer.disabled = !structureEditable;
     addLayer.addEventListener("click", () =>
       services.createLayer().then((layerId) => {
         this.selectedScreenLayerId = layerId;
@@ -141,6 +151,13 @@ export class InspectorRenderer {
     );
     layerBoxHeader.append(addLayer);
     layerBox.append(layerBoxHeader, layerList);
+    if (!structureEditable) {
+      layerBox.append(services.element(
+        "div",
+        "readonly-label",
+        "Layer and placement structure can only be edited in the Default state."
+      ));
+    }
 
     const placementBox = services.element("section", "screen-placement-box");
     const placementHeader = services.element("div", "screen-editor-box-header");
@@ -154,7 +171,7 @@ export class InspectorRenderer {
     const entries = layers.map((layer, index) => ({ layer, index }));
     for (const entry of entries) {
       const { layer, index } = entry;
-      const visible = layer.visible !== false;
+      const visible = services.isLayerVisible?.(layer, activeStateId, screen) ?? true;
       const isSelected = layer.id === this.selectedScreenLayerId;
       const row = services.element(
         "div",
@@ -175,7 +192,7 @@ export class InspectorRenderer {
           placementList
         );
       });
-      this.bindDropTarget(row, [
+      if (structureEditable) this.bindDropTarget(row, [
         {
           type: LAYER_DRAG_TYPE,
           insertPosition: true,
@@ -202,7 +219,8 @@ export class InspectorRenderer {
         `Drag ${layer.name} layer to reorder or move placements into it`,
         LAYER_DRAG_TYPE,
         layer.id,
-        row
+        row,
+        !structureEditable
       ));
 
       const visibility = services.element(
@@ -222,6 +240,7 @@ export class InspectorRenderer {
       name.type = "text";
       name.value = layer.name;
       name.maxLength = 80;
+      name.disabled = !structureEditable;
       name.setAttribute("aria-label", `${layer.name} layer name`);
       name.addEventListener("focus", () =>
         this.selectScreenLayer(
@@ -238,7 +257,7 @@ export class InspectorRenderer {
       row.append(name);
       const moveUp = services.element("button", "layer-order-button", "↑");
       moveUp.type = "button";
-      moveUp.disabled = index === 0;
+      moveUp.disabled = !structureEditable || index === 0;
       moveUp.title = "Move layer up";
       moveUp.setAttribute("aria-label", `Move ${layer.name} layer up`);
       moveUp.addEventListener("click", () =>
@@ -247,7 +266,7 @@ export class InspectorRenderer {
       row.append(moveUp);
       const moveDown = services.element("button", "layer-order-button", "↓");
       moveDown.type = "button";
-      moveDown.disabled = index === layers.length - 1;
+      moveDown.disabled = !structureEditable || index === layers.length - 1;
       moveDown.title = "Move layer down";
       moveDown.setAttribute("aria-label", `Move ${layer.name} layer down`);
       moveDown.addEventListener("click", () =>
@@ -256,7 +275,7 @@ export class InspectorRenderer {
       row.append(moveDown);
       const remove = services.element("button", "layer-delete-button", "×");
       remove.type = "button";
-      remove.disabled = layers.length === 1;
+      remove.disabled = !structureEditable || layers.length === 1;
       remove.title = remove.disabled
         ? "At least one layer must remain"
         : "Delete layer";
@@ -298,6 +317,8 @@ export class InspectorRenderer {
 
   renderLayerPlacements(screen, layerId, selectedLayerName, placementList) {
     const { state, services } = this;
+    const activeStateId = services.getActivePreviewStateId?.(screen) || "default";
+    const structureEditable = activeStateId === "default";
     const layer = screen.layers.find((candidate) => candidate.id === layerId);
     selectedLayerName.textContent = layer ? layer.name : "";
     for (const target of this.placementDropTargets || []) this.dropTargets.delete(target);
@@ -338,7 +359,7 @@ export class InspectorRenderer {
         row.setAttribute("role", "listitem");
         row.setAttribute("aria-label", `${group ? "Group" : "Placement"} ${material.id}`);
         row.tabIndex = 0;
-        this.bindDropTarget(row, [{
+        if (structureEditable) this.bindDropTarget(row, [{
           type: MATERIAL_DRAG_TYPE,
           insertPosition: true,
           drop: (sourcePathText, insertAfter) => {
@@ -353,12 +374,13 @@ export class InspectorRenderer {
             throw new Error("Placements can only be reordered among siblings.");
           }
         }]);
-        this.placementDropTargets.add(row);
+        if (structureEditable) this.placementDropTargets.add(row);
         row.append(this.createDragHandle(
           `Drag ${material.id} to reorder or move it to another layer`,
           MATERIAL_DRAG_TYPE,
           JSON.stringify(path),
-          row
+          row,
+          !structureEditable
         ));
         if (group) {
           const expand = services.element(
@@ -394,6 +416,28 @@ export class InspectorRenderer {
         );
         row.append(selectPlacement);
 
+        const visible = services.isInstanceVisible(material, activeStateId, screen);
+        const visibility = services.element(
+          "button",
+          `placement-visibility-toggle${visible ? "" : " is-hidden"}`,
+          visible ? "Visible" : "Hidden"
+        );
+        visibility.type = "button";
+        visibility.title = `${visible ? "Hide" : "Show"} ${material.id}`;
+        visibility.setAttribute(
+          "aria-label",
+          `${visible ? "Hide" : "Show"} ${material.id} placement`
+        );
+        visibility.setAttribute("aria-pressed", String(visible));
+        visibility.addEventListener("click", () => {
+          const activeScreen = state.screens[state.activeScreenIndex];
+          services.setInstanceVisible(activeScreen, material, !visible, activeStateId);
+          services.markEdited(activeScreen.file);
+          services.renderScreen(state.activeScreenIndex, { previewStateSelected: true })
+            .catch(services.showFatalError);
+        });
+        row.append(visibility);
+
         const orderCount = visiblePlacements.length;
         for (const [direction, label, disabled] of [
           [-1, "↑", orderIndex === 0],
@@ -401,7 +445,7 @@ export class InspectorRenderer {
         ]) {
           const move = services.element("button", "placement-order-button", label);
           move.type = "button";
-          move.disabled = disabled;
+          move.disabled = !structureEditable || disabled;
           move.title = `Move ${material.id} ${direction < 0 ? "up" : "down"} in this group`;
           move.setAttribute(
             "aria-label",
@@ -430,10 +474,11 @@ export class InspectorRenderer {
     }
   }
 
-  createDragHandle(label, type, value, row) {
+  createDragHandle(label, type, value, row, disabled = false) {
     const handle = this.services.element("button", "list-drag-handle", "⠿");
     handle.type = "button";
-    handle.draggable = true;
+    handle.disabled = disabled;
+    handle.draggable = !disabled;
     handle.title = label;
     handle.setAttribute("aria-label", label);
     handle.addEventListener("dragstart", (event) => {
@@ -526,39 +571,118 @@ export class InspectorRenderer {
         services.deletePreviewState(stateId).catch(services.showFatalError)
       );
       panel.append(deleteButton);
-    }
-    this.appendSection(panel, "Material visibility");
-    let visibleInstances = 0;
-    const renderVisibility = (instance, instancePath, depth) => {
-      const label = services.getElementLabel(instance);
-      visibleInstances += 1;
-      services.appendEditableField(
-        panel,
-        `${"— ".repeat(depth)}${label}`,
-        services.isInstanceVisible(instance, stateId),
-        (visible) => {
-          instance.visibility ||= {};
-          if (visible) delete instance.visibility[stateId];
-          else instance.visibility[stateId] = false;
-          if (Object.keys(instance.visibility).length === 0) delete instance.visibility;
+
+      if (this.selectedPreviewStateOverrideStateId !== stateId ||
+          this.selectedPreviewStateOverrideScreenFile !== screen.file) {
+        this.selectedPreviewStateOverrideKey = null;
+        this.selectedPreviewStateOverrideStateId = stateId;
+        this.selectedPreviewStateOverrideScreenFile = screen.file;
+      }
+      const overrides = services.listPreviewStateOverrides(screen.data, stateId);
+      if (!overrides.some((override) =>
+        override.key === this.selectedPreviewStateOverrideKey
+      )) {
+        this.selectedPreviewStateOverrideKey = null;
+      }
+      this.appendSection(panel, "State changes");
+      if (overrides.length === 0) {
+        panel.append(services.element(
+          "div",
+          "readonly-label",
+          "No overrides. This state inherits the Default values."
+        ));
+      } else {
+        const overrideList = services.element("div", "preview-state-override-list");
+        overrideList.setAttribute("role", "list");
+        for (const override of overrides) {
+          const findPlacement = (placements) => {
+            for (const placement of placements || []) {
+              if (placement.id === override.placementId) return placement;
+              const child = findPlacement(placement.children);
+              if (child) return child;
+            }
+            return null;
+          };
+          const placement = override.kind === "placement"
+            ? findPlacement(screen.data.materials)
+            : null;
+          const targetLabel = override.kind === "layer"
+            ? `Layer · ${screen.data.layers.find((layer) =>
+              layer.id === override.layerId
+            )?.name || override.layerId}`
+            : `Placement · ${placement
+              ? services.getElementLabel(placement)
+              : override.placementId}`;
+          const propertyLabels = {
+            visible: "Visibility",
+            position: "Position",
+            size: "Size",
+            rotation: "Rotation",
+            scale: "Transform scale",
+            affine: "Affine transform",
+            attributes: `Attribute · ${override.attributeName}`
+          };
+          const valueLabel = override.property === "visible"
+            ? override.value ? "Visible" : "Hidden"
+            : override.value === null
+              ? "Clears inherited value"
+              : typeof override.value === "object"
+                ? JSON.stringify(override.value)
+                : String(override.value);
+          const row = services.element(
+            "div",
+            `preview-state-override-row${override.key === this.selectedPreviewStateOverrideKey
+              ? " selected"
+              : ""}`
+          );
+          row.setAttribute("role", "listitem");
+          const select = services.element(
+            "button",
+            "preview-state-override-select",
+            `${targetLabel} · ${propertyLabels[override.property] || override.property}`
+          );
+          select.type = "button";
+          select.setAttribute(
+            "aria-pressed",
+            String(override.key === this.selectedPreviewStateOverrideKey)
+          );
+          select.addEventListener("click", () => {
+            this.selectedPreviewStateOverrideKey = override.key;
+            this.selectedPreviewStateOverrideStateId = stateId;
+            services.renderInspector();
+          });
+          const value = services.element("span", "preview-state-override-value", valueLabel);
+          row.append(select, value);
+          overrideList.append(row);
+        }
+        panel.append(overrideList);
+      }
+
+      const selectedOverride = overrides.find((override) =>
+        override.key === this.selectedPreviewStateOverrideKey
+      );
+      const resetButton = services.element(
+        "button",
+        "spec-action-button",
+        "Reset selected change"
+      );
+      resetButton.type = "button";
+      resetButton.disabled = !selectedOverride;
+      resetButton.addEventListener("click", () => {
+        if (!selectedOverride) return;
+        try {
+          services.resetPreviewStateOverride(screen, stateId, selectedOverride);
           services.markEdited(screen.file);
+          this.selectedPreviewStateOverrideKey = null;
+          this.selectedPreviewStateOverrideStateId = null;
           services.renderScreen(state.activeScreenIndex, { previewStateSelected: true })
             .catch(services.showFatalError);
-        },
-        { checkbox: true }
-      );
-      for (const [slotId, children] of Object.entries(instance.slots || {})) {
-        if (Array.isArray(children)) {
-          children.forEach((child, index) =>
-            renderVisibility(child, [...instancePath, slotId, index], depth + 1)
-          );
+        } catch (error) {
+          services.showFatalError(error);
         }
-      }
-    };
-    (screen.data.materials || []).forEach((instance, index) =>
-      renderVisibility(instance, [index], 0)
-    );
-    if (visibleInstances === 0) this.appendDetail(panel, "Materials", "This Screen has no materials.");
+      });
+      panel.append(resetButton);
+    }
   }
 
   renderProjectDetails(panel) {
@@ -730,7 +854,7 @@ export class InspectorRenderer {
     panel.append(review);
   }
 
-  renderInstanceDetails(panel, instance) {
+  renderInstanceDetails(panel, instance, _template) {
     const { state, services } = this;
     if (isScreenGroup(instance)) {
       this.renderGroupPlacementDetails(panel, instance);
@@ -744,35 +868,18 @@ export class InspectorRenderer {
     this.appendSection(panel, "Selected Material");
     this.appendDetail(panel, "Material ID", instance.id);
     this.appendDetail(panel, "Type", instance.type);
+    const screen = state.screens[state.activeScreenIndex];
+    const stateId = services.getActivePreviewStateId?.(screen.data) || "default";
     const contentProperty = instance.type === "text" ? "content" : "label";
     services.appendEditableField(panel, instance.type === "text" ? "Text" : "Label", instance[contentProperty], (value) => {
       instance[contentProperty] = value;
+      services.persistPlacementState(instance);
       services.markEdited(state.screens[state.activeScreenIndex].file);
       services.refreshActiveView();
     }, { multiline: instance.type === "text" });
-    if (state.activeInstancePath.length > 0) {
-      const screen = state.screens[state.activeScreenIndex];
-      const stateId = services.getActivePreviewStateId(screen.data);
-      const previewState = services.getScreenPreviewStates(screen.data)
-        .find((candidate) => candidate.id === stateId);
-      this.appendSection(panel, `Visibility · ${previewState?.name || "Default"}`);
-      services.appendEditableField(
-        panel,
-        `Visible in ${previewState?.name || "Default"}`,
-        services.isInstanceVisible(instance, stateId),
-        (visible) => {
-          instance.visibility ||= {};
-          if (visible) delete instance.visibility[stateId];
-          else instance.visibility[stateId] = false;
-          if (Object.keys(instance.visibility).length === 0) delete instance.visibility;
-          services.markEdited(screen.file);
-          services.refreshActiveView();
-        },
-        { checkbox: true }
-      );
-    }
     const deleteButton = services.element("button", "delete-instance-button", "Delete Material");
     deleteButton.type = "button";
+    deleteButton.disabled = stateId !== "default";
     deleteButton.addEventListener("click", () =>
       services.deleteMaterial([...state.activeInstancePath]).catch(services.showFatalError)
     );
@@ -782,6 +889,7 @@ export class InspectorRenderer {
   renderGroupPlacementDetails(panel, group) {
     const { state, services } = this;
     const screen = state.screens[state.activeScreenIndex];
+    const stateId = services.getActivePreviewStateId(screen.data);
     this.appendSection(panel, "Placement group");
     this.appendDetail(panel, "Group ID", group.id);
     this.appendDetail(panel, "Children", String(group.children.length));
@@ -820,6 +928,7 @@ export class InspectorRenderer {
         (value) => {
           if (value === undefined) return;
           group.position[key] = value;
+          services.persistPlacementState(group);
           services.markEdited(screen.file);
           services.refreshActiveView();
         },
@@ -848,6 +957,7 @@ export class InspectorRenderer {
           }
           this.scaleGroupGeometry(group, axis, ratio);
           group.size[key] = value;
+          services.persistPlacementState(group);
           services.markEdited(screen.file);
           services.refreshActiveView();
         },
@@ -862,11 +972,13 @@ export class InspectorRenderer {
       (value) => {
         if (value === undefined) return;
         group.rotation = value;
+        services.persistPlacementState(group);
         services.markEdited(screen.file);
         services.refreshActiveView();
       },
       { numberFormat: "decimal" }
     );
+    if (stateId !== "default") return;
     const ungroupButton = services.element("button", "spec-action-button", "Ungroup");
     ungroupButton.type = "button";
     ungroupButton.addEventListener("click", () =>
@@ -907,6 +1019,7 @@ export class InspectorRenderer {
   renderMaterialPlacementDetails(panel, instance, material) {
     const { state, services } = this;
     const screen = state.screens[state.activeScreenIndex];
+    const stateId = services.getActivePreviewStateId(screen.data);
     const isGroupedPlacement = state.activeInstancePath.length > 1;
     this.appendSection(panel, "Material placement");
     this.appendDetail(panel, "Placement ID", instance.id);
@@ -938,13 +1051,13 @@ export class InspectorRenderer {
             if (updated === undefined) delete instance.attributes[name];
             else instance.attributes[name] = updated;
             if (Object.keys(instance.attributes).length === 0) delete instance.attributes;
+            services.persistPlacementState(instance);
             services.markEdited(screen.file);
             services.refreshActiveView();
           }, this.attributeInputOptions(definition));
         }
       }
     }
-
     this.appendSection(panel, "Placement transform");
     if (isGroupedPlacement) {
       this.appendDetail(panel, "Position", `${instance.position?.x ?? 0}, ${instance.position?.y ?? 0}`);
@@ -978,6 +1091,7 @@ export class InspectorRenderer {
       }
       instance[property] ||= {};
       instance[property][key] = value;
+      services.persistPlacementState(instance);
       services.markEdited(screen.file);
       services.refreshActiveView();
     };
@@ -1007,11 +1121,13 @@ export class InspectorRenderer {
       (value) => {
         if (value === undefined) return;
         instance.rotation = value;
+        services.persistPlacementState(instance);
         services.markEdited(screen.file);
         services.refreshActiveView();
       },
       { numberFormat: "integer" }
     );
+    if (stateId !== "default") return;
     const deleteButton = services.element("button", "delete-instance-button", "Remove placement");
     deleteButton.type = "button";
     deleteButton.addEventListener("click", () =>
@@ -1041,6 +1157,7 @@ export class InspectorRenderer {
           const updated = getScaleComponents(placement.scale ?? 1);
           updated[axis] = value;
           placement.scale = serializeScale(updated);
+          services.persistPlacementState(placement);
           services.markEdited(screen.file);
           services.refreshActiveView();
         },
@@ -1155,7 +1272,13 @@ export class InspectorRenderer {
       "Place on current Screen"
     );
     placeButton.type = "button";
-    placeButton.disabled = this.state.screens.length === 0;
+    placeButton.disabled = this.state.screens.length === 0 ||
+      this.services.getActivePreviewStateId(
+        this.state.screens[this.state.activeScreenIndex]?.data
+      ) !== "default";
+    if (placeButton.disabled && this.state.screens.length > 0) {
+      placeButton.title = "Switch to the Default state to add placements.";
+    }
     placeButton.addEventListener("click", () =>
       this.services.placeMaterialFile(material.file).catch(this.services.showFatalError)
     );
