@@ -109,6 +109,32 @@ test("clicking in Drag to select clears the selection", async () => {
   assert.deepEqual(selected, [[]]);
 });
 
+test("scale mode is temporary and updates the active toolbar control", async () => {
+  const { ScreenSelectionController } =
+    await import("../frontend/browser/ScreenSelectionController.mjs");
+  const buttons = ["xy", "transform"].map((scaleType) => ({
+    dataset: { scaleType },
+    setAttribute(name, value) { this[name] = value; }
+  }));
+  const controller = new ScreenSelectionController({
+    state: {},
+    services: {
+      document: {
+        querySelectorAll(selector) {
+          return selector === "[data-scale-type]" ? buttons : [];
+        }
+      }
+    }
+  });
+  controller.screenId = "home";
+  controller.selectScaleType("transform");
+
+  assert.equal(controller.scaleType, "transform");
+  assert.equal(buttons[0]["aria-pressed"], "false");
+  assert.equal(buttons[1]["aria-pressed"], "true");
+  assert.equal(controller.state.scaleType, undefined);
+});
+
 test("context-menu handling works through the marquee overlay and normal canvas", async () => {
   const { ScreenSelectionController } =
     await import("../frontend/browser/ScreenSelectionController.mjs");

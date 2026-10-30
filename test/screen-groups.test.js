@@ -45,8 +45,12 @@ test("groups consecutive same-layer placements and leaves other layers in place"
   ]);
 });
 
-test("ungroup bakes rotation and uniform scale into children and restores the layer", async () => {
-  const { ungroupScreenPlacement } = await import("../shared/ScreenGroups.mjs");
+test("ungroup persists transformed placements and restores the layer", async () => {
+  const {
+    getScreenPlacementMatrix,
+    multiplyAffineMatrices,
+    ungroupScreenPlacement
+  } = await import("../shared/ScreenGroups.mjs");
   const placements = [
     {
       id: "group",
@@ -63,25 +67,21 @@ test("ungroup bakes rotation and uniform scale into children and restores the la
     }
   ];
 
+  const expectedMatrix = multiplyAffineMatrices(
+    getScreenPlacementMatrix(placements[0]),
+    getScreenPlacementMatrix(placements[0].children[0])
+  );
   const childPaths = ungroupScreenPlacement(placements, [0]);
   assert.deepEqual(childPaths, [[0], [1]]);
   assert.deepEqual(placements.map(({ id }) => id), ["first", "second"]);
-  assert.deepEqual(placements[0], {
-    id: "first",
-    src: "materials/first.stml",
-    layer: "base",
-    position: { x: 125, y: -120 },
-    size: { width: 200, height: 80 },
-    rotation: 90
-  });
-  assert.deepEqual(placements[1], {
-    id: "second",
-    src: "materials/second.stml",
-    layer: "base",
-    position: { x: 125, y: 180 },
-    size: { width: 200, height: 80 },
-    rotation: 90
-  });
+  assert.deepEqual(placements[0].position, { x: 175, y: -100 });
+  assert.deepEqual(placements[0].size, { width: 100, height: 40 });
+  assert.equal(placements[0].layer, "base");
+  assert.ok(placements[0].affine);
+  const actualMatrix = getScreenPlacementMatrix(placements[0]);
+  for (const key of ["a", "b", "c", "d"]) {
+    assert.ok(Math.abs(actualMatrix[key] - expectedMatrix[key]) < 1e-10, key);
+  }
 });
 
 test("nested group transforms compose and preserve child-local transforms on ungroup", async () => {
@@ -112,16 +112,19 @@ test("nested group transforms compose and preserve child-local transforms on ung
   }];
 
   const parentTransform = getScreenParentTransform(placements, [0, 0, 0]);
-  assert.equal(parentTransform.scale, 3);
-  assert.equal(parentTransform.rotation, 15);
+  assert.ok(Math.abs(parentTransform.matrix.a - 2.897777478867205) < 1e-10);
+  assert.ok(Math.abs(parentTransform.matrix.b - 0.7764571353075622) < 1e-10);
+  assert.ok(Math.abs(parentTransform.matrix.c + 0.7764571353075622) < 1e-10);
+  assert.ok(Math.abs(parentTransform.matrix.d - 2.897777478867205) < 1e-10);
   ungroupScreenPlacement(placements, [0]);
   assert.deepEqual(placements[0], {
     id: "inner",
     type: "group",
     position: { x: -5, y: 5 },
     size: { width: 30, height: 30 },
-    scale: 3,
+    scale: 1.5,
     rotation: 15,
+    affine: { a: 2, b: 0, c: 0, d: 2 },
     children: [{
       id: "inside",
       src: "materials/inside.stml",
@@ -132,6 +135,41 @@ test("nested group transforms compose and preserve child-local transforms on ung
     layer: "base"
   });
   assert.equal(getScreenPlacementAtPath(placements, [0, 0]).id, "inside");
+});
+
+test("ungroup preserves shear from non-uniform group scale and rotated placement", async () => {
+  const {
+    getScreenPlacementMatrix,
+    multiplyAffineMatrices,
+    ungroupScreenPlacement
+  } = await import("../shared/ScreenGroups.mjs");
+  const child = material("rotated", { x: 20, y: 30 }, { width: 80, height: 40 });
+  child.rotation = 45;
+  const group = {
+    id: "outer",
+    type: "group",
+    layer: "base",
+    position: { x: 100, y: 80 },
+    size: { width: 200, height: 100 },
+    scale: { x: 2, y: 1 },
+    children: [child]
+  };
+  const expectedMatrix = multiplyAffineMatrices(
+    getScreenPlacementMatrix(group),
+    getScreenPlacementMatrix(child)
+  );
+  const placements = [group];
+
+  ungroupScreenPlacement(placements, [0]);
+
+  const ungrouped = placements[0];
+  const actualMatrix = getScreenPlacementMatrix(ungrouped);
+  for (const key of ["a", "b", "c", "d"]) {
+    assert.ok(Math.abs(actualMatrix[key] - expectedMatrix[key]) < 1e-10, key);
+  }
+  assert.deepEqual(ungrouped.size, { width: 80, height: 40 });
+  assert.ok(ungrouped.affine);
+  assert.deepEqual(ungrouped.position, { x: 80, y: 110 });
 });
 
 test("frontend Screen validation accepts recursive groups and rejects child layer overrides", async () => {
@@ -157,11 +195,13 @@ test("frontend Screen validation accepts recursive groups and rejects child laye
         layer: "base",
         position: { x: 20, y: 20 },
         size: { width: 200, height: 50 },
-        scale: 1.5,
+        scale: { x: 1.5, y: 2 },
         children: [first, second]
       }]
     }
   };
+  first.scale = { x: 2, y: 1 };
+  first.affine = { a: 1, b: 0, c: 0, d: 1 };
   const materialFiles = new Map([
     ["materials/first.stml", { data: { attributes: {} } }],
     ["materials/second.stml", { data: { attributes: {} } }]
@@ -174,6 +214,11 @@ test("frontend Screen validation accepts recursive groups and rejects child laye
     /nested placements inherit their layer from the group/
   );
   delete screen.data.materials[0].children[0].layer;
+  screen.data.materials[0].children[0].affine = { a: 1, b: 0, c: 0, d: 0 };
+  assert.throws(
+    () => repository.validateScreenMaterials(screen, materialFiles),
+    /affine must contain a non-singular a\/b\/c\/d matrix/
+  );
 });
 
 test("ScreenMaterialController groups and ungroups selected placement paths", async () => {

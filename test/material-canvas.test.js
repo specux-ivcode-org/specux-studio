@@ -5,11 +5,16 @@ function createElement(tagName) {
   const listeners = new Map();
   const attributes = new Map();
   const children = [];
+  const style = {
+    setProperty(name, value) {
+      this[name] = value;
+    }
+  };
   return {
     tagName,
     children,
     dataset: {},
-    style: {},
+    style,
     className: "",
     classList: {
       toggle() {},
@@ -40,8 +45,19 @@ function createElement(tagName) {
       this.capturedPointer = null;
     },
     querySelectorAll(selector) {
+      if (selector === ".material-control") {
+        return children.filter((child) =>
+          child.className?.startsWith("material-control")
+        );
+      }
       if (selector === ".material-resize-control") {
         return children.filter((child) => child.className === "material-control material-resize-control");
+      }
+      if (selector === ".material-frame") {
+        return children.flatMap((child) => [
+          ...(child.className?.startsWith("material-frame") ? [child] : []),
+          ...(child.querySelectorAll?.(selector) || [])
+        ]);
       }
       return [];
     },
@@ -74,7 +90,16 @@ function createPointerEvent({ pointerId = 1, clientX, clientY, target, path } = 
   };
 }
 
-async function createHarness() {
+function createDocument() {
+  return {
+    createElement,
+    createElementNS(_namespace, tagName) {
+      return createElement(tagName);
+    }
+  };
+}
+
+async function createHarness(scaleType = "xy") {
   const content = createElement("div");
   content.offsetWidth = 1000;
   content.offsetHeight = 800;
@@ -93,9 +118,9 @@ async function createHarness() {
   const calls = { edited: 0, selected: 0, inspector: 0 };
   const { MaterialCanvas } = await import("../frontend/browser/MaterialCanvas.mjs");
   const canvas = new MaterialCanvas({
-    state: { isRenderOnly: false },
+    state: { isRenderOnly: false, scaleType },
     services: {
-      document: { createElement },
+      document: createDocument(),
       markEdited() { calls.edited += 1; },
       renderInspector() { calls.inspector += 1; },
       selectInstance() { calls.selected += 1; }
@@ -180,6 +205,8 @@ test("resizes and rotates materials with pointer handles", async () => {
     position: { x: 10, y: 20 },
     size: { width: 100, height: 60 },
     rotation: 90,
+    scale: { x: 1, y: 1 },
+    affine: { a: 1, b: 0, c: 0, d: 1 },
     isGroup: false
   };
   const gesture = {
@@ -187,12 +214,157 @@ test("resizes and rotates materials with pointer handles", async () => {
     startPosition: { x: 10, y: 20 },
     startSize: { width: 100, height: 60 },
     startRotation: 90,
-    isGroup: false
+    startScale: { x: 1, y: 1 },
+    startPlacementMatrix: { a: 0, b: 1, c: -1, d: 0 },
+    scaleType: "xy",
+    isGroup: false,
+    groupGeometry: []
   };
   const { MaterialCanvas } = await import("../frontend/browser/MaterialCanvas.mjs");
-  new MaterialCanvas({ state: {}, services: {} }).resizeTransform(transform, gesture, 0, 10);
+  new MaterialCanvas({ state: {}, services: {} }).resizeTransform(
+    transform,
+    gesture,
+    { x: 10, y: 0 }
+  );
   assert.deepEqual(transform.size, { width: 110, height: 60 });
-  assert.deepEqual(transform.position, { x: 10, y: 20 });
+  assert.deepEqual(transform.position, { x: 5, y: 25 });
+});
+
+test("transform resize saves scale factors without changing placement dimensions", async () => {
+  const { frame, instance } = await createHarness("transform");
+  const east = frame.querySelectorAll(".material-resize-control")
+    .find((handle) => handle.dataset.resizeDirection === "e");
+  east.listeners.get("pointerdown")(createPointerEvent({
+    clientX: 110,
+    clientY: 50,
+    target: east
+  }));
+  frame.listeners.get("pointermove")(createPointerEvent({
+    clientX: 130,
+    clientY: 50,
+    target: frame
+  }));
+
+  assert.deepEqual(instance.size, { width: 100, height: 60 });
+  assert.deepEqual(instance.scale, { x: 1.2, y: 1 });
+  assert.equal(frame.style.transform, "rotate(0deg) scale(1.2, 1)");
+});
+
+test("sizes selection outlines to transformed bounds without transforming them", async () => {
+  const { canvas, frame, host } = await createHarness();
+  canvas.applyTransform(frame, host, {
+    position: { x: 10, y: 20 },
+    size: { width: 100, height: 60 },
+    fillCanvasWidth: false,
+    rotation: 90,
+    scale: { x: 2, y: 4 },
+    affine: { a: 1, b: 0, c: 0, d: 1 },
+    isGroup: false
+  });
+
+  const controlMatrix = frame.style["--material-control-counter-transform"]
+    .match(/matrix\(([^)]+)\)/)[1]
+    .split(",")
+    .map(Number);
+  for (const [index, expected] of [0, -0.25, 0.5, 0, 0, 0].entries()) {
+    assert.ok(Math.abs(controlMatrix[index] - expected) < 1e-10);
+  }
+  const outlineMatrix = frame.selectionOutline.style.transform
+    .match(/matrix\(([^)]+)\)/)[1]
+    .split(",")
+    .map(Number);
+  for (const [index, expected] of [0, -0.25, 0.5, 0, 0, 0].entries()) {
+    assert.ok(Math.abs(outlineMatrix[index] - expected) < 1e-10);
+  }
+  assert.equal(frame.selectionOutline.attributes.get("viewBox"), "0 0 240 200");
+  assert.equal(frame.selectionOutline.style.width, "240px");
+  assert.equal(frame.selectionOutline.style.height, "200px");
+  assert.equal(
+    frame.selectionOutline.selectionRect.attributes.get("vector-effect"),
+    "non-scaling-stroke"
+  );
+  assert.equal(frame.querySelectorAll(".material-resize-control")[0].style.left, "-5px");
+  assert.equal(frame.querySelectorAll(".material-resize-control")[0].style.top, "25px");
+  assert.equal(frame.querySelector(".material-rotate-control").style.left, "-15.5px");
+  assert.equal(frame.querySelector(".material-rotate-control").style.top, "25px");
+});
+
+test("X/Y resizing a group persists descendant geometry while transform resizing persists scale", async () => {
+  async function createGroupHarness(scaleType) {
+    const { MaterialCanvas } = await import("../frontend/browser/MaterialCanvas.mjs");
+    const canvas = new MaterialCanvas({
+      state: { isRenderOnly: false, scaleType },
+      services: { document: createDocument(), markEdited() {}, renderInspector() {} }
+    });
+    const content = createElement("div");
+    content.offsetWidth = 1000;
+    content.offsetHeight = 800;
+    content.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 800 });
+    const child = {
+      id: "child",
+      src: "materials/card.stml",
+      position: { x: 10, y: 20 },
+      size: { width: 100, height: 40 },
+      rotation: 0
+    };
+    const group = {
+      id: "group",
+      type: "group",
+      position: { x: 10, y: 20 },
+      size: { width: 200, height: 100 },
+      children: [child]
+    };
+    const screen = { file: "screens/home/screen.yml", data: { materials: [group] } };
+    const groupHost = createElement("div");
+    const groupFrame = canvas.createFrame(groupHost, group, 0, content, screen, [0]);
+    const childFrame = canvas.createFrame(
+      createElement("div"),
+      child,
+      0,
+      content,
+      screen,
+      [0, 0],
+      { matrix: { a: 1, b: 0, c: 0, d: 1 } }
+    );
+    groupHost.append(childFrame);
+    return { child, childFrame, group, groupFrame };
+  }
+
+  const xy = await createGroupHarness("xy");
+  const xyHandle = xy.groupFrame.querySelectorAll(".material-resize-control")
+    .find((handle) => handle.dataset.resizeDirection === "se");
+  xyHandle.listeners.get("pointerdown")(createPointerEvent({
+    clientX: 210,
+    clientY: 120,
+    target: xyHandle
+  }));
+  xy.groupFrame.listeners.get("pointermove")(createPointerEvent({
+    clientX: 230,
+    clientY: 140,
+    target: xy.groupFrame
+  }));
+  assert.deepEqual(xy.group.size, { width: 220, height: 120 });
+  assert.deepEqual(xy.child.position, { x: 11, y: 24 });
+  assert.deepEqual(xy.child.size, { width: 110, height: 48 });
+  assert.equal(xy.childFrame.style.width, "110px");
+  assert.equal(xy.childFrame.style.height, "48px");
+
+  const transformed = await createGroupHarness("transform");
+  const transformHandle = transformed.groupFrame.querySelectorAll(".material-resize-control")
+    .find((handle) => handle.dataset.resizeDirection === "se");
+  transformHandle.listeners.get("pointerdown")(createPointerEvent({
+    clientX: 210,
+    clientY: 120,
+    target: transformHandle
+  }));
+  transformed.groupFrame.listeners.get("pointermove")(createPointerEvent({
+    clientX: 230,
+    clientY: 140,
+    target: transformed.groupFrame
+  }));
+  assert.deepEqual(transformed.group.size, { width: 200, height: 100 });
+  assert.deepEqual(transformed.group.scale, { x: 1.1, y: 1.2 });
+  assert.deepEqual(transformed.child.size, { width: 100, height: 40 });
 });
 
 test("keeps grouped Material placements from being transformed independently", async () => {
@@ -200,7 +372,7 @@ test("keeps grouped Material placements from being transformed independently", a
   const canvas = new MaterialCanvas({
     state: { isRenderOnly: false },
     services: {
-      document: { createElement },
+      document: createDocument(),
       markEdited() {},
       renderInspector() {},
       selectInstance() {}

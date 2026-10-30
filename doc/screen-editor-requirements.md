@@ -13,7 +13,7 @@ When a Screen-editor requirement is added, changed, or removed, update this docu
 | ID | Requirement |
 |---|---|
 | SE-001 | A Screen is an absolute-positioned canvas composed of independent placements of reusable STML Materials. Screen composition must not depend on HTML layout/grouping assets or layout templates. |
-| SE-002 | Each Material placement references a reusable Material and owns its own variable overrides, position, size, rotation, and visibility. Top-level placements own a layer assignment; nested placements inherit their group's layer. Editing one placement must not alter another placement or the shared Material template. |
+| SE-002 | Each Material placement references a reusable Material and owns its own variable overrides, position, size, rotation, transform scale, and visibility. Top-level placements own a layer assignment; nested placements inherit their group's layer. Editing one placement must not alter another placement or the shared Material template. |
 | SE-003 | Materials on the Screen canvas are visual-only. They do not execute actions or accept application input. |
 | SE-004 | Keep Screen data and editing controls Screen-specific. Do not make a placement's Material markup or properties stand in for the Screen's composition or behavior spec. |
 
@@ -24,7 +24,7 @@ When a Screen-editor requirement is added, changed, or removed, update this docu
 | SE-010 | Use Screen-canvas pixel coordinates with the canvas origin at its top-left. A placement's position is its top-left coordinate; its size is width and height in pixels; rotation is clockwise around its center. |
 | SE-011 | The canvas has a minimum coordinate extent of 1440 by 900 pixels and may extend to include placements beyond that extent. Canvas dimensions are not user-editable; zoom changes the editor view, not saved placement coordinates. |
 | SE-012 | Provide canvas zoom from 25% through 200% in 10% increments and a direct reset to 100%. Keep X/Y rulers aligned with canvas pixels as the canvas is zoomed or scrolled. Rulers are Screen-editor UI and are not part of rendered Screen output. |
-| SE-013 | Let users select and move placements on the canvas, resize them using handles, and rotate them using a rotation control. Support corresponding placement transforms through the Screen properties editor. |
+| SE-013 | Let users select and move placements on the canvas, resize them using handles, and rotate them using a rotation control. Support X/Y dimensions and persistent transform scale through the Screen properties editor. |
 | SE-014 | Selecting a Screen placement must not automatically scroll the canvas or reposition the viewport. Selection must not cause the preview to jump. |
 | SE-015 | Keep placement order stable when selecting a placement; selection alone must not change its visual stacking order. |
 | SE-016 | Provide Preview and YAML views for the Screen. Accept YAML changes only when syntax and Screen semantics are valid; surface invalid data instead of silently repairing or dropping it. |
@@ -50,11 +50,11 @@ When a Screen-editor requirement is added, changed, or removed, update this docu
 | SE-061 | Group only sibling items from the same layer and parent. The selection must form a consecutive block in that parent's stacking order; reject grouping when it does not. |
 | SE-062 | Let users build a multi-selection by holding Ctrl while selecting placements on either the canvas or in the placement list. Ctrl-clicking an already-selected placement removes it from the selection. |
 | SE-063 | Right-clicking a placement in the current selection, on either canvas tool or in the placement list, opens a context menu with a Group command. Group operates on the full selection and is available only when at least two placements satisfy SE-061. |
-| SE-064 | Resizing a group applies one uniform scale to its children and their relative positions, preserving their proportions. |
+| SE-064 | Superseded by SE-074, which defines X/Y geometry resizing and persistent transform scaling for groups and Material placements. |
 | SE-065 | Set the group pivot to the center of its bounds when the group is created and keep it fixed relative to the group. Rotating a group rotates all child positions around this shared pivot; each child's own rotation is combined with the group's rotation. |
 | SE-066 | Groups can contain other groups. A group is one placement at its parent level, and the placement list represents the hierarchy with expandable group rows. A group's child order controls stacking within that group. |
 | SE-067 | A group has one effective layer. Its descendants inherit that layer; moving a group to another layer moves the whole subtree. |
-| SE-068 | Group transforms compose through the hierarchy. Child positions are relative to the containing group's top-left. Moving, uniformly scaling, or rotating a parent applies to all descendants while preserving each nested group's internal transforms and pivot. |
+| SE-068 | Group transforms compose through the hierarchy. Child positions are relative to the containing group's top-left. Moving, scaling, or rotating a parent applies to all descendants while preserving each nested group's internal transforms and pivot. |
 | SE-069 | Right-clicking a group offers an Ungroup command. Ungrouping dissolves that group and restores its children as siblings in the same stack position, preserving their world-space transforms and order. |
 | SE-070 | Serialize groups as recursive Screen-local containers, not reusable STML Materials. Group and child placement IDs share one unique-ID namespace; validate the group/Material union and inherited layer rules before accepting or saving Screen data. |
 | SE-071 | A placement inside a group, including a nested group, cannot be moved, resized, or rotated independently on the canvas or through its placement-transform fields. Only the outermost group can be transformed; ungroup a placement before editing its transform directly. |
@@ -69,6 +69,9 @@ When a Screen-editor requirement is added, changed, or removed, update this docu
 | SE-031 | Keep preview-state, zoom, view-mode, and annotation controls available on the Screen editor toolbars. When a toolbar is too narrow, overflow complete control groups into its menu; do not clone controls or break their event handlers. |
 | SE-032 | Keep annotation tools and annotation actions in one toolbar group. Selecting an annotation tool enters annotation mode. Provide pen, circle, rectangle, arrow, highlight, and note tools, plus undo, redo, and clear actions. |
 | SE-033 | Keep the annotation exit control in the annotation tool group and visible at all times. It is disabled outside annotation mode, has no visible text label, retains an accessible name, and is red while enabled. |
+| SE-074 | Provide temporary X/Y and Transform resize modes in the Screen toolbar. X/Y mode changes saved dimensions (and scales a group's descendant geometry); Transform mode changes saved X/Y transform factors without changing base dimensions. Both modes apply to groups and individual placements. The selected toolbar mode is not saved, but resulting placement sizes and transforms are. |
+| SE-075 | Ungrouping composes each child's transform with the removed group's transform and preserves the rendered result, including shear caused by non-uniform scaling of rotated descendants. Persist any resulting affine matrix on the child placement. |
+| SE-076 | Draw a screen-aligned selection border sized to the placement's transformed bounds. Use scale and rotation to calculate those bounds, but do not rotate, shear, or scale the border itself. Keep the border stroke and manipulation handles legible and aligned to the border under placement transforms. |
 
 ## Annotations
 

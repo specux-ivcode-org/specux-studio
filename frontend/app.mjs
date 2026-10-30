@@ -650,7 +650,8 @@ const materialCanvas = new MaterialCanvas({
     get isRenderOnly() { return isRenderOnly; },
     get viewingSpec() { return viewingSpec; },
     get activeInstancePath() { return activeInstancePath; },
-    get activeInstancePaths() { return activeInstancePaths; }
+    get activeInstancePaths() { return activeInstancePaths; },
+    get scaleType() { return screenSelectionController?.scaleType || "xy"; }
   },
   services: { document, markEdited, renderInspector, selectInstance, openScreenPlacementContextMenu }
 });

@@ -1,4 +1,5 @@
 const SELECTION_TOOLS = new Set(["select", "marquee"]);
+const SCALE_TYPES = new Set(["xy", "transform"]);
 
 export function getMarqueeSelectedPaths(candidates, selection, startPoint) {
   return candidates
@@ -22,6 +23,7 @@ export class ScreenSelectionController {
     this.services = services;
     this.screenId = null;
     this.tool = "select";
+    this.scaleType = "xy";
     this.overlay = null;
     this.rectangle = null;
     this.drawing = null;
@@ -30,6 +32,9 @@ export class ScreenSelectionController {
   bind() {
     this.services.document.querySelectorAll("[data-selection-tool]").forEach((button) => {
       button.addEventListener("click", () => this.selectTool(button.dataset.selectionTool));
+    });
+    this.services.document.querySelectorAll("[data-scale-type]").forEach((button) => {
+      button.addEventListener("click", () => this.selectScaleType(button.dataset.scaleType));
     });
     this.services.byId("screen-preview")
       ?.addEventListener("contextmenu", (event) => this.onContextMenu(event), true);
@@ -57,6 +62,16 @@ export class ScreenSelectionController {
       button.disabled = !this.screenId || this.state.isRenderOnly;
       button.setAttribute("aria-pressed", String(button.dataset.selectionTool === this.tool));
     });
+    this.services.document.querySelectorAll("[data-scale-type]").forEach((button) => {
+      button.disabled = !this.screenId || this.state.isRenderOnly;
+      button.setAttribute("aria-pressed", String(button.dataset.scaleType === this.scaleType));
+    });
+  }
+
+  selectScaleType(scaleType) {
+    if (!SCALE_TYPES.has(scaleType) || !this.screenId || this.state.isRenderOnly) return;
+    this.scaleType = scaleType;
+    this.updateControls();
   }
 
   render() {

@@ -1,7 +1,18 @@
-import { getScreenPlacementBounds, isScreenGroup } from "../../shared/ScreenGroups.mjs";
+import {
+  getScaleComponents,
+  getScreenPlacementBounds,
+  getScreenPlacementMatrix,
+  invertAffineMatrix,
+  isScreenGroup,
+  serializeScale
+} from "../../shared/ScreenGroups.mjs";
 
 const HANDLE_DIRECTIONS = ["n", "ne", "e", "se", "s", "sw", "w", "nw"];
 const MIN_SIZE = 24;
+const CONTROL_SIZE = 10;
+const ROTATE_HANDLE_OFFSET = 21;
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+const IDENTITY_MATRIX = { a: 1, b: 0, c: 0, d: 1 };
 
 export function defaultMaterialPosition(index) {
   return {
@@ -39,7 +50,7 @@ export class MaterialCanvas {
     content,
     screen,
     path = [index],
-    parentTransform = { scale: 1, rotation: 0 },
+    parentTransform = { matrix: IDENTITY_MATRIX },
     rootContent = content
   ) {
     const frame = this.services.document.createElement("div");
@@ -78,7 +89,8 @@ export class MaterialCanvas {
       size: size ? { width: size.width, height: size.height } : null,
       fillCanvasWidth: hasNestedChildren && !size,
       rotation,
-      scale: isScreenGroup(instance) ? (instance.scale ?? 1) : 1,
+      scale: getScaleComponents(instance.scale ?? 1),
+      affine: instance.affine || IDENTITY_MATRIX,
       isGroup: isScreenGroup(instance)
     };
 
@@ -115,9 +127,32 @@ export class MaterialCanvas {
   applyTransform(frame, host, transform) {
     frame.style.left = `${transform.position.x}px`;
     frame.style.top = `${transform.position.y}px`;
-    frame.style.transform = transform.isGroup && transform.scale !== 1
-      ? `rotate(${transform.rotation}deg) scale(${transform.scale})`
-      : `rotate(${transform.rotation}deg)`;
+    const scale = getScaleComponents(transform.scale);
+    const affine = transform.affine || IDENTITY_MATRIX;
+    const scaleTransform = scale.x === 1 && scale.y === 1
+      ? ""
+      : ` scale(${scale.x}, ${scale.y})`;
+    const affineTransform = affine.a === 1 && affine.b === 0 &&
+      affine.c === 0 && affine.d === 1
+      ? ""
+      : ` matrix(${affine.a}, ${affine.b}, ${affine.c}, ${affine.d}, 0, 0)`;
+    frame.style.transform = `rotate(${transform.rotation}deg)${scaleTransform}${affineTransform}`;
+    const placementMatrix = getScreenPlacementMatrix({
+      rotation: transform.rotation,
+      scale,
+      affine
+    });
+    const controlCounterTransform = invertAffineMatrix(placementMatrix);
+    frame.selectionCounterMatrix = controlCounterTransform;
+    frame.selectionBoundsMatrix = placementMatrix;
+    frame.style.setProperty(
+      "--material-control-counter-transform",
+      `matrix(${controlCounterTransform.a}, ${controlCounterTransform.b}, ${controlCounterTransform.c}, ${controlCounterTransform.d}, 0, 0)`
+    );
+    if (frame.selectionOutline) {
+      frame.selectionOutline.style.transform =
+        `matrix(${controlCounterTransform.a}, ${controlCounterTransform.b}, ${controlCounterTransform.c}, ${controlCounterTransform.d}, 0, 0)`;
+    }
     frame.classList.toggle("sized", Boolean(transform.size));
     frame.classList.toggle("legacy-layout", transform.fillCanvasWidth);
     if (transform.size) {
@@ -131,9 +166,21 @@ export class MaterialCanvas {
       host.style.width = transform.fillCanvasWidth ? "100%" : "";
       host.style.height = "";
     }
+    this.updateSelectionOutline(frame);
   }
 
   addControls(frame) {
+    const outline = this.services.document.createElementNS(SVG_NAMESPACE, "svg");
+    outline.setAttribute("class", "material-selection-outline");
+    outline.setAttribute("aria-hidden", "true");
+    const outlineRect = this.services.document.createElementNS(SVG_NAMESPACE, "rect");
+    outlineRect.setAttribute("vector-effect", "non-scaling-stroke");
+    outline.append(outlineRect);
+    outline.selectionRect = outlineRect;
+    frame.selectionOutline = outline;
+    frame.append(outline);
+    this.updateSelectionOutline(frame);
+
     for (const direction of HANDLE_DIRECTIONS) {
       const handle = this.services.document.createElement("button");
       handle.type = "button";
@@ -148,6 +195,69 @@ export class MaterialCanvas {
     rotateHandle.className = "material-control material-rotate-control";
     rotateHandle.setAttribute("aria-label", "Rotate material");
     frame.append(rotateHandle);
+    this.updateSelectionOutline(frame);
+  }
+
+  updateSelectionOutline(frame) {
+    const outline = frame.selectionOutline;
+    if (!outline) return;
+    const width = frame.offsetWidth || Number.parseFloat(frame.style.width);
+    const height = frame.offsetHeight || Number.parseFloat(frame.style.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width < 2 || height < 2) {
+      return;
+    }
+
+    const matrix = frame.selectionBoundsMatrix || IDENTITY_MATRIX;
+    const boundsWidth = Math.round(
+      (Math.abs(matrix.a) * width + Math.abs(matrix.c) * height) * 1000
+    ) / 1000;
+    const boundsHeight = Math.round(
+      (Math.abs(matrix.b) * width + Math.abs(matrix.d) * height) * 1000
+    ) / 1000;
+    outline.style.left = `${(width - boundsWidth) / 2}px`;
+    outline.style.top = `${(height - boundsHeight) / 2}px`;
+    outline.style.right = "auto";
+    outline.style.bottom = "auto";
+    outline.style.width = `${boundsWidth}px`;
+    outline.style.height = `${boundsHeight}px`;
+    outline.setAttribute("viewBox", `0 0 ${boundsWidth} ${boundsHeight}`);
+    outline.selectionRect.setAttribute("x", "0.5");
+    outline.selectionRect.setAttribute("y", "0.5");
+    outline.selectionRect.setAttribute("width", String(boundsWidth - 1));
+    outline.selectionRect.setAttribute("height", String(boundsHeight - 1));
+
+    const center = { x: width / 2, y: height / 2 };
+    const boundsCenter = { x: boundsWidth / 2, y: boundsHeight / 2 };
+    const setControlAnchor = (handle, anchor) => {
+      if (!handle) return;
+      const localOffset = this.transformVector(
+        frame.selectionCounterMatrix || IDENTITY_MATRIX,
+        { x: anchor.x - boundsCenter.x, y: anchor.y - boundsCenter.y }
+      );
+      const left = Math.round(
+        (center.x + localOffset.x - CONTROL_SIZE / 2) * 1000
+      ) / 1000;
+      const top = Math.round(
+        (center.y + localOffset.y - CONTROL_SIZE / 2) * 1000
+      ) / 1000;
+      handle.style.left = `${left}px`;
+      handle.style.top = `${top}px`;
+      handle.style.right = "auto";
+      handle.style.bottom = "auto";
+    };
+    for (const handle of frame.querySelectorAll(".material-control")) {
+      const direction = handle.dataset.resizeDirection;
+      if (!direction) continue;
+      const anchor = {
+        x: direction.includes("w") ? 0 : direction.includes("e") ? boundsWidth : boundsCenter.x,
+        y: direction.includes("n") ? 0 : direction.includes("s") ? boundsHeight : boundsCenter.y
+      };
+      setControlAnchor(handle, anchor);
+    }
+    setControlAnchor(frame.querySelector(".material-rotate-control"), {
+      x: boundsCenter.x,
+      y: -ROTATE_HANDLE_OFFSET
+    });
   }
 
   configureInteractions(
@@ -189,10 +299,19 @@ export class MaterialCanvas {
           width: frame.offsetWidth || bounds.width,
           height: frame.offsetHeight || bounds.height
         };
-      if (transform.isGroup) {
-        startSize.width *= transform.scale;
-        startSize.height *= transform.scale;
-      }
+      const parentMatrix = parentTransform.matrix || IDENTITY_MATRIX;
+      const startPlacementMatrix = getScreenPlacementMatrix({
+        ...instance,
+        ...transform
+      });
+      const inverseParentMatrix = invertAffineMatrix(parentMatrix);
+      const startPointer = this.pointerVectorInParent(
+        event.clientX - (bounds.left + bounds.width / 2),
+        event.clientY - (bounds.top + bounds.height / 2),
+        canvasScaleX || 1,
+        canvasScaleY || 1,
+        inverseParentMatrix
+      );
       const gesture = {
         pointerId: event.pointerId,
         mode,
@@ -202,16 +321,17 @@ export class MaterialCanvas {
         startPosition: { ...transform.position },
         startSize,
         isGroup: transform.isGroup,
+        scaleType: this.state.scaleType || "xy",
         startRotation: transform.rotation,
-        startAngle: Math.atan2(
-          event.clientY - (bounds.top + bounds.height / 2),
-          event.clientX - (bounds.left + bounds.width / 2)
-        ),
+        startAngle: Math.atan2(startPointer.y, startPointer.x),
         canvasScaleX: canvasScaleX || 1,
         canvasScaleY: canvasScaleY || 1,
-        parentScale: parentTransform.scale || 1,
-        parentRotation: parentTransform.rotation || 0,
-        startScale: transform.scale,
+        inverseParentMatrix,
+        startPlacementMatrix,
+        startScale: getScaleComponents(transform.scale),
+        groupGeometry: transform.isGroup
+          ? this.captureGroupGeometry(instance, frame, path)
+          : [],
         captured: false,
         changed: false
       };
@@ -265,11 +385,10 @@ export class MaterialCanvas {
       if (!gesture || gesture.pointerId !== event.pointerId) return;
       const canvasDeltaX = (event.clientX - gesture.startX) / gesture.canvasScaleX;
       const canvasDeltaY = (event.clientY - gesture.startY) / gesture.canvasScaleY;
-      const parentRadians = gesture.parentRotation * (Math.PI / 180);
-      const deltaX = (Math.cos(parentRadians) * canvasDeltaX +
-        Math.sin(parentRadians) * canvasDeltaY) / gesture.parentScale;
-      const deltaY = (-Math.sin(parentRadians) * canvasDeltaX +
-        Math.cos(parentRadians) * canvasDeltaY) / gesture.parentScale;
+      const parentDelta = this.transformVector(
+        gesture.inverseParentMatrix,
+        { x: canvasDeltaX, y: canvasDeltaY }
+      );
       if (gesture.mode === "move" && !gesture.changed &&
           Math.abs(canvasDeltaX) < 3 && Math.abs(canvasDeltaY) < 3) {
         return;
@@ -282,17 +401,25 @@ export class MaterialCanvas {
 
       if (gesture.mode === "move") {
         transform.position = {
-          x: Math.round(gesture.startPosition.x + deltaX),
-          y: Math.round(gesture.startPosition.y + deltaY)
+          x: Math.round(gesture.startPosition.x + parentDelta.x),
+          y: Math.round(gesture.startPosition.y + parentDelta.y)
         };
       } else if (gesture.mode === "resize") {
-        this.resizeTransform(transform, gesture, deltaX, deltaY);
+        const pointerLocalDelta = this.transformVector(
+          invertAffineMatrix(gesture.startPlacementMatrix),
+          parentDelta
+        );
+        this.resizeTransform(transform, gesture, pointerLocalDelta);
       } else {
         const bounds = frame.getBoundingClientRect();
-        const angle = Math.atan2(
+        const pointerVector = this.pointerVectorInParent(
+          event.clientX - (bounds.left + bounds.width / 2),
           event.clientY - (bounds.top + bounds.height / 2),
-          event.clientX - (bounds.left + bounds.width / 2)
+          gesture.canvasScaleX,
+          gesture.canvasScaleY,
+          gesture.inverseParentMatrix
         );
+        const angle = Math.atan2(pointerVector.y, pointerVector.x);
         const degrees = (angle - gesture.startAngle) * (180 / Math.PI);
         transform.rotation = Math.round(gesture.startRotation + degrees);
       }
@@ -300,6 +427,9 @@ export class MaterialCanvas {
       gesture.changed = true;
       this.persistTransform(instance, transform);
       this.applyTransform(frame, host, transform);
+      if (gesture.mode === "resize" && gesture.scaleType === "xy" && gesture.isGroup) {
+        this.updateGroupGeometryFrames(gesture.groupGeometry);
+      }
     });
 
     const endGesture = (event) => {
@@ -318,59 +448,160 @@ export class MaterialCanvas {
     frame.addEventListener("pointercancel", endGesture);
   }
 
-  resizeTransform(transform, gesture, deltaX, deltaY) {
-    const radians = gesture.startRotation * (Math.PI / 180);
-    const localDeltaX = Math.cos(radians) * deltaX + Math.sin(radians) * deltaY;
-    const localDeltaY = -Math.sin(radians) * deltaX + Math.cos(radians) * deltaY;
+  resizeTransform(transform, gesture, localDelta) {
     const direction = gesture.direction;
-    let width = gesture.startSize.width;
-    let height = gesture.startSize.height;
-    if (direction.includes("e")) width += localDeltaX;
-    if (direction.includes("w")) width -= localDeltaX;
-    if (direction.includes("s")) height += localDeltaY;
-    if (direction.includes("n")) height -= localDeltaY;
-
-    let shiftX = direction.includes("w") ? gesture.startSize.width - width : 0;
-    let shiftY = direction.includes("n") ? gesture.startSize.height - height : 0;
-    if (gesture.isGroup) {
-      const ratios = [];
+    if (gesture.scaleType === "transform") {
+      const scale = { ...gesture.startScale };
       if (direction.includes("e") || direction.includes("w")) {
-        ratios.push(width / gesture.startSize.width);
+        const signedDeltaX = direction.includes("w") ? -localDelta.x : localDelta.x;
+        scale.x = Math.max(
+          MIN_SIZE / gesture.startSize.width,
+          scale.x * (1 + signedDeltaX / gesture.startSize.width)
+        );
       }
-      if (direction.includes("n") || direction.includes("s")) {
-        ratios.push(height / gesture.startSize.height);
+      if (direction.includes("s") || direction.includes("n")) {
+        const signedDeltaY = direction.includes("n") ? -localDelta.y : localDelta.y;
+        scale.y = Math.max(
+          MIN_SIZE / gesture.startSize.height,
+          scale.y * (1 + signedDeltaY / gesture.startSize.height)
+        );
       }
-      const factor = Math.max(
-        MIN_SIZE / gesture.startSize.width,
-        MIN_SIZE / gesture.startSize.height,
-        ratios.reduce((sum, ratio) => sum + ratio, 0) / ratios.length
-      );
-      width = gesture.startSize.width * factor;
-      height = gesture.startSize.height * factor;
-      transform.scale = gesture.startScale * factor;
-      shiftX = direction.includes("w") ? gesture.startSize.width - width : 0;
-      shiftY = direction.includes("n") ? gesture.startSize.height - height : 0;
+      transform.scale = scale;
+      const newMatrix = getScreenPlacementMatrix(transform);
+      const anchor = this.resizeAnchor(gesture.startSize, direction);
+      const oldOffset = this.transformVector(gesture.startPlacementMatrix, anchor);
+      const newOffset = this.transformVector(newMatrix, anchor);
+      transform.position = {
+        x: Math.round(gesture.startPosition.x + oldOffset.x - newOffset.x),
+        y: Math.round(gesture.startPosition.y + oldOffset.y - newOffset.y)
+      };
     } else {
+      let width = gesture.startSize.width;
+      let height = gesture.startSize.height;
+      if (direction.includes("e")) width += localDelta.x;
+      if (direction.includes("w")) width -= localDelta.x;
+      if (direction.includes("s")) height += localDelta.y;
+      if (direction.includes("n")) height -= localDelta.y;
       width = Math.max(MIN_SIZE, width);
       height = Math.max(MIN_SIZE, height);
+      if (gesture.isGroup && gesture.groupGeometry.length) {
+        const minimumRatioX = Math.max(
+          MIN_SIZE / gesture.startSize.width,
+          ...gesture.groupGeometry.map((entry) => MIN_SIZE / entry.size.width)
+        );
+        const minimumRatioY = Math.max(
+          MIN_SIZE / gesture.startSize.height,
+          ...gesture.groupGeometry.map((entry) => MIN_SIZE / entry.size.height)
+        );
+        width = Math.max(width, gesture.startSize.width * minimumRatioX);
+        height = Math.max(height, gesture.startSize.height * minimumRatioY);
+      }
       transform.size = { width: Math.round(width), height: Math.round(height) };
-      shiftX = direction.includes("w") ? gesture.startSize.width - width : 0;
-      shiftY = direction.includes("n") ? gesture.startSize.height - height : 0;
+      const ratioX = width / gesture.startSize.width;
+      const ratioY = height / gesture.startSize.height;
+      if (gesture.isGroup) {
+        this.applyGroupGeometryScale(gesture.groupGeometry, ratioX, ratioY);
+      }
+      const oldCenter = { x: gesture.startSize.width / 2, y: gesture.startSize.height / 2 };
+      const newCenter = { x: width / 2, y: height / 2 };
+      const oldAnchor = this.resizeAnchor(gesture.startSize, direction);
+      const newAnchor = this.resizeAnchor(transform.size, direction);
+      const oldOffset = this.transformVector(gesture.startPlacementMatrix, oldAnchor);
+      const newOffset = this.transformVector(gesture.startPlacementMatrix, newAnchor);
+      transform.position = {
+        x: Math.round(gesture.startPosition.x + oldCenter.x - newCenter.x +
+          oldOffset.x - newOffset.x),
+        y: Math.round(gesture.startPosition.y + oldCenter.y - newCenter.y +
+          oldOffset.y - newOffset.y)
+      };
     }
-
-    transform.position = {
-      x: Math.round(gesture.startPosition.x + Math.cos(radians) * shiftX -
-        Math.sin(radians) * shiftY),
-      y: Math.round(gesture.startPosition.y + Math.sin(radians) * shiftX +
-        Math.cos(radians) * shiftY)
-    };
   }
 
   persistTransform(instance, transform) {
     instance.position = { ...transform.position };
-    if (transform.isGroup) instance.scale = transform.scale;
-    else instance.size = { ...transform.size };
+    instance.scale = serializeScale(getScaleComponents(transform.scale));
+    instance.size = { ...transform.size };
     instance.rotation = transform.rotation;
+  }
+
+  transformVector(matrix, vector) {
+    return {
+      x: matrix.a * vector.x + matrix.c * vector.y,
+      y: matrix.b * vector.x + matrix.d * vector.y
+    };
+  }
+
+  pointerVectorInParent(clientX, clientY, scaleX, scaleY, inverseParentMatrix) {
+    return this.transformVector(inverseParentMatrix, {
+      x: clientX / scaleX,
+      y: clientY / scaleY
+    });
+  }
+
+  resizeAnchor(size, direction) {
+    return {
+      x: direction.includes("e")
+        ? -size.width / 2
+        : direction.includes("w") ? size.width / 2 : 0,
+      y: direction.includes("s")
+        ? -size.height / 2
+        : direction.includes("n") ? size.height / 2 : 0
+    };
+  }
+
+  captureGroupGeometry(group, frame, path) {
+    const frameByPath = new Map(
+      [...frame.querySelectorAll(".material-frame")].map((candidate) => [
+        candidate.dataset.instancePath,
+        candidate
+      ])
+    );
+    const geometry = [];
+    const visit = (placement, placementPath) => {
+      const childFrame = frameByPath.get(JSON.stringify(placementPath));
+      geometry.push({
+        placement,
+        frame: childFrame || null,
+        position: { ...placement.position },
+        size: { ...placement.size }
+      });
+      if (isScreenGroup(placement)) {
+        placement.children.forEach((child, index) =>
+          visit(child, [...placementPath, index])
+        );
+      }
+    };
+    group.children.forEach((child, index) => visit(child, [...path, index]));
+    return geometry;
+  }
+
+  applyGroupGeometryScale(geometry, scaleX, scaleY) {
+    const roundGeometry = (value) => Math.round(value * 1000) / 1000;
+    for (const entry of geometry) {
+      entry.placement.position = {
+        x: roundGeometry(entry.position.x * scaleX),
+        y: roundGeometry(entry.position.y * scaleY)
+      };
+      entry.placement.size = {
+        width: roundGeometry(entry.size.width * scaleX),
+        height: roundGeometry(entry.size.height * scaleY)
+      };
+    }
+  }
+
+  updateGroupGeometryFrames(geometry) {
+    for (const { placement, frame } of geometry) {
+      if (!frame) continue;
+      this.applyTransform(frame, frame.children[0], {
+        position: placement.position,
+        size: placement.size,
+        fillCanvasWidth: false,
+        rotation: placement.rotation || 0,
+        scale: getScaleComponents(placement.scale ?? 1),
+        affine: placement.affine || IDENTITY_MATRIX,
+        isGroup: isScreenGroup(placement)
+      });
+    }
   }
 
   samePath(left, right) {

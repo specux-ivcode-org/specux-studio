@@ -39,7 +39,8 @@ function pushError(errors, source, error) {
 async function validateProject(projectRoot) {
   const { normalizeScreenLayers } =
     await import("../shared/ScreenLayers.mjs");
-  const { isScreenGroup } = await import("../shared/ScreenGroups.mjs");
+  const { isScreenGroup, isValidAffineMatrix, isValidScale } =
+    await import("../shared/ScreenGroups.mjs");
   const errors = [];
   const assets = new Map();
   const materialFiles = new Map();
@@ -446,7 +447,7 @@ async function validateProject(projectRoot) {
 
       if (isScreenGroup(material)) {
         const allowedProperties = new Set([
-          "id", "type", "children", "position", "size", "rotation", "scale",
+          "id", "type", "children", "position", "size", "rotation", "scale", "affine",
           "visibility", "note", "layer"
         ]);
         for (const property of Object.keys(material)) {
@@ -475,8 +476,11 @@ async function validateProject(projectRoot) {
           errors.push(`${location}: rotation must be a number.`);
         }
         if (material.scale !== undefined &&
-            (!Number.isFinite(material.scale) || material.scale <= 0)) {
-          errors.push(`${location}: scale must be a positive number.`);
+            !isValidScale(material.scale)) {
+          errors.push(`${location}: scale must be a positive number or positive x/y factors.`);
+        }
+        if (material.affine !== undefined && !isValidAffineMatrix(material.affine)) {
+          errors.push(`${location}: affine must contain a non-singular a/b/c/d matrix.`);
         }
         if (!Array.isArray(material.children) || material.children.length === 0) {
           errors.push(`${location}: group children must be a non-empty list.`);
@@ -489,7 +493,7 @@ async function validateProject(projectRoot) {
       }
 
       const allowedProperties = new Set([
-        "id", "src", "attributes", "position", "size", "rotation",
+        "id", "src", "attributes", "position", "size", "rotation", "scale", "affine",
         "visibility", "note", "layer"
       ]);
       for (const property of Object.keys(material)) {
@@ -527,6 +531,12 @@ async function validateProject(projectRoot) {
       }
       if (material.rotation !== undefined && !Number.isFinite(material.rotation)) {
         errors.push(`${location}: rotation must be a number.`);
+      }
+      if (material.scale !== undefined && !isValidScale(material.scale)) {
+        errors.push(`${location}: scale must be a positive number or positive x/y factors.`);
+      }
+      if (material.affine !== undefined && !isValidAffineMatrix(material.affine)) {
+        errors.push(`${location}: affine must contain a non-singular a/b/c/d matrix.`);
       }
     }
 

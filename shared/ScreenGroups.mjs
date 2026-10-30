@@ -1,7 +1,70 @@
 const MIN_SIZE = 24;
+const IDENTITY_MATRIX = Object.freeze({ a: 1, b: 0, c: 0, d: 1 });
 
 export function isScreenGroup(instance) {
   return instance?.type === "group";
+}
+
+export function getScaleComponents(scale = 1) {
+  if (typeof scale === "number") return { x: scale, y: scale };
+  return { x: scale?.x ?? 1, y: scale?.y ?? 1 };
+}
+
+export function isValidScale(scale) {
+  if (typeof scale === "number") return Number.isFinite(scale) && scale > 0;
+  return scale && typeof scale === "object" && !Array.isArray(scale) &&
+    Object.keys(scale).every((key) => key === "x" || key === "y") &&
+    Number.isFinite(scale.x) && scale.x > 0 &&
+    Number.isFinite(scale.y) && scale.y > 0;
+}
+
+export function isValidAffineMatrix(matrix) {
+  return matrix && typeof matrix === "object" && !Array.isArray(matrix) &&
+    ["a", "b", "c", "d"].every((key) => Number.isFinite(matrix[key])) &&
+    Object.keys(matrix).every((key) => ["a", "b", "c", "d"].includes(key)) &&
+    Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) >= Number.EPSILON;
+}
+
+export function serializeScale(scale) {
+  return Math.abs(scale.x - scale.y) < 1e-10
+    ? (scale.x + scale.y) / 2
+    : { x: scale.x, y: scale.y };
+}
+
+export function multiplyAffineMatrices(left, right) {
+  return {
+    a: left.a * right.a + left.c * right.b,
+    b: left.b * right.a + left.d * right.b,
+    c: left.a * right.c + left.c * right.d,
+    d: left.b * right.c + left.d * right.d
+  };
+}
+
+export function invertAffineMatrix(matrix) {
+  const determinant = matrix.a * matrix.d - matrix.b * matrix.c;
+  if (Math.abs(determinant) < Number.EPSILON) {
+    throw new Error("Cannot invert a singular placement transform.");
+  }
+  return {
+    a: matrix.d / determinant,
+    b: -matrix.b / determinant,
+    c: -matrix.c / determinant,
+    d: matrix.a / determinant
+  };
+}
+
+export function getScreenPlacementMatrix(placement) {
+  const radians = (placement.rotation || 0) * (Math.PI / 180);
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+  const scale = getScaleComponents(placement.scale ?? 1);
+  const rotationScale = {
+    a: cosine * scale.x,
+    b: sine * scale.x,
+    c: -sine * scale.y,
+    d: cosine * scale.y
+  };
+  return multiplyAffineMatrices(rotationScale, placement.affine || IDENTITY_MATRIX);
 }
 
 export function getScreenPlacementAtPath(placements, path) {
@@ -55,18 +118,15 @@ export function getScreenPlacementBounds(placement) {
   const { width, height } = placement.size;
   const centerX = x + width / 2;
   const centerY = y + height / 2;
-  const radians = (placement.rotation || 0) * (Math.PI / 180);
-  const cosine = Math.cos(radians);
-  const sine = Math.sin(radians);
-  const scale = isScreenGroup(placement) ? (placement.scale ?? 1) : 1;
+  const matrix = getScreenPlacementMatrix(placement);
   const corners = [
     { x: -width / 2, y: -height / 2 },
     { x: width / 2, y: -height / 2 },
     { x: width / 2, y: height / 2 },
     { x: -width / 2, y: height / 2 }
   ].map((point) => ({
-    x: centerX + scale * (cosine * point.x - sine * point.y),
-    y: centerY + scale * (sine * point.x + cosine * point.y)
+    x: centerX + matrix.a * point.x + matrix.c * point.y,
+    y: centerY + matrix.b * point.x + matrix.d * point.y
   }));
   const left = Math.min(...corners.map((corner) => corner.x));
   const right = Math.max(...corners.map((corner) => corner.x));
@@ -180,26 +240,37 @@ function transformChildForUngroup(group, child) {
     x: child.position.x + size.width / 2,
     y: child.position.y + size.height / 2
   };
-  const groupScale = group.scale ?? 1;
-  const radians = (group.rotation || 0) * (Math.PI / 180);
-  const cosine = Math.cos(radians);
-  const sine = Math.sin(radians);
-  const localX = (center.x - pivot.x) * groupScale;
-  const localY = (center.y - pivot.y) * groupScale;
+  const groupMatrix = getScreenPlacementMatrix(group);
   const transformedCenter = {
-    x: group.position.x + pivot.x + cosine * localX - sine * localY,
-    y: group.position.y + pivot.y + sine * localX + cosine * localY
+    x: group.position.x + pivot.x +
+      groupMatrix.a * (center.x - pivot.x) + groupMatrix.c * (center.y - pivot.y),
+    y: group.position.y + pivot.y +
+      groupMatrix.b * (center.x - pivot.x) + groupMatrix.d * (center.y - pivot.y)
   };
-  const scaledSize = isScreenGroup(child)
-    ? size
-    : { width: size.width * groupScale, height: size.height * groupScale };
+  const childMatrix = getScreenPlacementMatrix(child);
+  const combinedMatrix = multiplyAffineMatrices(groupMatrix, childMatrix);
+  const scaleComponents = getScaleComponents(child.scale ?? 1);
+  const radians = (child.rotation || 0) * (Math.PI / 180);
+  const childBaseMatrix = {
+    a: Math.cos(radians) * scaleComponents.x,
+    b: Math.sin(radians) * scaleComponents.x,
+    c: -Math.sin(radians) * scaleComponents.y,
+    d: Math.cos(radians) * scaleComponents.y
+  };
+  child.affine = multiplyAffineMatrices(
+    invertAffineMatrix(childBaseMatrix),
+    combinedMatrix
+  );
+  if (
+    Math.abs(child.affine.a - 1) < 1e-10 &&
+    Math.abs(child.affine.b) < 1e-10 &&
+    Math.abs(child.affine.c) < 1e-10 &&
+    Math.abs(child.affine.d - 1) < 1e-10
+  ) delete child.affine;
   child.position = {
-    x: transformedCenter.x - scaledSize.width / 2,
-    y: transformedCenter.y - scaledSize.height / 2
+    x: transformedCenter.x - size.width / 2,
+    y: transformedCenter.y - size.height / 2
   };
-  if (!isScreenGroup(child)) child.size = scaledSize;
-  child.rotation = (child.rotation || 0) + (group.rotation || 0);
-  if (isScreenGroup(child)) child.scale = (child.scale ?? 1) * groupScale;
 }
 
 export function ungroupScreenPlacement(placements, path) {
@@ -217,16 +288,14 @@ export function ungroupScreenPlacement(placements, path) {
 
 export function getScreenParentTransform(placements, path) {
   let siblings = placements;
-  let scale = 1;
-  let rotation = 0;
+  let matrix = IDENTITY_MATRIX;
   for (const index of path.slice(0, -1)) {
     const parent = siblings[index];
     if (!isScreenGroup(parent)) break;
-    scale *= parent.scale ?? 1;
-    rotation += parent.rotation || 0;
+    matrix = multiplyAffineMatrices(matrix, getScreenPlacementMatrix(parent));
     siblings = parent.children;
   }
-  return { scale, rotation };
+  return { matrix };
 }
 
 export function getScreenPlacementCount(placements) {

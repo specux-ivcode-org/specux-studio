@@ -42,6 +42,8 @@ Each item in `materials` is a mapping with these properties:
 | `position` | mapping | Yes | Position in CSS pixels from the parent canvas or group coordinate space. Top-level placements use Screen-canvas coordinates. |
 | `size` | mapping | Yes | Material dimensions in CSS pixels: `{width, height}`, each at least `24`. |
 | `rotation` | number | No | Clockwise rotation in degrees around the material's center. Defaults to `0`. |
+| `scale` | number or mapping | No | Positive transform scale. A number applies uniformly; `{x, y}` sets positive X/Y factors. Defaults to `1`. |
+| `affine` | mapping | No | Non-singular linear transform matrix `{a, b, c, d}`. Used to retain shear when group transforms are baked into placements during ungrouping. |
 | `visibility` | mapping | No | Optional state-specific visibility values keyed by `preview-states[].id`. A missing state value means visible. |
 | `note` | string | No | Optional implementation guidance. |
 | `layer` | string | Yes at the Screen root | ID of a layer in the Screen's `layers` list. Top-level placements require a layer; placements inside a group inherit the group's layer and must not define one. |
@@ -60,14 +62,15 @@ A group is a Screen-local placement container with this shape:
 | `position` | mapping | Yes | Top-left position in the parent coordinate space. |
 | `size` | mapping | Yes | Group's unscaled width and height in CSS pixels, each at least `24`. The pivot is fixed at the center of this rectangle. |
 | `rotation` | number | No | Clockwise rotation in degrees around the fixed group pivot. Defaults to `0`. |
-| `scale` | number | No | Positive uniform scale applied to the group and all descendants. Defaults to `1`. |
+| `scale` | number or mapping | No | Positive transform scale applied to the group and all descendants. A number applies uniformly; `{x, y}` sets positive X/Y factors. Defaults to `1`. |
+| `affine` | mapping | No | Non-singular linear transform matrix `{a, b, c, d}`. Used to retain shear when group transforms are baked into groups during ungrouping. |
 | `visibility` | mapping | No | State-specific visibility for the group. A hidden group hides all descendants. |
 | `note` | string | No | Optional implementation guidance. |
 | `layer` | string | Yes at the Screen root | Root group layer. Descendants inherit this layer; nested groups must not define `layer`. |
 
-Children use coordinates relative to their containing group's top-left corner. Group transforms compose from outermost to innermost; each group's rotation rotates descendant positions around its own fixed center pivot, and its uniform scale applies to all descendant positions and sizes. The order of each `children` list controls stacking within that group. Group IDs and Material placement IDs share one unique-ID namespace for the Screen.
+Children use coordinates relative to their containing group's top-left corner. Group transforms compose from outermost to innermost; each group's rotation and transform scale apply around its own fixed center pivot. The order of each `children` list controls stacking within that group. Group IDs and Material placement IDs share one unique-ID namespace for the Screen.
 
-The Studio can create a group from a Ctrl multi-selection only when the selected placements are consecutive siblings in stacking order and belong to the same layer. Right-click a group and choose **Ungroup** to restore its children at that stack position while baking the group's transform into them.
+The Studio can create a group from a Ctrl multi-selection only when the selected placements are consecutive siblings in stacking order and belong to the same layer. Choose **X/Y** in the Screen toolbar to resize dimensions, or **Transform** to scale the rendered placement without changing its base dimensions. The toolbar choice is temporary; the resulting size or transform is saved in Screen YAML. Right-click a group and choose **Ungroup** to restore its children at that stack position while preserving composed transforms, including shear.
 
 IDs must use lowercase letters, numbers, and hyphens and be unique across all placements and groups in the Screen. Each Material placement `src` must reference a discovered Material file. Do not use the former `elements` property or asset templates for Screen composition.
 

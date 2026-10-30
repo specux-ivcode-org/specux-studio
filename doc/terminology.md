@@ -13,3 +13,5 @@ This glossary defines terms used throughout the project, including in the [Scree
 | **Material** | A reusable STML template containing shared visual markup and variable definitions. It is not a positioned object on a Screen. |
 | **Placement** | A Screen-local object with its own ID, transform, and visibility. A Material placement references a reusable Material and can override its variables; a top-level placement has a layer assignment. A group is also a placement, but contains child placements instead of referencing a Material. |
 | **Group** | A Screen-local placement container that holds an ordered set of child placements. It has its own transform and effective layer, and is not a reusable Material. |
+| **X/Y resize** | Resizing that changes a placement's saved width and height; for a group, it scales descendant positions and dimensions proportionally on each axis. |
+| **Transform scale** | Scaling applied to a placement's rendered frame independently of its saved width and height. Transform factors are saved with the placement even though the toolbar's active resize mode is temporary. |

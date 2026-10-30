@@ -237,11 +237,22 @@ test("validates recursive Screen placement groups and inherited layers", async (
     ));
 
     delete screen.materials[0].children[0].layer;
-    screen.materials[0].scale = 0;
+    screen.materials[0].scale = { x: 1, y: 2 };
+    screen.materials[0].children[0].scale = { x: 2, y: 1 };
+    screen.materials[0].children[0].affine = { a: 1, b: 0, c: 0, d: 1 };
+    await fs.writeFile(screenPath, YAML.stringify(screen));
+    result = await validateProject(root);
+    assert.deepEqual(result.errors, []);
+
+    screen.materials[0].children[0].scale = { x: 0, y: 1 };
+    screen.materials[0].children[0].affine = { a: 1, b: 0, c: 0, d: 0 };
     await fs.writeFile(screenPath, YAML.stringify(screen));
     result = await validateProject(root);
     assert.ok(result.errors.some((error) =>
-      error.includes("scale must be a positive number")
+      error.includes("scale must be a positive number or positive x/y factors")
+    ));
+    assert.ok(result.errors.some((error) =>
+      error.includes("affine must contain a non-singular a/b/c/d matrix")
     ));
   } finally {
     await fs.rm(root, { recursive: true, force: true });

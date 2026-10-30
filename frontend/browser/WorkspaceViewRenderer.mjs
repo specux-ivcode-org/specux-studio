@@ -1,4 +1,8 @@
-import { isScreenGroup } from "../../shared/ScreenGroups.mjs";
+import {
+  isScreenGroup,
+  multiplyAffineMatrices,
+  getScreenPlacementMatrix
+} from "../../shared/ScreenGroups.mjs";
 
 export class WorkspaceViewRenderer {
   constructor({ state, services }) {
@@ -78,7 +82,7 @@ export class WorkspaceViewRenderer {
         placements,
         parent,
         parentPath = [],
-        parentTransform = { scale: 1, rotation: 0 }
+        parentTransform = { matrix: { a: 1, b: 0, c: 0, d: 1 } }
       ) => {
         for (const [placementIndex, placement] of placements.entries()) {
           const path = [...parentPath, placementIndex];
@@ -105,8 +109,10 @@ export class WorkspaceViewRenderer {
               host,
               path,
               {
-                scale: parentTransform.scale * (placement.scale ?? 1),
-                rotation: parentTransform.rotation + (placement.rotation || 0)
+                matrix: multiplyAffineMatrices(
+                  parentTransform.matrix,
+                  getScreenPlacementMatrix(placement)
+                )
               }
             );
           }

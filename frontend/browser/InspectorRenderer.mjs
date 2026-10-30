@@ -1,5 +1,9 @@
 import { BASE_LAYER_ID } from "../../shared/ScreenLayers.mjs";
-import { isScreenGroup } from "../../shared/ScreenGroups.mjs";
+import {
+  getScaleComponents,
+  isScreenGroup,
+  serializeScale
+} from "../../shared/ScreenGroups.mjs";
 
 const LAYER_DRAG_TYPE = "application/x-specux-layer";
 const MATERIAL_DRAG_TYPE = "application/x-specux-material";
@@ -793,7 +797,12 @@ export class InspectorRenderer {
         "Size",
         `${group.size?.width ?? "Auto"} × ${group.size?.height ?? "Auto"}`
       );
-      this.appendDetail(panel, "Uniform scale", String(group.scale ?? 1));
+      const groupScale = getScaleComponents(group.scale ?? 1);
+      this.appendDetail(
+        panel,
+        "Transform scale",
+        `${groupScale.x} × ${groupScale.y}`
+      );
       this.appendDetail(panel, "Rotation", `${group.rotation ?? 0}°`);
       this.appendDetail(
         panel,
@@ -817,22 +826,35 @@ export class InspectorRenderer {
         { numberFormat: "integer" }
       );
     }
-    services.appendEditableField(
-      panel,
-      "Uniform scale",
-      group.scale ?? 1,
-      (value) => {
-        if (value === undefined) return;
-        if (value <= 0) {
-          services.showEditorMessage("Invalid scale", "Uniform scale must be greater than zero.");
-          return;
-        }
-        group.scale = value;
-        services.markEdited(screen.file);
-        services.refreshActiveView();
-      },
-      { numberFormat: "decimal" }
-    );
+    for (const key of ["width", "height"]) {
+      services.appendEditableField(
+        panel,
+        key === "width" ? "Width" : "Height",
+        group.size[key],
+        (value) => {
+          if (value === undefined) return;
+          if (value < 24) {
+            services.showEditorMessage("Invalid group size", "Group dimensions must be at least 24 pixels.");
+            return;
+          }
+          const ratio = value / group.size[key];
+          const axis = key === "width" ? "x" : "y";
+          if (!this.canScaleGroupGeometry(group, axis, ratio)) {
+            services.showEditorMessage(
+              "Invalid group size",
+              "Group dimensions cannot scale a child below 24 pixels."
+            );
+            return;
+          }
+          this.scaleGroupGeometry(group, axis, ratio);
+          group.size[key] = value;
+          services.markEdited(screen.file);
+          services.refreshActiveView();
+        },
+        { numberFormat: "integer" }
+      );
+    }
+    this.appendTransformScaleFields(panel, group, screen);
     services.appendEditableField(
       panel,
       "Rotation",
@@ -862,6 +884,24 @@ export class InspectorRenderer {
       services.deleteMaterial([...state.activeInstancePath]).catch(services.showFatalError);
     });
     panel.append(deleteButton);
+  }
+
+  canScaleGroupGeometry(group, axis, ratio) {
+    const dimension = axis === "x" ? "width" : "height";
+    return group.children.every((child) =>
+      child.size[dimension] * ratio >= 24 &&
+      (!isScreenGroup(child) || this.canScaleGroupGeometry(child, axis, ratio))
+    );
+  }
+
+  scaleGroupGeometry(group, axis, ratio) {
+    for (const child of group.children) {
+      const positionAxis = axis;
+      const sizeAxis = axis === "x" ? "width" : "height";
+      child.position[positionAxis] *= ratio;
+      child.size[sizeAxis] *= ratio;
+      if (isScreenGroup(child)) this.scaleGroupGeometry(child, axis, ratio);
+    }
   }
 
   renderMaterialPlacementDetails(panel, instance, material) {
@@ -913,6 +953,12 @@ export class InspectorRenderer {
         "Size",
         `${instance.size?.width ?? "Auto"} × ${instance.size?.height ?? "Auto"}`
       );
+      const instanceScale = getScaleComponents(instance.scale ?? 1);
+      this.appendDetail(
+        panel,
+        "Transform scale",
+        `${instanceScale.x} × ${instanceScale.y}`
+      );
       this.appendDetail(panel, "Rotation", `${instance.rotation ?? 0}°`);
       this.appendDetail(
         panel,
@@ -953,6 +999,7 @@ export class InspectorRenderer {
         { numberFormat: "integer" }
       );
     }
+    this.appendTransformScaleFields(panel, instance, screen);
     services.appendEditableField(
       panel,
       "Rotation",
@@ -971,6 +1018,35 @@ export class InspectorRenderer {
       services.deleteMaterial([...state.activeInstancePath]).catch(services.showFatalError)
     );
     panel.append(deleteButton);
+  }
+
+  appendTransformScaleFields(panel, placement, screen) {
+    const { services } = this;
+    const scale = getScaleComponents(placement.scale ?? 1);
+    for (const axis of ["x", "y"]) {
+      services.appendEditableField(
+        panel,
+        `Transform scale ${axis.toUpperCase()}`,
+        scale[axis],
+        (value) => {
+          if (value === undefined) return;
+          if (value <= 0) {
+            services.showEditorMessage(
+              "Invalid scale",
+              "Transform scale factors must be greater than zero."
+            );
+            return;
+          }
+
+          const updated = getScaleComponents(placement.scale ?? 1);
+          updated[axis] = value;
+          placement.scale = serializeScale(updated);
+          services.markEdited(screen.file);
+          services.refreshActiveView();
+        },
+        { numberFormat: "decimal" }
+      );
+    }
   }
 
   renderTemplateDetails(panel, template) {

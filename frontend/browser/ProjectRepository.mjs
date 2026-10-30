@@ -1,5 +1,9 @@
 import { normalizeScreenLayers } from "../../shared/ScreenLayers.mjs";
-import { isScreenGroup } from "../../shared/ScreenGroups.mjs";
+import {
+  isScreenGroup,
+  isValidAffineMatrix,
+  isValidScale
+} from "../../shared/ScreenGroups.mjs";
 
 export class ProjectRepository {
   constructor({ appRoot, fetcher, parseYaml, validation, templateFileExtension }) {
@@ -147,7 +151,7 @@ export class ProjectRepository {
       }
       if (isScreenGroup(placement)) {
         const allowedProperties = new Set([
-          "id", "type", "children", "position", "size", "rotation", "scale",
+          "id", "type", "children", "position", "size", "rotation", "scale", "affine",
           "visibility", "note", "layer"
         ]);
         for (const property of Object.keys(placement)) {
@@ -176,8 +180,11 @@ export class ProjectRepository {
           throw new Error(`${location}: rotation must be a number.`);
         }
         if (placement.scale !== undefined &&
-            (!Number.isFinite(placement.scale) || placement.scale <= 0)) {
-          throw new Error(`${location}: scale must be a positive number.`);
+            !isValidScale(placement.scale)) {
+          throw new Error(`${location}: scale must be a positive number or positive x/y factors.`);
+        }
+        if (placement.affine !== undefined && !isValidAffineMatrix(placement.affine)) {
+          throw new Error(`${location}: affine must contain a non-singular a/b/c/d matrix.`);
         }
         if (!Array.isArray(placement.children) || placement.children.length === 0) {
           throw new Error(`${location}: group children must be a non-empty list.`);
@@ -189,7 +196,7 @@ export class ProjectRepository {
       }
 
       const allowedProperties = new Set([
-        "id", "src", "attributes", "position", "size", "rotation",
+        "id", "src", "attributes", "position", "size", "rotation", "scale", "affine",
         "visibility", "note", "layer"
       ]);
       for (const property of Object.keys(placement)) {
@@ -227,6 +234,12 @@ export class ProjectRepository {
       }
       if (placement.rotation !== undefined && !Number.isFinite(placement.rotation)) {
         throw new Error(`${location}: rotation must be a number.`);
+      }
+      if (placement.scale !== undefined && !isValidScale(placement.scale)) {
+        throw new Error(`${location}: scale must be a positive number or positive x/y factors.`);
+      }
+      if (placement.affine !== undefined && !isValidAffineMatrix(placement.affine)) {
+        throw new Error(`${location}: affine must contain a non-singular a/b/c/d matrix.`);
       }
     };
     screen.data.materials.forEach((placement, index) =>
