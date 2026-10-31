@@ -92,6 +92,9 @@ export class BrowserHistory {
     const snapshot = { view: selection.view };
     if (selection.screen?.id) snapshot.screen = { id: selection.screen.id };
     if (selection.view === "theme") snapshot.file = selection.file;
+    if (selection.view === "workflow" && selection.workflow) {
+      snapshot.workflow = { file: selection.workflow.file };
+    }
     if (selection.view === "spec" && selection.spec) {
       snapshot.spec = {
         file: selection.spec.file,

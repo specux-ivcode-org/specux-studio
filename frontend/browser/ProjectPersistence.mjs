@@ -81,9 +81,11 @@ export class ProjectPersistence {
     if (!saveButton) return;
     const { state } = this;
     const invalidYamlMessage = state.invalidYamlFiles.values().next().value;
+    const invalidWorkflowMessage = state.invalidWorkflowFiles.values().next().value;
     const assetSerializationPending = state.pendingAssetSerializations.size > 0;
     saveButton.disabled = state.isSaving || state.dirtyFiles.size === 0 ||
-      state.invalidYamlFiles.size > 0 || assetSerializationPending;
+      state.invalidYamlFiles.size > 0 || state.invalidWorkflowFiles.size > 0 ||
+      assetSerializationPending;
     saveButton.textContent = state.isSaving
       ? "Saving..."
       : state.dirtyFiles.size > 0
@@ -91,6 +93,8 @@ export class ProjectPersistence {
         : "Save";
     saveButton.title = invalidYamlMessage
       ? `Fix invalid YAML before saving: ${invalidYamlMessage}`
+      : invalidWorkflowMessage
+        ? `Fix invalid Mermaid before saving: ${invalidWorkflowMessage}`
       : assetSerializationPending
         ? "Wait for Asset front matter to finish updating."
         : "";
@@ -128,6 +132,12 @@ export class ProjectPersistence {
         content: state.specSources.get(filePath)
       };
     }
+    if (state.workflowSources.has(filePath)) {
+      return {
+        path: filePath,
+        content: state.workflowSources.get(filePath)
+      };
+    }
     const screen = state.screens.find((entry) => entry.file === filePath);
     if (screen?.yamlSourceMode === "source") {
       return {
@@ -152,7 +162,8 @@ export class ProjectPersistence {
   async save() {
     const { state, services } = this;
     if (state.isSaving || state.dirtyFiles.size === 0) return;
-    if (state.invalidYamlFiles.size > 0 || state.pendingAssetSerializations.size > 0) {
+    if (state.invalidYamlFiles.size > 0 || state.invalidWorkflowFiles.size > 0 ||
+        state.pendingAssetSerializations.size > 0) {
       this.updateSaveControls();
       return;
     }

@@ -16,6 +16,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "mermaid": "^12.2.0",
     "yaml": "^2.8.1"
   }
 }

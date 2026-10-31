@@ -36,6 +36,7 @@ const CONTENT_TYPES = new Map([
   [".yml", "text/yaml; charset=utf-8"],
   [".yaml", "text/yaml; charset=utf-8"],
   [".md", "text/markdown; charset=utf-8"],
+  [".mmd", "text/markdown; charset=utf-8"],
   [validation.TEMPLATE_FILE_EXTENSION, "text/plain; charset=utf-8"]
 ]);
 
@@ -189,6 +190,15 @@ function isSpecPath(relativePath) {
   }
 }
 
+function isWorkflowPath(relativePath) {
+  try {
+    validation.validateWorkflowPath(relativePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function isScreenFilePath(relativePath) {
   return /^screens\/[a-z][a-z0-9-]*\/screen\.yml$/.test(relativePath);
 }
@@ -253,8 +263,10 @@ async function resolveProjectFile(projectRoot, relativePath, { create = false, s
   }
   const extension = path.extname(relativePath).toLowerCase();
   const specPath = isSpecPath(relativePath);
-  if (![".yml", ".yaml", validation.TEMPLATE_FILE_EXTENSION].includes(extension) && !(extension === ".md" && specPath)) {
-    throw requestError("The editor can only save project YAML, STML, and behavior spec Markdown files.");
+  const workflowPath = isWorkflowPath(relativePath);
+  if (![".yml", ".yaml", validation.TEMPLATE_FILE_EXTENSION].includes(extension) &&
+      !(extension === ".md" && specPath) && !(extension === ".mmd" && workflowPath)) {
+    throw requestError("The editor can only save project YAML, STML, behavior spec Markdown, and Screen workflow Mermaid files.");
   }
 
   if (extension === validation.TEMPLATE_FILE_EXTENSION &&
@@ -270,8 +282,8 @@ async function resolveProjectFile(projectRoot, relativePath, { create = false, s
   if (create) {
     const screenFile = isScreenFilePath(relativePath);
     const materialFile = isMaterialFilePath(relativePath);
-    if (!screenFile && !specPath && !materialFile) {
-      throw requestError("New files can only be created as named Screen YAML, Material STML, or behavior spec Markdown files.", 400);
+    if (!screenFile && !specPath && !materialFile && !workflowPath) {
+      throw requestError("New files can only be created as named Screen YAML, Material STML, behavior spec Markdown, or Screen workflow Mermaid files.", 400);
     }
     const relativeDirectory = path.posix.dirname(relativePath);
     const realTargetDirectory = await resolveProjectDirectory(projectRoot, relativeDirectory, { create: true });
@@ -558,6 +570,12 @@ async function saveProjectFiles(projectRoot, files, assetCopies) {
         throw requestError(`${file.path}: ${error.message || String(error)}`);
       }
       updates.push({ path: file.path, content: file.content, create });
+    } else if (extension === ".mmd") {
+      if (!isWorkflowPath(file.path) || typeof file.content !== "string" ||
+          Object.hasOwn(file, "data")) {
+        throw requestError("Screen workflow Mermaid save entries must contain text content at a valid Screen workflow path.");
+      }
+      updates.push({ path: file.path, content: file.content, create });
     } else if (extension === validation.TEMPLATE_FILE_EXTENSION && isMaterialFilePath(file.path)) {
       if (typeof file.content !== "string" || Object.hasOwn(file, "data")) {
         throw requestError("Material STML save entries must contain text content.");
@@ -700,6 +718,17 @@ async function serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, res
   let relativePath;
   let allowedRoot = rootDirectory;
   if (pathname === "/") relativePath = "index.html";
+  else if (pathname.startsWith("/vendor/mermaid/")) {
+    const packagePath = pathname.slice("/vendor/mermaid/".length);
+    if (!packagePath || packagePath.split("/").some((segment) =>
+      !segment || segment === "." || segment === ".." || segment.startsWith(".")
+    )) {
+      sendJson(response, 404, { error: "File not found." });
+      return;
+    }
+    allowedRoot = path.resolve(__dirname, "..", "node_modules", "mermaid", "dist");
+    relativePath = path.join(...packagePath.split("/"));
+  }
   else if ([
     "/index.html",
     "/app.mjs",
@@ -731,7 +760,8 @@ async function serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, res
     "/browser/SplitViewLayout.mjs",
     "/browser/ThemeEditor.mjs",
     "/browser/TemplateMarkupRenderer.mjs",
-    "/browser/WorkspaceViewRenderer.mjs"
+    "/browser/WorkspaceViewRenderer.mjs",
+    "/browser/WorkflowEditor.mjs"
   ].includes(pathname)) {
     relativePath = pathname.slice(1);
   } else if ([

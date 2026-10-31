@@ -1,3 +1,8 @@
+const CANVAS_ZOOM_CONTROL_SETS = [
+  ["screen-canvas-zoom-out", "screen-canvas-zoom-reset", "screen-canvas-zoom-in"],
+  ["workflow-canvas-zoom-out", "workflow-canvas-zoom-reset", "workflow-canvas-zoom-in"]
+];
+
 export class EditorEventController {
   constructor({ state, services }) {
     this.state = state;
@@ -86,15 +91,17 @@ export class EditorEventController {
 
   bindCanvasZoom() {
     const { services } = this;
-    services.byId("screen-canvas-zoom-out").addEventListener("click", () =>
-      this.setCanvasZoom(this.canvasZoom - 0.1)
-    );
-    services.byId("screen-canvas-zoom-in").addEventListener("click", () =>
-      this.setCanvasZoom(this.canvasZoom + 0.1)
-    );
-    services.byId("screen-canvas-zoom-reset").addEventListener("click", () =>
-      this.setCanvasZoom(1)
-    );
+    for (const [zoomOutId, zoomResetId, zoomInId] of CANVAS_ZOOM_CONTROL_SETS) {
+      services.byId(zoomOutId).addEventListener("click", () =>
+        this.setCanvasZoom(this.canvasZoom - 0.1)
+      );
+      services.byId(zoomInId).addEventListener("click", () =>
+        this.setCanvasZoom(this.canvasZoom + 0.1)
+      );
+      services.byId(zoomResetId).addEventListener("click", () =>
+        this.setCanvasZoom(1)
+      );
+    }
     this.setCanvasZoom(this.canvasZoom);
   }
 
@@ -107,10 +114,12 @@ export class EditorEventController {
       String(this.canvasZoom)
     );
     this.services.renderScreenRulers();
-    this.services.byId("screen-canvas-zoom-reset").textContent =
-      `${Math.round(this.canvasZoom * 100)}%`;
-    this.services.byId("screen-canvas-zoom-out").disabled = this.canvasZoom <= minimum;
-    this.services.byId("screen-canvas-zoom-in").disabled = this.canvasZoom >= maximum;
+    for (const [zoomOutId, zoomResetId, zoomInId] of CANVAS_ZOOM_CONTROL_SETS) {
+      this.services.byId(zoomResetId).textContent =
+        `${Math.round(this.canvasZoom * 100)}%`;
+      this.services.byId(zoomOutId).disabled = this.canvasZoom <= minimum;
+      this.services.byId(zoomInId).disabled = this.canvasZoom >= maximum;
+    }
   }
 
   bindAssetContextMenu() {

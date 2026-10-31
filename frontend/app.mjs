@@ -25,6 +25,7 @@ import { ScreenMaterialRenderer } from "./browser/ScreenMaterialRenderer.mjs";
 import {
   canGroupScreenPlacements,
   getScreenPlacementAtPath,
+  getScreenPlacementPathById,
   isScreenGroup
 } from "../shared/ScreenGroups.mjs";
 import { SpecEditor } from "./browser/SpecEditor.mjs";
@@ -32,6 +33,7 @@ import { SplitViewLayout } from "./browser/SplitViewLayout.mjs";
 import { ThemeEditor } from "./browser/ThemeEditor.mjs";
 import { TemplateMarkupRenderer } from "./browser/TemplateMarkupRenderer.mjs";
 import { WorkspaceViewRenderer } from "./browser/WorkspaceViewRenderer.mjs";
+import { WorkflowEditor } from "./browser/WorkflowEditor.mjs";
 
 const appRoot = new URL("./specux/", window.location.href);
 const sharedValidation = globalThis.SpecuxValidation;
@@ -52,6 +54,7 @@ let screens = [];
 let assets = new Map();
 let materialFiles = new Map();
 let specSources = new Map();
+let workflowSources = new Map();
 let theme;
 let themeStylesheet = "";
 let themeStylesheetBase = appRoot;
@@ -73,6 +76,11 @@ let viewingTheme = false;
 let viewingProject = false;
 let viewingSpec = false;
 let viewingPreviewState = false;
+let viewingWorkflow = false;
+let activeWorkflowPath = null;
+let workflowScreenIndex = 0;
+let selectedWorkflowNodeId = null;
+let workflowViewMode = "split";
 let activeSpecPath = null;
 let activeSpecInstancePath = [];
 let activeSpecOwner = "instance";
@@ -87,6 +95,7 @@ let deleteDialogReturnFocus = null;
 const pendingAssetCopies = [];
 const dirtyFiles = new Map();
 const invalidYamlFiles = new Map();
+const invalidWorkflowFiles = new Map();
 const pendingAssetSerializations = new Set();
 const createdScreenFiles = new Set();
 const createdMaterialFiles = new Set();
@@ -100,6 +109,7 @@ let assetPreviewTimer = null;
 let assetPreviewVersion = 0;
 let editorFieldId = 0;
 let assetStyleScopeId = 0;
+let workflowEditor;
 const browserHistory = new BrowserHistory({
   windowObject: window,
   getCurrentSelection: currentUiSelection,
@@ -162,6 +172,18 @@ const assetViewLayout = new SplitViewLayout({
   resizerId: "asset-split-resizer",
   previewTrackProperty: "--asset-preview-track",
   editorTrackProperty: "--asset-source-track"
+});
+const workflowViewLayout = new SplitViewLayout({
+  windowObject: window,
+  documentObject: document,
+  modes: ["split", "preview", "diagram"],
+  viewIdPrefix: "workflow-view",
+  viewAttribute: "data-workflow-view",
+  headingId: "workflow-view-heading",
+  headingLabels: { split: "Selected node", preview: "Selected node", diagram: "Workflow" },
+  resizerId: "workflow-split-resizer",
+  previewTrackProperty: "--workflow-preview-track",
+  editorTrackProperty: "--workflow-diagram-track"
 });
 const specEditor = new SpecEditor({
   state: {
@@ -270,6 +292,8 @@ const projectPersistence = new ProjectPersistence({
     set isSaving(value) { isSaving = value; },
     get dirtyFiles() { return dirtyFiles; },
     get invalidYamlFiles() { return invalidYamlFiles; },
+    get invalidWorkflowFiles() { return invalidWorkflowFiles; },
+    get workflowSources() { return workflowSources; },
     get editVersion() { return editVersion; },
     set editVersion(value) { editVersion = value; },
     get hasEdits() { return hasEdits; },
@@ -570,6 +594,9 @@ const editorNavigation = new EditorNavigation({
     get viewingProject() { return viewingProject; },
     get viewingTheme() { return viewingTheme; },
     get viewingSpec() { return viewingSpec; },
+    get viewingWorkflow() { return viewingWorkflow; },
+    get activeWorkflowPath() { return activeWorkflowPath; },
+    get workflowScreenIndex() { return workflowScreenIndex; },
     get activeSpecOwner() { return activeSpecOwner; },
     get activeSpecPath() { return activeSpecPath; },
     get activeSpecInstancePath() { return activeSpecInstancePath; },
@@ -599,6 +626,10 @@ const editorNavigation = new EditorNavigation({
     renderAssetTemplate,
     renderMaterialFile,
     sameInstancePath,
+    renderWorkflowEditor: (filePath, screenIndex) => {
+      screenAnnotationController?.setEnabled(false);
+      return workflowEditor.render(filePath, screenIndex);
+    },
     showEditorMessage,
     loadProject
   },
@@ -616,6 +647,7 @@ const projectFileNavigator = new ProjectFileNavigator({
     get viewingTheme() { return viewingTheme; },
     get viewingProject() { return viewingProject; },
     get viewingSpec() { return viewingSpec; },
+    get viewingWorkflow() { return viewingWorkflow; },
     get activeProjectFilePath() { return activeProjectFilePath; },
     get activeSpecPath() { return activeSpecPath; },
     get activeAssetId() { return activeAssetId; },
@@ -624,6 +656,8 @@ const projectFileNavigator = new ProjectFileNavigator({
     get activeMaterialFilePath() { return activeMaterialFilePath; },
     get viewingMaterialFile() { return viewingMaterialFile; },
     get specSources() { return specSources; },
+    get workflowSources() { return workflowSources; },
+    get activeWorkflowPath() { return activeWorkflowPath; },
     get createdSpecDrafts() { return createdSpecDrafts; },
     get createdScreenFiles() { return createdScreenFiles; },
     get createdSpecFiles() { return createdSpecFiles; },
@@ -650,6 +684,10 @@ const projectFileNavigator = new ProjectFileNavigator({
     renderAssetTemplate,
     renderMaterialFile,
     renderSpecEditor,
+    renderWorkflowEditor: (filePath, screenIndex) => {
+      screenAnnotationController?.setEnabled(false);
+      return workflowEditor.render(filePath, screenIndex);
+    },
     syncBrowserHistory,
     clearDropIndicators,
     showEditorMessage
@@ -706,6 +744,8 @@ const workspaceViewRenderer = new WorkspaceViewRenderer({
     set viewingTheme(value) { viewingTheme = value; },
     set viewingProject(value) { viewingProject = value; },
     set viewingSpec(value) { viewingSpec = value; },
+    set viewingWorkflow(value) { viewingWorkflow = value; },
+    set activeWorkflowPath(value) { activeWorkflowPath = value; },
     set viewingPreviewState(value) { viewingPreviewState = value; },
     set activeSpecPath(value) { activeSpecPath = value; },
     set activeSpecInstancePath(value) { activeSpecInstancePath = value; },
@@ -764,6 +804,57 @@ const screenAnnotationController = new ScreenAnnotationController({
     prompt: (message, value) => window.prompt(message, value),
     getActivePreviewStateId: (screenId) => activePreviewStateIds.get(screenId) || "default",
     setSelectionTool: (tool) => screenSelectionController?.selectTool(tool)
+  }
+});
+workflowEditor = new WorkflowEditor({
+  state: {
+    get workflowSources() { return workflowSources; },
+    get invalidWorkflowFiles() { return invalidWorkflowFiles; },
+    get viewingWorkflow() { return viewingWorkflow; },
+    set viewingWorkflow(value) { viewingWorkflow = value; },
+    get activeWorkflowPath() { return activeWorkflowPath; },
+    set activeWorkflowPath(value) { activeWorkflowPath = value; },
+    get workflowScreenIndex() { return workflowScreenIndex; },
+    set workflowScreenIndex(value) { workflowScreenIndex = value; },
+    get workflowViewMode() { return workflowViewMode; },
+    set workflowViewMode(value) { workflowViewMode = value; },
+    get selectedWorkflowNodeId() { return selectedWorkflowNodeId; },
+    set selectedWorkflowNodeId(value) { selectedWorkflowNodeId = value; },
+    get isSaving() { return isSaving; }
+  },
+  services: {
+    byId,
+    setWorkflowViewMode: (mode) => workflowViewLayout.setViewMode(mode),
+    renderNavigation,
+    renderInspector,
+    markEdited,
+    updateSaveControls,
+    showWorkflowNode,
+    getWorkflowSpecDocuments: async () => {
+      const filePaths = projectFileNavigator.getProjectTreeFilePaths().filter((filePath) =>
+        projectFileNavigator.getProjectFileAction(filePath)?.kind === "spec"
+      );
+      return Promise.all(filePaths.map(async (filePath) => {
+        let source = specSources.get(filePath);
+        if (source === undefined) {
+          source = await loadText(filePath);
+          specSources.set(filePath, source);
+        }
+        return { filePath, source };
+      }));
+    },
+    openWorkflowSpec: async (filePath, references) => {
+      const action = projectFileNavigator.getProjectFileAction(filePath);
+      if (action?.kind !== "spec") {
+        throw new Error(`Workflow spec "${filePath}" is not linked to this project.`);
+      }
+      let source = specSources.get(filePath);
+      if (source === undefined) {
+        source = await loadText(filePath);
+        specSources.set(filePath, source);
+      }
+      workflowEditor.showSpecPreview(filePath, source, references);
+    }
   }
 });
 const screenSelectionController = new ScreenSelectionController({
@@ -1136,6 +1227,7 @@ async function loadProject(selectionToRestore = null) {
     activePreviewStateIds.clear();
     assets = loaded.assets;
     specSources = loaded.specSources;
+    workflowSources = loaded.workflowSources;
     assetSpecOwners.clear();
     for (const [filePath, owner] of loaded.assetSpecOwners) {
       assetSpecOwners.set(filePath, owner);
@@ -1148,12 +1240,18 @@ async function loadProject(selectionToRestore = null) {
     viewingProject = false;
     viewingSpec = false;
     viewingPreviewState = false;
+    viewingWorkflow = false;
+    activeWorkflowPath = null;
+    workflowScreenIndex = 0;
+    selectedWorkflowNodeId = null;
+    workflowViewMode = "split";
     activeSpecPath = null;
     activeSpecInstancePath = [];
     activeSpecOwner = "instance";
     hasEdits = false;
     dirtyFiles.clear();
     invalidYamlFiles.clear();
+    invalidWorkflowFiles.clear();
     pendingAssetSerializations.clear();
     byId("create-screen").disabled = false;
     updateSaveControls();
@@ -1454,6 +1552,7 @@ function showAddAssetError(error) {
 }
 
 async function renderScreen(index, options = {}) {
+  if (!options.preserveWorkflow) workflowEditor?.deactivate();
   await workspaceViewRenderer.renderScreen(index, options);
   if (!isRenderOnly) {
     await screenAnnotationController.setScreen(screens[index]);
@@ -1462,7 +1561,97 @@ async function renderScreen(index, options = {}) {
   }
 }
 
+async function showWorkflowNode(link, ownerScreenIndex, workflowPath) {
+  const screenIndex = screens.findIndex((screen) => screen.id === link.screenId);
+  const screen = screens[screenIndex];
+  if (!screen) {
+    throw new Error(`Workflow Screen "${link.screenId}" is not available.`);
+  }
+
+  const stateId = link.stateId;
+  if (!getScreenPreviewStates(screen.data).some((previewState) =>
+    previewState.id === stateId
+  )) {
+    throw new Error(`Preview State "${stateId}" is not available on Screen "${screen.id}".`);
+  }
+
+  let instancePath = [];
+  if (link.placementId) {
+    instancePath = getScreenPlacementPathById(
+      screen.data.materials || [],
+      link.placementId
+    ) || [];
+    if (instancePath.length === 0) {
+      throw new Error(
+        `Element "${link.placementId}" is not available on Screen "${screen.id}".`
+      );
+    }
+  }
+
+  activePreviewStateIds.set(screen.id, stateId);
+  activeInstancePath = instancePath;
+  activeInstancePaths = instancePath.length ? [[...instancePath]] : [];
+  activeScreenIndex = screenIndex;
+  await renderScreen(screenIndex, {
+    preserveWorkflow: true,
+    previewStateSelected: !link.placementId && stateId !== "default"
+  });
+
+  screenAnnotationController.setEnabled(false);
+  activeAssetId = null;
+  viewingWorkflow = true;
+  activeWorkflowPath = workflowPath;
+  workflowScreenIndex = ownerScreenIndex;
+  activeProjectFilePath = workflowPath;
+  workflowEditor.activate();
+  workflowEditor.setViewMode(workflowViewMode);
+  updateNavigationSelection();
+  renderInspector();
+  if (link.placementId) {
+    await scrollPreviewToPlacement(instancePath);
+  }
+}
+
+async function scrollPreviewToPlacement(instancePath) {
+  const preview = byId("screen-preview");
+  const host = byId(`specux-material-${instancePath.join("-")}`);
+  const frame = host?.closest(".material-frame");
+  if (!frame) return;
+
+  await new Promise((resolve) => window.requestAnimationFrame(resolve));
+  const previewRect = preview.getBoundingClientRect();
+  const frameRect = frame.getBoundingClientRect();
+  const content = preview.querySelector(":scope > .form-content");
+  const contentRect = content?.getBoundingClientRect();
+  const scaleX = contentRect && content.offsetWidth
+    ? contentRect.width / content.offsetWidth
+    : 1;
+  const scaleY = contentRect && content.offsetHeight
+    ? contentRect.height / content.offsetHeight
+    : 1;
+  const viewportLeft = previewRect.left + preview.clientLeft;
+  const viewportTop = previewRect.top + preview.clientTop;
+  const viewportRight = viewportLeft + preview.clientWidth;
+  const viewportBottom = viewportTop + preview.clientHeight;
+  const isVisible = frameRect.left >= viewportLeft &&
+    frameRect.right <= viewportRight &&
+    frameRect.top >= viewportTop &&
+    frameRect.bottom <= viewportBottom;
+  if (isVisible) return;
+
+  const horizontalOffset = (frameRect.left + frameRect.width / 2 -
+    (viewportLeft + preview.clientWidth / 2)) / scaleX;
+  const verticalOffset = (frameRect.top + frameRect.height / 2 -
+    (viewportTop + preview.clientHeight / 2)) / scaleY;
+  preview.scrollTo({
+    left: preview.scrollLeft + horizontalOffset,
+    top: preview.scrollTop + verticalOffset,
+    behavior: "smooth"
+  });
+}
+
 async function renderSpecEditor(filePath, instancePath = activeInstancePath, owner = "instance") {
+  workflowEditor?.deactivate();
   screenAnnotationController?.setEnabled(false);
   return specEditor.render(filePath, instancePath, owner);
 }
@@ -1483,16 +1672,19 @@ async function createSpecForScreen() {
   return specEditor.createForScreen();
 }
 function renderProjectOverview() {
+  workflowEditor?.deactivate();
   screenAnnotationController?.setEnabled(false);
   return workspaceViewRenderer.renderProjectOverview();
 }
 
 async function renderAssetTemplate(assetId, filePath = null) {
+  workflowEditor?.deactivate();
   screenAnnotationController?.setEnabled(false);
   return assetEditor.renderTemplate(assetId, filePath);
 }
 
 async function renderMaterialFile(filePath) {
+  workflowEditor?.deactivate();
   screenAnnotationController?.setEnabled(false);
   return materialFileEditor.render(filePath);
 }
@@ -1859,6 +2051,7 @@ editorEventController.bind();
 bindScreenPlacementContextMenu();
 
 function renderThemeView(filePath = project?.theme) {
+  workflowEditor?.deactivate();
   screenAnnotationController?.setEnabled(false);
   themeEditor.render(filePath);
 }
@@ -1913,5 +2106,6 @@ const resizablePanels = new ResizablePanels({
 resizablePanels.bind();
 specViewLayout.bind();
 assetViewLayout.bind();
+workflowViewLayout.bind();
 
 loadProject(selectionFromLocation());

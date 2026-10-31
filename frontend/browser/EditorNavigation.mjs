@@ -8,12 +8,22 @@ export class EditorNavigation {
   currentSelection() {
     const { state, services } = this;
     const screen = state.screens[state.activeScreenIndex] || null;
-    const screenContext = screen ? {
-      id: screen.id,
-      name: screen.data.name || screen.id,
-      file: screen.file
+    const workflowScreen = state.viewingWorkflow
+      ? state.screens[state.workflowScreenIndex] || null
+      : screen;
+    const screenContext = workflowScreen ? {
+      id: workflowScreen.id,
+      name: workflowScreen.data.name || workflowScreen.id,
+      file: workflowScreen.file
     } : null;
     if (state.viewingProject) return { view: "project", screen: screenContext };
+    if (state.viewingWorkflow) {
+      return {
+        view: "workflow",
+        screen: screenContext,
+        workflow: { file: state.activeWorkflowPath }
+      };
+    }
     if (state.viewingTheme) {
       return {
         view: "theme",
@@ -85,6 +95,7 @@ export class EditorNavigation {
   getSelectionFilePath(selection) {
     const { state } = this;
     if (selection.view === "project") return "project.yml";
+    if (selection.view === "workflow") return selection.workflow?.file || null;
     if (selection.view === "theme") return selection.file || state.project?.theme || null;
     if (selection.view === "spec") return selection.spec?.file || null;
     if (selection.view === "asset-template") {
@@ -168,6 +179,19 @@ export class EditorNavigation {
     if (selection.view === "material-file" && state.materialFiles.has(selection.material?.file)) {
       await services.renderMaterialFile(selection.material.file);
       return;
+    }
+    if (selection.view === "workflow" && state.workflowSources.has(selection.workflow?.file)) {
+      const workflowScreenIndex = state.screens.findIndex((screen) =>
+        screen.id === selection.screen?.id
+      );
+      if (workflowScreenIndex >= 0) {
+        await services.renderScreen(workflowScreenIndex);
+        await services.renderWorkflowEditor(
+          selection.workflow.file,
+          workflowScreenIndex
+        );
+        return;
+      }
     }
     if (selection.view === "spec" && selection.spec?.owner === "project") {
       services.renderProjectOverview();

@@ -133,6 +133,76 @@
           >Source</button>
         </div>
       </div>
+      <div class="workflow-view-toolbar" aria-label="Workflow preview layout">
+        <h2 class="workflow-view-heading" id="workflow-view-heading">Selected node</h2>
+        <div class="workflow-toolbar-actions">
+          <div class="screen-zoom-controls workflow-zoom-controls" role="group" aria-label="Screen preview zoom">
+            <button
+              class="screen-zoom-button"
+              id="workflow-canvas-zoom-out"
+              type="button"
+              aria-label="Zoom out"
+              title="Zoom out"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 8h10"></path>
+              </svg>
+            </button>
+            <button
+              class="screen-zoom-button screen-zoom-value"
+              id="workflow-canvas-zoom-reset"
+              type="button"
+              aria-label="Reset canvas zoom to 100%"
+              title="Reset zoom"
+            >100%</button>
+            <button
+              class="screen-zoom-button"
+              id="workflow-canvas-zoom-in"
+              type="button"
+              aria-label="Zoom in"
+              title="Zoom in"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 8h10M8 3v10"></path>
+              </svg>
+            </button>
+          </div>
+          <div
+            class="workflow-spec-section-navigation"
+            id="workflow-spec-section-navigation"
+            role="group"
+            aria-label="Linked sections in behavior spec"
+            hidden
+          >
+            <button
+              class="screen-view-button workflow-spec-section-button"
+              id="workflow-spec-section-previous"
+              type="button"
+              aria-label="Previous linked section"
+              title="Previous linked section"
+              aria-controls="screen-preview"
+            >↑</button>
+            <span
+              class="workflow-spec-section-position"
+              id="workflow-spec-section-position"
+              aria-live="polite"
+            ></span>
+            <button
+              class="screen-view-button workflow-spec-section-button"
+              id="workflow-spec-section-next"
+              type="button"
+              aria-label="Next linked section"
+              title="Next linked section"
+              aria-controls="screen-preview"
+            >↓</button>
+          </div>
+          <div class="screen-view-selector workflow-view-selector" role="group" aria-label="Workflow view">
+            <button class="screen-view-button" id="workflow-view-split" type="button" aria-pressed="true" aria-controls="screen-stage workflow-editor-panel">Split</button>
+            <button class="screen-view-button" id="workflow-view-preview" type="button" aria-pressed="false" aria-controls="screen-stage workflow-editor-panel">Preview</button>
+            <button class="screen-view-button" id="workflow-view-diagram" type="button" aria-pressed="false" aria-controls="screen-stage workflow-editor-panel">Diagram</button>
+          </div>
+        </div>
+      </div>
       <section class="stage" id="screen-stage" aria-label="Screen canvas">
         <div class="preview-state-toolbar responsive-toolbar" id="preview-state-toolbar" aria-label="Screen view and preview states" hidden>
           <div class="preview-state-controls" id="preview-state-controls" role="group" aria-label="Preview state" data-overflow-group data-overflow-priority="4">
@@ -409,6 +479,34 @@
         tabindex="0"
         hidden
       ></div>
+
+      <div
+        class="spec-split-resizer workflow-split-resizer"
+        id="workflow-split-resizer"
+        role="separator"
+        aria-label="Resize Screen preview and workflow diagram"
+        aria-orientation="horizontal"
+        aria-controls="screen-stage workflow-editor-panel"
+        aria-valuemin="27"
+        aria-valuemax="73"
+        aria-valuenow="40"
+        title="Drag or use the arrow keys to resize the Screen preview and workflow diagram"
+        tabindex="0"
+        hidden
+      ></div>
+
+      <section class="workflow-editor-panel" id="workflow-editor-panel" aria-label="Screen workflow Mermaid editor" hidden>
+        <div class="workflow-editor-heading">
+          <h2 id="workflow-editor-heading">Workflow</h2>
+          <div class="screen-view-selector workflow-panel-selector" role="group" aria-label="Workflow content">
+            <button class="screen-view-button" id="workflow-panel-diagram" type="button" aria-pressed="true">Diagram</button>
+            <button class="screen-view-button" id="workflow-panel-source" type="button" aria-pressed="false">Source</button>
+          </div>
+        </div>
+        <div class="workflow-diagram" id="workflow-diagram" aria-label="Mermaid workflow diagram"></div>
+        <textarea class="workflow-source" id="workflow-source" aria-label="Mermaid workflow source" spellcheck="false" hidden></textarea>
+        <div class="workflow-status" id="workflow-status" role="status" aria-live="polite"></div>
+      </section>
 
       <section class="spec-editor-panel" id="spec-editor-panel" aria-label="Behavior spec Markdown editor" hidden>
         <h2 class="spec-editor-heading" id="spec-editor-heading">Behavior spec</h2>

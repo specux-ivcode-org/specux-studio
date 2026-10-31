@@ -22,6 +22,11 @@ export class WorkspaceViewRenderer {
     state.assetPreviewVersion += 1;
     services.byId("main").classList.remove("asset-editing");
     services.byId("main").classList.remove("spec-editing");
+    if (!options.preserveWorkflow) {
+      services.byId("main").classList.remove("workflow-editing");
+      services.byId("workflow-editor-panel").hidden = true;
+      services.byId("workflow-source").oninput = null;
+    }
     services.byId("main").classList.add("screen-editing");
     services.byId("asset-document-editor-panel").hidden = true;
     services.byId("asset-document-source").oninput = null;
@@ -36,10 +41,12 @@ export class WorkspaceViewRenderer {
     state.viewingProject = false;
     state.viewingSpec = false;
     state.viewingPreviewState = options.previewStateSelected === true;
+    state.viewingWorkflow = options.preserveWorkflow === true;
+    if (!options.preserveWorkflow) state.activeWorkflowPath = null;
     state.activeSpecPath = null;
     state.activeSpecInstancePath = [];
     state.activeAssetId = null;
-    state.activeInstancePath = [];
+    if (!options.preserveWorkflow) state.activeInstancePath = [];
     services.hideEditorMessage();
     services.updateNavigationSelection();
     services.updateScreenDomContext(selected);
@@ -147,6 +154,9 @@ export class WorkspaceViewRenderer {
     state.assetPreviewVersion += 1;
     services.byId("main").classList.remove("asset-editing");
     services.byId("main").classList.remove("spec-editing");
+    services.byId("main").classList.remove("workflow-editing");
+    services.byId("workflow-editor-panel").hidden = true;
+    services.byId("workflow-source").oninput = null;
     services.byId("asset-document-editor-panel").hidden = true;
     services.byId("asset-document-source").oninput = null;
     services.byId("spec-editor-panel").hidden = true;
@@ -157,6 +167,8 @@ export class WorkspaceViewRenderer {
     state.viewingProject = true;
     state.viewingSpec = false;
     state.viewingPreviewState = false;
+    state.viewingWorkflow = false;
+    state.activeWorkflowPath = null;
     state.activeSpecPath = null;
     state.activeSpecInstancePath = [];
     state.activeAssetId = null;

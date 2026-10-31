@@ -87,6 +87,17 @@ When a Screen-editor requirement is added, changed, or removed, update this docu
 | SE-041 | When an annotation targets a placement, retain its placement identity and Material reference where available so downstream tooling can associate the mark with the design. |
 | SE-042 | Keep editor annotation data separate from Screen composition and use the structured annotations for the CLI's annotated render workflow. The CLI produces the PNG; the editor does not upload a screenshot as the annotation source. |
 
+## Workflows
+
+| ID | Requirement |
+|---|---|
+| SE-043 | Support Screen-scoped Mermaid workflow diagrams as separate `screens/<screen-id>/workflows/<workflow-id>.mmd` files, not as Screen YAML properties or executable behavior. |
+| SE-044 | Let users switch between the Mermaid diagram and source, and between split, Screen-preview, and diagram layouts. Invalid Mermaid must be reported and block saving. |
+| SE-045 | Explicit Mermaid `click` links using `specux://screen/<screen-id>/screen.yml` select the linked Screen or `placement` query target and optional `state` in the Screen preview without leaving the workflow editor. |
+| SE-046 | During workflow editing, provide canvas zoom in the workflow layout toolbar alongside Split, Preview, and Diagram controls, and hide the Screen preview-state toolbar. |
+| SE-047 | Workflow links show Default unless their `specux://screen/.../screen.yml` URL explicitly includes `state=<state-id>`; never infer a preview state from placement visibility or node labels. |
+| SE-048 | Behavior specs may link to Screen workflows with `specux://.../workflows/...mmd?node=<node-id>` links; workflow rendering attaches each linked spec to its node. Selecting the icon shows the Markdown file in the preview without canvas rulers or zoom, and provides an up/down section selector that remains visible but is disabled when only one matching section exists. Section navigation does not change the node's preview link. |
+
 ## Persistence and validation
 
 | ID | Requirement |
@@ -98,4 +109,5 @@ When a Screen-editor requirement is added, changed, or removed, update this docu
 
 - [General Editor Requirements](editor.md): project-wide editing, save, error, and data-preservation requirements.
 - [Screen file schema](../schema/screen.md): YAML fields and validation rules for Screens, layers, placements, and preview states.
+- [Screen workflow schema](../schema/workflow.md): Screen-scoped Mermaid workflows, explicit preview links, and secondary behavior-spec links.
 - [CLI documentation](cli.md): structured annotation handoff and annotated image rendering.

@@ -122,6 +122,10 @@ async function withServer(run) {
     "export class WorkspaceViewRenderer {}\n"
   );
   await fs.writeFile(
+    path.join(rootDirectory, "browser", "WorkflowEditor.mjs"),
+    "export class WorkflowEditor {}\n"
+  );
+  await fs.writeFile(
     path.join(rootDirectory, "browser", "MaterialCanvas.mjs"),
     "export class MaterialCanvas {}\n"
   );
@@ -193,6 +197,8 @@ test("serves the editor root and the example project", async () => {
     const specEditorModule = await fetch(`${baseUrl}/browser/SpecEditor.mjs`);
     const splitViewLayoutModule = await fetch(`${baseUrl}/browser/SplitViewLayout.mjs`);
     const themeEditorModule = await fetch(`${baseUrl}/browser/ThemeEditor.mjs`);
+    const workflowEditorModule = await fetch(`${baseUrl}/browser/WorkflowEditor.mjs`);
+    const mermaidModule = await fetch(`${baseUrl}/vendor/mermaid/mermaid.esm.min.mjs`);
     const workspaceViewRendererModule = await fetch(`${baseUrl}/browser/WorkspaceViewRenderer.mjs`);
     const templateMarkupRendererModule = await fetch(`${baseUrl}/browser/TemplateMarkupRenderer.mjs`);
     const materialCanvasModule = await fetch(`${baseUrl}/browser/MaterialCanvas.mjs`);
@@ -237,6 +243,9 @@ test("serves the editor root and the example project", async () => {
     assert.equal(specEditorModule.status, 200);
     assert.equal(splitViewLayoutModule.status, 200);
     assert.equal(themeEditorModule.status, 200);
+    assert.equal(workflowEditorModule.status, 200);
+    assert.equal(mermaidModule.status, 200);
+    assert.match(mermaidModule.headers.get("content-type"), /text\/javascript/);
     assert.equal(workspaceViewRendererModule.status, 200);
     assert.equal(templateMarkupRendererModule.status, 200);
     assert.equal(materialCanvasModule.status, 200);
@@ -896,6 +905,7 @@ test("parses, serializes, and saves edited YAML source", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ source })
     });
+
     assert.equal(parsedResponse.status, 200);
     assert.deepEqual(await parsedResponse.json(), {
       data: { name: "Edited", extension: { value: true } }
@@ -937,6 +947,42 @@ test("parses, serializes, and saves edited YAML source", async () => {
       body: JSON.stringify({ files: [{ path: "screen.yml", content: "name: [unterminated" }] })
     });
     assert.equal(rejectedSave.status, 400);
+  });
+});
+
+test("creates and serves Screen-scoped Mermaid workflow files", async () => {
+  await withServer(async ({ baseUrl, rootDirectory }) => {
+    const workflowPath = "screens/home/workflows/add-item.mmd";
+    const source = [
+      "flowchart TD",
+      '  home["Screen: home"]',
+      '  state["State: add-item-open"]',
+      "  home --> state",
+      ""
+    ].join("\n");
+    const create = await fetch(`${baseUrl}/api/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files: [{ path: workflowPath, create: true, content: source }]
+      })
+    });
+    assert.equal(create.status, 200, await create.clone().text());
+    assert.deepEqual(await create.json(), { saved: [workflowPath] });
+    const workflow = await fetch(`${baseUrl}/specux/${workflowPath}`);
+    assert.equal(workflow.status, 200);
+    assert.match(workflow.headers.get("content-type"), /text\/markdown/);
+    assert.equal(await workflow.text(), source);
+
+    const invalidPath = await fetch(`${baseUrl}/api/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files: [{ path: "screens/home/add-item.mmd", create: true, content: source }]
+      })
+    });
+    assert.equal(invalidPath.status, 400);
+    await assert.rejects(fs.access(path.join(rootDirectory, "specux", "screens", "home", "add-item.mmd")));
   });
 });
 

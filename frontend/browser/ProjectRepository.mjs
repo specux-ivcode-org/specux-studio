@@ -508,6 +508,18 @@ export class ProjectRepository {
     const specSources = new Map(await Promise.all([...specPaths].map(async (filePath) =>
       [filePath, await this.loadText(filePath)]
     )));
+    const workflowPaths = [];
+    for (const screen of screens) {
+      const prefix = `screens/${screen.id}/workflows/`;
+      for (const filePath of projectFilePaths) {
+        if (!filePath.startsWith(prefix) || !filePath.endsWith(".mmd")) continue;
+        this.validation.validateWorkflowPath(filePath);
+        workflowPaths.push(filePath);
+      }
+    }
+    const workflowSources = new Map(await Promise.all(workflowPaths.map(async (filePath) =>
+      [filePath, await this.loadText(filePath)]
+    )));
     const assetSpecOwners = new Map();
     for (const filePath of elementSpecPaths) {
       this.refreshAssetSpecOwner(filePath, specSources.get(filePath), screens, assetSpecOwners);
@@ -523,6 +535,7 @@ export class ProjectRepository {
       screens,
       assets,
       specSources,
+      workflowSources,
       assetSpecOwners,
       theme: loadedTheme.data,
       themeStylesheet: loadedTheme.stylesheet,

@@ -88,6 +88,16 @@
     }
   }
 
+  function validateWorkflowPath(filePath) {
+    if (typeof filePath !== "string" ||
+        !/^screens\/[a-z][a-z0-9-]*\/workflows\/[a-z][a-z0-9-]*\.mmd$/.test(filePath)) {
+      throw new Error(
+        'Workflow path must be "screens/<screen-id>/workflows/<workflow-id>.mmd".'
+      );
+    }
+    return filePath;
+  }
+
   function validateElementId(id, context = "Element") {
     if (typeof id !== "string" || !/^[a-z][a-z0-9-]*$/.test(id)) {
       throw new Error(`${context} id must use lowercase letters, numbers, and hyphens.`);
@@ -554,6 +564,7 @@
     validatePreviewStates,
     validateSpecContent,
     validateSpecPath,
+    validateWorkflowPath,
     validateScreenSpecStateReferences,
     validateTheme
   };

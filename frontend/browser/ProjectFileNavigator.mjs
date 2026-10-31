@@ -8,7 +8,8 @@ export class ProjectFileNavigator {
   renderNavigation() {
     const { state, services } = this;
     if (!state.viewingAssetTemplate && !state.viewingMaterialFile &&
-        !state.viewingTheme && !state.viewingProject && !state.viewingSpec) {
+        !state.viewingTheme && !state.viewingProject && !state.viewingSpec &&
+        !state.viewingWorkflow) {
       services.byId("breadcrumb").textContent = "Screens";
     }
     const activeFilePath = state.activeProjectFilePath || (state.viewingSpec
@@ -91,6 +92,7 @@ export class ProjectFileNavigator {
     for (const screen of state.screens) filePaths.add(screen.file);
     for (const asset of state.assets.values()) filePaths.add(asset.templateFile);
     for (const filePath of state.specSources.keys()) filePaths.add(filePath);
+    for (const filePath of state.workflowSources.keys()) filePaths.add(filePath);
     for (const filePath of state.createdSpecDrafts.keys()) filePaths.add(filePath);
     for (const filePath of state.createdScreenFiles) filePaths.add(filePath);
     for (const filePath of state.createdSpecFiles) filePaths.add(filePath);
@@ -164,7 +166,14 @@ export class ProjectFileNavigator {
     }
     if (state.assetFiles.get(filePath) === "image") return { kind: "image", file: filePath };
     const specAction = this.getSpecFileAction(filePath);
-    return specAction ? { kind: "spec", ...specAction } : null;
+    if (specAction) return { kind: "spec", ...specAction };
+    const workflowScreenIndex = state.screens.findIndex((screen) =>
+      filePath.startsWith(`screens/${screen.id}/workflows/`) &&
+      state.workflowSources.has(filePath)
+    );
+    return workflowScreenIndex >= 0
+      ? { kind: "workflow", screenIndex: workflowScreenIndex }
+      : null;
   }
 
   getSpecFileAction(filePath) {
@@ -217,6 +226,10 @@ export class ProjectFileNavigator {
           else await services.renderScreen(state.activeScreenIndex);
           await services.renderSpecEditor(filePath, action.instancePath, action.owner);
         }
+      } else if (action.kind === "workflow") {
+        state.activeScreenIndex = action.screenIndex;
+        await services.renderScreen(action.screenIndex);
+        await services.renderWorkflowEditor(filePath, action.screenIndex);
       }
     } finally {
       state.historyUpdateSuppressed = wasHistoryUpdateSuppressed;

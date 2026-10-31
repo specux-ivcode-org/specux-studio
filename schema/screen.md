@@ -16,6 +16,8 @@ The Screen ID is defined by the matching `screens[].id` in `project.yml`; do not
 
 Screen Material placements are instances of reusable STML templates. Labels and buttons are visual only; they do not execute actions or accept user input. Each instance can override declared template variables and has its own position, size, and rotation. Placements can also be grouped into Screen-local containers; groups are not reusable STML Materials.
 
+Screen workflows are separate Mermaid files stored at `screens/<screen-id>/workflows/<workflow-id>.mmd`; they are not part of this YAML schema. See the [Screen Workflow File](workflow.md) for node-link conventions.
+
 ## Preview States
 
 Each item in `preview-states` is a mapping with these properties:

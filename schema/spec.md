@@ -13,6 +13,16 @@ Every spec must contain a non-empty `## Purpose` section followed by a `## Requi
 
 Keep requirements focused on behavior, outcomes, constraints, and edge cases. Do not repeat visual details already clear from the Screen mockup unless needed to explain behavior. Avoid implementation details such as libraries, internal functions, or step-by-step coding plans.
 
+## Workflow links
+
+Link a behavior spec to a Screen workflow with a regular Markdown link. Place the link in any relevant section or scenario, outside fenced code blocks. The `node` query parameter must identify the Mermaid node that the spec reference describes:
+
+```markdown
+[Save item workflow](specux://screen/home/workflows/add-item.mmd?node=saveItem)
+```
+
+The Studio attaches the spec link to that workflow node. Selecting its spec icon previews the Markdown and navigates to the link's enclosing section without changing the node's Screen-preview link. When a spec links to the same workflow node from multiple sections, the preview's up/down selector navigates between those sections.
+
 When creating a new draft, the editor may prefill the example purpose, requirement, and scenario below. Treat that content as a placeholder, not as specified behavior. Do not save a new draft unless its content has been changed. Consult this schema and derive the final requirements from the user's intent and relevant SpecUX context.
 
 ```yaml
