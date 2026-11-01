@@ -33,6 +33,66 @@ const validSpec = [
 ].join("\n");
 const validElementSpec = `---\nelement-id: continue-button\n---\n\n${validSpec}`;
 
+test("example Screen binds presentation attributes to Light and Dark Theme tokens", async () => {
+  const projectRoot = path.join(__dirname, "..", "specux");
+  const theme = YAML.parse(await fs.readFile(
+    path.join(projectRoot, "theme.yml"),
+    "utf8"
+  ));
+  const screen = YAML.parse(await fs.readFile(
+    path.join(projectRoot, "screens", "home", "screen.yml"),
+    "utf8"
+  ));
+  const presentationAttributes = new Set([
+    "color",
+    "background",
+    "border",
+    "shadow",
+    "track",
+    "fill",
+    "icon-color",
+    "icon-background"
+  ]);
+  const definedTokens = Object.fromEntries(
+    Object.entries(theme.modes).map(([mode, definition]) => [
+      mode,
+      new Set(Object.keys(definition.tokens || {}))
+    ])
+  );
+
+  assert.deepEqual(Object.keys(definedTokens).sort(), ["dark", "light"]);
+  for (const placement of screen.materials) {
+    for (const [name, value] of Object.entries(placement.attributes || {})) {
+      if (!presentationAttributes.has(name) || ["none", "transparent"].includes(value)) continue;
+      assert.equal(typeof value, "string", `${placement.id}.${name} must be a string`);
+      const tokens = [...value.matchAll(/var\(--theme-([a-z0-9-]+)/g)].map((match) => match[1]);
+      assert.ok(tokens.length > 0, `${placement.id}.${name} must use a Theme token`);
+      for (const token of tokens) {
+        for (const mode of ["light", "dark"]) {
+          assert.ok(definedTokens[mode].has(token), `${mode} Theme must define ${token}`);
+        }
+      }
+    }
+  }
+});
+
+test("validates the single-file Theme token schema", () => {
+  assert.doesNotThrow(() => validation.validateTheme({
+    modes: {
+      light: { tokens: { surface: "#ffffff" } },
+      dark: { tokens: { surface: "#101827" } }
+    }
+  }, "theme.yml"));
+  assert.throws(() => validation.validateTheme({
+    name: "Named Theme",
+    tokens: { surface: "#ffffff" }
+  }, "theme.yml"), /unsupported property "name"/);
+  assert.throws(() => validation.validateTheme({
+    styles: "theme.css",
+    modes: { light: { tokens: { surface: "#ffffff" } } }
+  }, "theme.yml"), /unsupported property "styles"/);
+});
+
 function assetDocument(data, body) {
   return validation.formatAssetDocument(YAML.stringify(data), body);
 }
@@ -44,7 +104,7 @@ async function createProject() {
       name: "Test project",
       specux: SPECUX_VERSION,
       screens: [{ id: "home", file: "screens/home/screen.yml" }],
-      theme: "theme/theme.yml"
+      theme: "theme.yml"
     }),
     "screens/home/screen.yml": YAML.stringify({
       name: "Home",
@@ -110,12 +170,9 @@ async function createProject() {
       description: "Unused template asset."
     }, "<div>Unused</div>\n"),
     "screens/home/assets/images/chart.png": Buffer.from("chart"),
-    "theme/theme.yml": YAML.stringify({
-      name: "Test theme",
-      styles: "theme.css",
-      colors: { background: "#ffffff" }
+    "theme.yml": YAML.stringify({
+      tokens: { background: "#ffffff" }
     }),
-    "theme/theme.css": ":root { color-scheme: light; }\n",
     "screens/home/specs/element-continue-button.md": validElementSpec
   };
   for (const [relativePath, content] of Object.entries(files)) {

@@ -6,4 +6,4 @@ screens:
     file: screens/home/screen.yml
   - id: sign-in
     file: screens/sign-in/screen.yml
-theme: theme/theme.yml
+theme: theme.yml

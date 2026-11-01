@@ -516,25 +516,40 @@
   }
 
   function validateTheme(data, source) {
-    const validateColors = (colors, location) => {
-      if (colors === undefined) return;
-      if (!isMapping(colors)) throw new Error(`${location} colors must be a mapping.`);
-      for (const [name, value] of Object.entries(colors)) {
+    const validateProperties = (value, allowedProperties, location) => {
+      for (const property of Object.keys(value)) {
+        if (!allowedProperties.has(property)) {
+          throw new Error(`${location} contains unsupported property "${property}".`);
+        }
+      }
+    };
+    const validateTokens = (tokens, location) => {
+      if (tokens === undefined) return;
+      if (!isMapping(tokens)) throw new Error(`${location} tokens must be a mapping.`);
+      for (const [name, value] of Object.entries(tokens)) {
+        if (!/^[a-z][a-z0-9-]*$/.test(name)) {
+          throw new Error(`${location} token name "${name}" must use lowercase letters, numbers, and hyphens.`);
+        }
         if (typeof value !== "string") {
-          throw new Error(`${location} color "${name}" must be a string.`);
+          throw new Error(`${location} token "${name}" must be a string.`);
         }
       }
     };
 
-    validateColors(data.colors, source);
+    validateProperties(data, new Set(["tokens", "modes"]), source);
+    validateTokens(data.tokens, source);
     if (data.modes === undefined) return;
+    if (data.tokens !== undefined) {
+      throw new Error(`${source} must define either tokens or modes, not both.`);
+    }
     if (!isMapping(data.modes)) throw new Error(`${source} modes must be a mapping.`);
     for (const [mode, variant] of Object.entries(data.modes)) {
       if (!themeModeNames.includes(mode)) {
         throw new Error(`${source} defines unsupported theme mode "${mode}".`);
       }
       if (!isMapping(variant)) throw new Error(`${source} ${mode} mode must be a mapping.`);
-      validateColors(variant.colors, `${source} ${mode} mode`);
+      validateProperties(variant, new Set(["tokens"]), `${source} ${mode} mode`);
+      validateTokens(variant.tokens, `${source} ${mode} mode`);
     }
   }
 

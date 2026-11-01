@@ -25,7 +25,7 @@ export class ScreenInstanceRenderer {
       }
     }
 
-    const editorInteractionsEnabled = !state.isRenderOnly;
+    const editorInteractionsEnabled = !state.isRenderOnly && !state.viewingWorkflow;
     const host = services.element("div", "asset-instance");
     host.dataset.instancePath = JSON.stringify(instancePath);
     host.hidden = Boolean(screenId && !services.isInstanceVisible(instance));
@@ -44,7 +44,8 @@ export class ScreenInstanceRenderer {
       host.setAttribute("role", "group");
       host.setAttribute("aria-label", services.getElementLabel(instance));
     }
-    if (editorInteractionsEnabled && services.sameInstancePath(state.activeInstancePath, instancePath)) {
+    if (!state.isRenderOnly &&
+        services.sameInstancePath(state.activeInstancePath, instancePath)) {
       host.classList.add("selected");
     }
 
@@ -193,7 +194,7 @@ export class ScreenInstanceRenderer {
     const slotTargets = [...root.querySelectorAll("[data-specux-slot]")];
     for (const slot of template.data.slots) {
       const target = slotTargets.find((node) => node.getAttribute("data-specux-slot") === slot.id);
-      if (!state.isRenderOnly) {
+      if (!state.isRenderOnly && !state.viewingWorkflow) {
         target.classList.add("specux-drop-slot");
         target.setAttribute("role", "group");
         target.setAttribute("aria-label", `Drop zone: ${slot.name || slot.id}`);

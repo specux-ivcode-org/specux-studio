@@ -10,7 +10,7 @@ The manifest and each entry are YAML mappings. Only the properties listed for ea
 | `description` | string | No | Project description. |
 | `specux` | string | Yes | SpecUX format version supported by the CLI. Use `0.1.0-SNAPSHOT` for the current pre-versioned format. |
 | `screens` | list | Yes | Screen entries. |
-| `theme` | string | Yes | Path to the Theme YAML file. |
+| `theme` | string | Yes | Path to the Theme YAML file, relative to `specux/`. |
 | `spec` | string | No | Path to the project's single OpenSpec-formatted behavior spec under `specs/`, relative to `specux/`. Use `specs/<lowercase-kebab-case-name>.md`. Use only for requirements that apply across multiple Screens or throughout the project, not for one Screen's behavior. |
 
 Each Screen entry is a YAML mapping with these properties:
@@ -31,6 +31,6 @@ specux: "0.1.0-SNAPSHOT"
 screens:
   - id: sign-in
     file: screens/sign-in/screen.yml
-theme: theme/theme.yml
+theme: theme.yml
 spec: specs/project-behavior.md
 ```

@@ -9,11 +9,11 @@ attributes:
     overridable: true
   color:
     type: string
-    default: "#405cc1"
+    default: "var(--theme-on-primary, #ffffff)"
     overridable: true
   background:
     type: string
-    default: "#e9edff"
+    default: "var(--theme-primary-soft, #e9edff)"
     overridable: true
   border-radius:
     type: number

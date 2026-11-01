@@ -272,7 +272,7 @@ async function runInitCommand(args) {
       name: "SpecUX Project",
       specux: SPECUX_VERSION,
       screens: [{ id: "home", file: "screens/home/screen.yml" }],
-      theme: "theme/theme.yml"
+      theme: "theme.yml"
     })],
     ["screens/home/screen.yml", YAML.stringify({
       name: "Home",
@@ -327,9 +327,8 @@ async function runInitCommand(args) {
       '<div class="material-visual material-visual-button">${attributes.text}</div>',
       ""
     ].join("\n")],
-    ["theme/theme.yml", YAML.stringify({
-      name: "Default",
-      colors: {
+    ["theme.yml", YAML.stringify({
+      tokens: {
         primary: "#4569e8",
         ink: "#1e293b",
         background: "#f3f6fa"

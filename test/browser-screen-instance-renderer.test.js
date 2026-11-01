@@ -57,6 +57,37 @@ test("does not expose asset selection interactions in render-only mode", async (
   assert.equal(hosts[1].tagName, "img");
 });
 
+test("keeps the workflow target highlighted without exposing asset interactions", async () => {
+  const { ScreenInstanceRenderer } = await import("../frontend/browser/ScreenInstanceRenderer.mjs");
+  const renderer = new ScreenInstanceRenderer({
+    state: {
+      isRenderOnly: false,
+      viewingWorkflow: true,
+      activeInstancePath: [0]
+    },
+    services: {
+      element: createElement,
+      isInstanceVisible: () => true,
+      sameInstancePath: () => true,
+      getElementLabel: () => "Balance",
+      safeProjectUrl: (path) => new URL(path, "http://localhost/")
+    }
+  });
+
+  const host = await renderer.render({
+    id: "balance",
+    type: "image",
+    src: "assets/balance.png",
+    alt: "Balance"
+  }, null, [0], "home", "Home");
+
+  assert.equal(host.classList.values.has("selected"), true);
+  assert.equal(host.draggable, undefined);
+  assert.equal(host.tabIndex, undefined);
+  assert.equal(host.attributes.role, undefined);
+  assert.deepEqual(host.listeners, []);
+});
+
 test("does not expose drop-zone interactions in render-only mode", async () => {
   const { ScreenInstanceRenderer } = await import("../frontend/browser/ScreenInstanceRenderer.mjs");
   const target = createElement("div");
@@ -64,6 +95,29 @@ test("does not expose drop-zone interactions in render-only mode", async () => {
   const renderer = new ScreenInstanceRenderer({
     state: { isRenderOnly: true },
     services: {}
+  });
+
+  test("does not expose drop-zone interactions in workflow previews", async () => {
+    const { ScreenInstanceRenderer } = await import("../frontend/browser/ScreenInstanceRenderer.mjs");
+    const target = createElement("div");
+    target.attributes["data-specux-slot"] = "content";
+    const renderer = new ScreenInstanceRenderer({
+      state: { isRenderOnly: false, viewingWorkflow: true },
+      services: {}
+    });
+
+    await renderer.renderSlots(
+      { querySelectorAll: () => [target] },
+      { slots: {} },
+      { id: "layout", data: { slots: [{ id: "content", name: "Content" }] } },
+      [0],
+      "home",
+      "Home"
+    );
+
+    assert.equal(target.classList.values.has("specux-drop-slot"), false);
+    assert.equal(target.classList.values.has("specux-render-slot"), true);
+    assert.deepEqual(target.listeners, []);
   });
 
   await renderer.renderSlots(

@@ -1334,20 +1334,20 @@
       margin: 0;
       padding: 0;
     }
-    .canvas.workflow-editing.workflow-spec-preview-active .screen-canvas-viewport {
-      grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: minmax(0, 1fr);
-    }
-    .canvas.workflow-editing.workflow-spec-preview-active .screen-ruler,
-    .canvas.workflow-editing.workflow-spec-preview-active .screen-ruler-corner,
-    .canvas.workflow-editing.workflow-spec-preview-active .screen-zoom-controls {
-      display: none;
-    }
     .workflow-spec-preview {
       display: block;
       box-sizing: border-box;
+      min-width: 0;
+      min-height: 0;
+      flex: 1;
+      overflow: auto;
       padding: 24px;
       background: var(--panel);
+    }
+    .workflow-spec-preview[hidden] { display: none; }
+    .canvas.workflow-editing.workflow-spec-preview-active .screen-canvas-viewport,
+    .canvas.workflow-editing.workflow-spec-preview-active .workflow-zoom-controls {
+      display: none !important;
     }
     .workflow-spec-file {
       display: block;
@@ -1835,6 +1835,14 @@
       background: transparent;
     }
     .material-instance.selected { outline: none; }
+    .canvas.workflow-editing .material-instance { cursor: default; }
+    .canvas.workflow-editing .asset-instance { cursor: default; }
+    .canvas.workflow-editing .material-instance.selected,
+    .canvas.workflow-editing .asset-instance.selected {
+      outline: 2px solid var(--studio-primary);
+      outline-offset: 3px;
+      box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--studio-primary) 18%, transparent);
+    }
     .material-visual {
       display: flex;
       width: 100%;

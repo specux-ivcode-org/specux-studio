@@ -703,7 +703,7 @@ test("copies page-specific Asset template files and resources on save", async ()
       YAML.stringify({
         name: "Example",
         screens: [{ id: "source", file: "screens/source/screen.yml" }],
-        theme: "theme/theme.yml"
+        theme: "theme.yml"
       })
     );
     const sourceAssetDirectory = path.join(projectRoot, "screens", "source", "assets");
@@ -722,7 +722,7 @@ test("copies page-specific Asset template files and resources on save", async ()
         { id: "source", file: "screens/source/screen.yml" },
         { id: "destination", file: "screens/destination/screen.yml" }
       ],
-      theme: "theme/theme.yml"
+      theme: "theme.yml"
     };
     const response = await fetch(`${baseUrl}/api/save`, {
       method: "POST",

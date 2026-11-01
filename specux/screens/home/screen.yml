@@ -17,7 +17,7 @@ materials:
     layer: base
     src: materials/surface.stml
     attributes:
-      background: "#f5f7fb"
+      background: "var(--theme-background)"
       border: none
       border-radius: 0
       shadow: none
@@ -32,7 +32,7 @@ materials:
     layer: base
     src: materials/surface.stml
     attributes:
-      background: "#ffffff"
+      background: "var(--theme-surface)"
       border: none
       border-radius: 0
       shadow: none
@@ -47,7 +47,7 @@ materials:
     layer: base
     src: materials/divider.stml
     attributes:
-      color: "#edf0f5"
+      color: "var(--theme-border-muted)"
       line-width: 100%
       line-height: 1px
     position:
@@ -61,7 +61,7 @@ materials:
     layer: base
     src: materials/surface.stml
     attributes:
-      background: "#ffffff"
+      background: "var(--theme-surface)"
       border: none
       border-radius: 0
       shadow: none
@@ -76,7 +76,7 @@ materials:
     layer: base
     src: materials/divider.stml
     attributes:
-      color: "#e9edf4"
+      color: "var(--theme-border-muted)"
       line-width: 1px
       line-height: 100%
     position:
@@ -91,8 +91,8 @@ materials:
     src: materials/avatar.stml
     attributes:
       initials: A
-      color: "#ffffff"
-      background: "#4569e8"
+      color: "var(--theme-on-primary)"
+      background: "var(--theme-primary)"
       border-radius: 10
       font-size: 17
       font-weight: 800
@@ -108,7 +108,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Northstar
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 17
       font-weight: 750
     position:
@@ -125,9 +125,9 @@ materials:
       value: Search anything
       icon: ""
       trailing: ""
-      color: "#8792a4"
-      background: "#f5f7fa"
-      border: "1px solid #e8ecf2"
+      color: "var(--theme-muted)"
+      background: "var(--theme-surface-muted)"
+      border: "1px solid var(--theme-border-muted)"
       border-radius: 9
       padding: 0 13px
       font-size: 12
@@ -143,8 +143,8 @@ materials:
     src: materials/avatar.stml
     attributes:
       initials: JD
-      color: "#405cc1"
-      background: "#e9edff"
+      color: "var(--theme-primary-strong)"
+      background: "var(--theme-primary-soft)"
       border-radius: 17
       font-size: 11
       font-weight: 750
@@ -160,7 +160,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Jordan Davis
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 12
       font-weight: 750
     position:
@@ -175,7 +175,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Personal account
-      color: "#718096"
+      color: "var(--theme-muted)"
       font-size: 10
       font-weight: 500
     position:
@@ -190,7 +190,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: OVERVIEW
-      color: "#9aa4b4"
+      color: "var(--theme-muted)"
       font-size: 9
       font-weight: 750
       letter-spacing: 1px
@@ -207,10 +207,10 @@ materials:
     attributes:
       text: Dashboard
       icon: D
-      color: "#ffffff"
-      background: "#4569e8"
-      icon-color: "#ffffff"
-      icon-background: "#7088f2"
+      color: "var(--theme-on-primary)"
+      background: "var(--theme-primary)"
+      icon-color: "var(--theme-on-primary)"
+      icon-background: "var(--theme-primary)"
       border-radius: 9
       font-size: 12
       font-weight: 700
@@ -227,10 +227,10 @@ materials:
     attributes:
       text: Accounts
       icon: A
-      color: "#536174"
+      color: "var(--theme-muted)"
       background: transparent
-      icon-color: "#66738a"
-      icon-background: "#f1f3f8"
+      icon-color: "var(--theme-muted)"
+      icon-background: "var(--theme-surface-muted)"
       border-radius: 9
       font-size: 12
       font-weight: 550
@@ -247,10 +247,10 @@ materials:
     attributes:
       text: Transfers
       icon: T
-      color: "#536174"
+      color: "var(--theme-muted)"
       background: transparent
-      icon-color: "#66738a"
-      icon-background: "#f1f3f8"
+      icon-color: "var(--theme-muted)"
+      icon-background: "var(--theme-surface-muted)"
       border-radius: 9
       font-size: 12
       font-weight: 550
@@ -267,10 +267,10 @@ materials:
     attributes:
       text: Cards
       icon: C
-      color: "#536174"
+      color: "var(--theme-muted)"
       background: transparent
-      icon-color: "#66738a"
-      icon-background: "#f1f3f8"
+      icon-color: "var(--theme-muted)"
+      icon-background: "var(--theme-surface-muted)"
       border-radius: 9
       font-size: 12
       font-weight: 550
@@ -287,10 +287,10 @@ materials:
     attributes:
       text: Payments
       icon: P
-      color: "#536174"
+      color: "var(--theme-muted)"
       background: transparent
-      icon-color: "#66738a"
-      icon-background: "#f1f3f8"
+      icon-color: "var(--theme-muted)"
+      icon-background: "var(--theme-surface-muted)"
       border-radius: 9
       font-size: 12
       font-weight: 550
@@ -307,10 +307,10 @@ materials:
     attributes:
       text: Budgets & goals
       icon: B
-      color: "#536174"
+      color: "var(--theme-muted)"
       background: transparent
-      icon-color: "#66738a"
-      icon-background: "#f1f3f8"
+      icon-color: "var(--theme-muted)"
+      icon-background: "var(--theme-surface-muted)"
       border-radius: 9
       font-size: 11
       font-weight: 550
@@ -326,7 +326,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: WORKSPACE
-      color: "#9aa4b4"
+      color: "var(--theme-muted)"
       font-size: 9
       font-weight: 750
       letter-spacing: 1px
@@ -343,10 +343,10 @@ materials:
     attributes:
       text: Settings
       icon: S
-      color: "#536174"
+      color: "var(--theme-muted)"
       background: transparent
-      icon-color: "#66738a"
-      icon-background: "#f1f3f8"
+      icon-color: "var(--theme-muted)"
+      icon-background: "var(--theme-surface-muted)"
       border-radius: 9
       font-size: 12
       font-weight: 550
@@ -363,10 +363,10 @@ materials:
     attributes:
       text: Help center
       icon: "?"
-      color: "#536174"
+      color: "var(--theme-muted)"
       background: transparent
-      icon-color: "#66738a"
-      icon-background: "#f1f3f8"
+      icon-color: "var(--theme-muted)"
+      icon-background: "var(--theme-surface-muted)"
       border-radius: 9
       font-size: 12
       font-weight: 550
@@ -381,8 +381,8 @@ materials:
     layer: base
     src: materials/surface.stml
     attributes:
-      background: "#f1f4ff"
-      border: "1px solid #e2e8ff"
+      background: "var(--theme-primary-soft)"
+      border: "1px solid var(--theme-primary-border)"
       border-radius: 12
       shadow: none
     position:
@@ -397,7 +397,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Make more of your money
-      color: "#32477e"
+      color: "var(--theme-primary-strong)"
       font-size: 12
       font-weight: 750
       line-height: 1.2
@@ -413,7 +413,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Explore tools built for your goals.
-      color: "#667698"
+      color: "var(--theme-muted)"
       font-size: 10
       font-weight: 450
       line-height: 1.35
@@ -443,7 +443,7 @@ materials:
     layer: base
     src: materials/surface.stml
     attributes:
-      background: "linear-gradient(115deg, #3557c7, #4055a5 72%, #617ce4)"
+      background: "var(--theme-primary-gradient)"
       border: none
       border-radius: 14
       shadow: none
@@ -459,7 +459,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: MONDAY, OCTOBER 19, 2026
-      color: "#dfe6ff"
+      color: "var(--theme-hero-muted)"
       font-size: 10
       font-weight: 650
       letter-spacing: 1px
@@ -475,7 +475,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Good morning, Jordan
-      color: "#ffffff"
+      color: "var(--theme-hero-ink)"
       font-size: 23
       font-weight: 750
     position:
@@ -490,7 +490,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Here is your financial snapshot for this month.
-      color: "#e8ecff"
+      color: "var(--theme-hero-muted)"
       font-size: 12
       font-weight: 450
     position:
@@ -507,9 +507,9 @@ materials:
       text: +  Add item
       border-radius: 9
       font-size: 12
-      background: "#ffffff"
-      color: "#4058bc"
-      border: 1px solid rgba(255,255,255,.55)
+      background: "var(--theme-surface)"
+      color: "var(--theme-primary-strong)"
+      border: 1px solid var(--theme-on-primary-border)
       shadow: none
     position:
       x: 1160
@@ -522,10 +522,10 @@ materials:
     layer: base
     src: materials/surface.stml
     attributes:
-      background: "#ffffff"
-      border: "1px solid #e6eaf1"
+      background: "var(--theme-surface)"
+      border: "1px solid var(--theme-border)"
       border-radius: 12
-      shadow: 0 3px 12px rgba(32, 52, 89, 0.06)
+      shadow: var(--theme-card-shadow)
     position:
       x: 198
       y: 250
@@ -538,7 +538,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: TOTAL BALANCE
-      color: "#8792a4"
+      color: "var(--theme-muted)"
       font-size: 9
       font-weight: 750
       letter-spacing: .7px
@@ -554,7 +554,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: $25,680.50
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 21
       font-weight: 750
     position:
@@ -569,7 +569,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: + 8.2% from last month
-      color: "#16836b"
+      color: "var(--theme-success)"
       font-size: 10
       font-weight: 650
     position:
@@ -583,10 +583,10 @@ materials:
     layer: base
     src: materials/surface.stml
     attributes:
-      background: "#ffffff"
-      border: "1px solid #e6eaf1"
+      background: "var(--theme-surface)"
+      border: "1px solid var(--theme-border)"
       border-radius: 12
-      shadow: 0 3px 12px rgba(32, 52, 89, 0.06)
+      shadow: var(--theme-card-shadow)
     position:
       x: 484
       y: 250
@@ -599,7 +599,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: MONTHLY INCOME
-      color: "#8792a4"
+      color: "var(--theme-muted)"
       font-size: 9
       font-weight: 750
       letter-spacing: .7px
@@ -615,7 +615,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: $8,420.00
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 21
       font-weight: 750
     position:
@@ -630,7 +630,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: + 4.6% from last month
-      color: "#16836b"
+      color: "var(--theme-success)"
       font-size: 10
       font-weight: 650
     position:
@@ -644,10 +644,10 @@ materials:
     layer: base
     src: materials/surface.stml
     attributes:
-      background: "#ffffff"
-      border: "1px solid #e6eaf1"
+      background: "var(--theme-surface)"
+      border: "1px solid var(--theme-border)"
       border-radius: 12
-      shadow: 0 3px 12px rgba(32, 52, 89, 0.06)
+      shadow: var(--theme-card-shadow)
     position:
       x: 770
       y: 250
@@ -660,7 +660,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: MONTHLY SPENDING
-      color: "#8792a4"
+      color: "var(--theme-muted)"
       font-size: 9
       font-weight: 750
       letter-spacing: .7px
@@ -676,7 +676,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: $3,218.40
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 21
       font-weight: 750
     position:
@@ -691,7 +691,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Down 2.1% from last month
-      color: "#16836b"
+      color: "var(--theme-success)"
       font-size: 10
       font-weight: 650
     position:
@@ -705,10 +705,10 @@ materials:
     layer: base
     src: materials/surface.stml
     attributes:
-      background: "#ffffff"
-      border: "1px solid #e6eaf1"
+      background: "var(--theme-surface)"
+      border: "1px solid var(--theme-border)"
       border-radius: 12
-      shadow: 0 3px 12px rgba(32, 52, 89, 0.06)
+      shadow: var(--theme-card-shadow)
     position:
       x: 1056
       y: 250
@@ -721,7 +721,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: SAVINGS RATE
-      color: "#8792a4"
+      color: "var(--theme-muted)"
       font-size: 9
       font-weight: 750
       letter-spacing: .7px
@@ -737,7 +737,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: 38.2%
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 21
       font-weight: 750
     position:
@@ -752,7 +752,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: + 5.4% from last month
-      color: "#16836b"
+      color: "var(--theme-success)"
       font-size: 10
       font-weight: 650
     position:
@@ -766,10 +766,10 @@ materials:
     layer: base
     src: materials/surface.stml
     attributes:
-      background: "#ffffff"
-      border: "1px solid #e6eaf1"
+      background: "var(--theme-surface)"
+      border: "1px solid var(--theme-border)"
       border-radius: 12
-      shadow: 0 3px 12px rgba(32, 52, 89, 0.06)
+      shadow: var(--theme-card-shadow)
     position:
       x: 198
       y: 394
@@ -782,7 +782,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Recent activity
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 17
       font-weight: 750
     position:
@@ -799,9 +799,9 @@ materials:
       text: View all
       border-radius: 7
       font-size: 10
-      background: "#ffffff"
-      color: "#4569e8"
-      border: "1px solid #e4e9f2"
+      background: "var(--theme-surface)"
+      color: "var(--theme-primary)"
+      border: "1px solid var(--theme-border)"
       shadow: none
     position:
       x: 827
@@ -814,7 +814,7 @@ materials:
     layer: base
     src: materials/divider.stml
     attributes:
-      color: "#edf0f5"
+      color: "var(--theme-border-muted)"
       line-width: 100%
       line-height: 1px
     position:
@@ -829,8 +829,8 @@ materials:
     src: materials/avatar.stml
     attributes:
       initials: W
-      color: "#43506a"
-      background: "#ecf8f2"
+      color: "var(--theme-ink)"
+      background: "var(--theme-success-surface)"
       border-radius: 17
       font-size: 12
       font-weight: 750
@@ -846,7 +846,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Whole Foods Market
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 12
       font-weight: 750
     position:
@@ -861,7 +861,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Groceries - Today, 10:42 AM
-      color: "#8a95a6"
+      color: "var(--theme-muted)"
       font-size: 10
       font-weight: 450
     position:
@@ -876,7 +876,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: -$84.26
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 12
       font-weight: 750
       text-align: right
@@ -892,7 +892,7 @@ materials:
     layer: base
     src: materials/divider.stml
     attributes:
-      color: "#edf0f5"
+      color: "var(--theme-border-muted)"
       line-width: 100%
       line-height: 1px
     position:
@@ -907,8 +907,8 @@ materials:
     src: materials/avatar.stml
     attributes:
       initials: N
-      color: "#43506a"
-      background: "#fff1f0"
+      color: "var(--theme-ink)"
+      background: "var(--theme-danger-surface)"
       border-radius: 17
       font-size: 12
       font-weight: 750
@@ -924,7 +924,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Netflix
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 12
       font-weight: 750
     position:
@@ -939,7 +939,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Subscription - Yesterday
-      color: "#8a95a6"
+      color: "var(--theme-muted)"
       font-size: 10
       font-weight: 450
     position:
@@ -954,7 +954,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: -$15.99
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 12
       font-weight: 750
       text-align: right
@@ -970,7 +970,7 @@ materials:
     layer: base
     src: materials/divider.stml
     attributes:
-      color: "#edf0f5"
+      color: "var(--theme-border-muted)"
       line-width: 100%
       line-height: 1px
     position:
@@ -985,8 +985,8 @@ materials:
     src: materials/avatar.stml
     attributes:
       initials: +
-      color: "#43506a"
-      background: "#eef1ff"
+      color: "var(--theme-ink)"
+      background: "var(--theme-info-surface)"
       border-radius: 17
       font-size: 12
       font-weight: 750
@@ -1002,7 +1002,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Salary deposit
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 12
       font-weight: 750
     position:
@@ -1017,7 +1017,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Income - Oct 14, 2026
-      color: "#8a95a6"
+      color: "var(--theme-muted)"
       font-size: 10
       font-weight: 450
     position:
@@ -1032,7 +1032,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: +$4,250.00
-      color: "#16836b"
+      color: "var(--theme-success)"
       font-size: 12
       font-weight: 750
       text-align: right
@@ -1048,7 +1048,7 @@ materials:
     layer: base
     src: materials/divider.stml
     attributes:
-      color: "#edf0f5"
+      color: "var(--theme-border-muted)"
       line-width: 100%
       line-height: 1px
     position:
@@ -1063,8 +1063,8 @@ materials:
     src: materials/avatar.stml
     attributes:
       initials: B
-      color: "#43506a"
-      background: "#fff7e9"
+      color: "var(--theme-ink)"
+      background: "var(--theme-warning-surface)"
       border-radius: 17
       font-size: 12
       font-weight: 750
@@ -1080,7 +1080,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Blue Bottle Coffee
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 12
       font-weight: 750
     position:
@@ -1095,7 +1095,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Dining - Oct 13, 2026
-      color: "#8a95a6"
+      color: "var(--theme-muted)"
       font-size: 10
       font-weight: 450
     position:
@@ -1110,7 +1110,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: -$12.50
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 12
       font-weight: 750
       text-align: right
@@ -1126,10 +1126,10 @@ materials:
     layer: base
     src: materials/surface.stml
     attributes:
-      background: "#ffffff"
-      border: "1px solid #e6eaf1"
+      background: "var(--theme-surface)"
+      border: "1px solid var(--theme-border)"
       border-radius: 12
-      shadow: 0 3px 12px rgba(32, 52, 89, 0.06)
+      shadow: var(--theme-card-shadow)
     position:
       x: 940
       y: 394
@@ -1142,7 +1142,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Savings goal
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 16
       font-weight: 750
     position:
@@ -1157,7 +1157,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: ...
-      color: "#9aa4b4"
+      color: "var(--theme-muted)"
       font-size: 13
       font-weight: 700
       text-align: right
@@ -1173,8 +1173,8 @@ materials:
     src: materials/avatar.stml
     attributes:
       initials: x
-      color: "#5d6fd0"
-      background: "#eef0ff"
+      color: "var(--theme-primary)"
+      background: "var(--theme-info-surface)"
       border-radius: 11
       font-size: 16
       font-weight: 750
@@ -1190,7 +1190,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: New home fund
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 12
       font-weight: 750
     position:
@@ -1205,7 +1205,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: On track - Target Dec 2026
-      color: "#718096"
+      color: "var(--theme-muted)"
       font-size: 10
       font-weight: 450
     position:
@@ -1220,7 +1220,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: $4,200
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 19
       font-weight: 750
     position:
@@ -1235,7 +1235,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: of $6,000
-      color: "#718096"
+      color: "var(--theme-muted)"
       font-size: 11
       font-weight: 500
     position:
@@ -1250,8 +1250,8 @@ materials:
     src: materials/progress.stml
     attributes:
       value: 70
-      track: "#e9edf6"
-      fill: "#5a70dc"
+      track: "var(--theme-border-muted)"
+      fill: "var(--theme-primary)"
       border-radius: 5
     position:
       x: 960
@@ -1265,7 +1265,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: 70% complete
-      color: "#6375c7"
+      color: "var(--theme-primary)"
       font-size: 10
       font-weight: 650
     position:
@@ -1280,7 +1280,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: $600 / month
-      color: "#718096"
+      color: "var(--theme-muted)"
       font-size: 10
       font-weight: 500
       text-align: right
@@ -1296,10 +1296,10 @@ materials:
     layer: base
     src: materials/surface.stml
     attributes:
-      background: "#ffffff"
-      border: "1px solid #e6eaf1"
+      background: "var(--theme-surface)"
+      border: "1px solid var(--theme-border)"
       border-radius: 12
-      shadow: 0 3px 12px rgba(32, 52, 89, 0.06)
+      shadow: var(--theme-card-shadow)
     position:
       x: 940
       y: 632
@@ -1312,7 +1312,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Spending overview
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 15
       font-weight: 750
     position:
@@ -1327,7 +1327,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: You are under budget this month
-      color: "#16836b"
+      color: "var(--theme-success)"
       font-size: 10
       font-weight: 600
     position:
@@ -1342,7 +1342,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Essentials
-      color: "#718096"
+      color: "var(--theme-muted)"
       font-size: 10
       font-weight: 500
     position:
@@ -1357,8 +1357,8 @@ materials:
     src: materials/progress.stml
     attributes:
       value: 64
-      track: "#edf0f5"
-      fill: "#6780e7"
+      track: "var(--theme-border-muted)"
+      fill: "var(--theme-primary)"
       border-radius: 5
     position:
       x: 960
@@ -1372,7 +1372,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: $1,420 / $2,200
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 10
       font-weight: 550
       text-align: right
@@ -1389,7 +1389,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Your monthly plan is looking healthy.
-      color: "#8994a4"
+      color: "var(--theme-muted)"
       font-size: 9
       font-weight: 450
     position:
@@ -1403,7 +1403,7 @@ materials:
     layer: base
     src: materials/surface.stml
     attributes:
-      background: rgba(20, 30, 50, 0.48)
+      background: var(--theme-overlay)
       border: none
       border-radius: 0
       shadow: none
@@ -1421,10 +1421,10 @@ materials:
     layer: base
     src: materials/surface.stml
     attributes:
-      background: "#ffffff"
-      border: "1px solid #e3e7ef"
+      background: "var(--theme-surface)"
+      border: "1px solid var(--theme-border)"
       border-radius: 16
-      shadow: 0 22px 65px rgba(20, 30, 50, 0.25)
+      shadow: var(--theme-dialog-shadow)
     position:
       x: 460
       y: 235
@@ -1440,7 +1440,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Add to your dashboard
-      color: "#1e293b"
+      color: "var(--theme-ink)"
       font-size: 19
       font-weight: 750
     position:
@@ -1458,7 +1458,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: Create a shortcut to what matters to you.
-      color: "#718096"
+      color: "var(--theme-muted)"
       font-size: 11
       font-weight: 450
     position:
@@ -1476,7 +1476,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: ITEM NAME
-      color: "#778397"
+      color: "var(--theme-muted)"
       font-size: 9
       font-weight: 750
       letter-spacing: .7px
@@ -1497,9 +1497,9 @@ materials:
       value: e.g. Emergency fund
       icon: ""
       trailing: ""
-      color: "#9aa4b4"
-      background: "#ffffff"
-      border: "1px solid #e6eaf1"
+      color: "var(--theme-muted)"
+      background: "var(--theme-surface)"
+      border: "1px solid var(--theme-border)"
       border-radius: 8
       padding: 0 13px
       font-size: 11
@@ -1518,7 +1518,7 @@ materials:
     src: materials/label.stml
     attributes:
       text: TYPE
-      color: "#778397"
+      color: "var(--theme-muted)"
       font-size: 9
       font-weight: 750
       letter-spacing: .7px
@@ -1539,9 +1539,9 @@ materials:
       value: Savings goal
       icon: ""
       trailing: V
-      color: "#4e5b70"
-      background: "#ffffff"
-      border: "1px solid #e6eaf1"
+      color: "var(--theme-muted)"
+      background: "var(--theme-surface)"
+      border: "1px solid var(--theme-border)"
       border-radius: 8
       padding: 0 13px
       font-size: 11
@@ -1562,9 +1562,9 @@ materials:
       text: Cancel
       border-radius: 9
       font-size: 12
-      color: "#536174"
-      background: "#ffffff"
-      border: "1px solid #dfe4ed"
+      color: "var(--theme-muted)"
+      background: "var(--theme-surface)"
+      border: "1px solid var(--theme-border)"
       shadow: none
     position:
       x: 596

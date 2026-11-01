@@ -26,19 +26,19 @@ test("keeps quoted empty flow values as strings", () => {
   });
 });
 
-test("parses light and dark theme color modes", () => {
+test("parses light and dark theme token modes", () => {
   assert.deepEqual(parseSpecuxYaml([
     "modes:",
     "  light:",
-    "    colors:",
+    "    tokens:",
     '      background: "#ffffff"',
     "  dark:",
-    "    colors:",
+    "    tokens:",
     '      background: "#101827"'
   ].join("\n")), {
     modes: {
-      light: { colors: { background: "#ffffff" } },
-      dark: { colors: { background: "#101827" } }
+      light: { tokens: { background: "#ffffff" } },
+      dark: { tokens: { background: "#101827" } }
     }
   });
 });

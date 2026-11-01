@@ -49,7 +49,7 @@ export class ScreenSelectionController {
   }
 
   selectTool(tool) {
-    if (!SELECTION_TOOLS.has(tool) || !this.screenId || this.state.isRenderOnly) return;
+    if (!SELECTION_TOOLS.has(tool) || !this.screenId || this.isInteractionDisabled()) return;
     this.tool = tool;
     this.services.disableAnnotationMode?.();
     this.drawing = null;
@@ -59,19 +59,23 @@ export class ScreenSelectionController {
 
   updateControls() {
     this.services.document.querySelectorAll("[data-selection-tool]").forEach((button) => {
-      button.disabled = !this.screenId || this.state.isRenderOnly;
+      button.disabled = !this.screenId || this.isInteractionDisabled();
       button.setAttribute("aria-pressed", String(button.dataset.selectionTool === this.tool));
     });
     this.services.document.querySelectorAll("[data-scale-type]").forEach((button) => {
-      button.disabled = !this.screenId || this.state.isRenderOnly;
+      button.disabled = !this.screenId || this.isInteractionDisabled();
       button.setAttribute("aria-pressed", String(button.dataset.scaleType === this.scaleType));
     });
   }
 
   selectScaleType(scaleType) {
-    if (!SCALE_TYPES.has(scaleType) || !this.screenId || this.state.isRenderOnly) return;
+    if (!SCALE_TYPES.has(scaleType) || !this.screenId || this.isInteractionDisabled()) return;
     this.scaleType = scaleType;
     this.updateControls();
+  }
+
+  isInteractionDisabled() {
+    return this.state.isRenderOnly || this.state.viewingWorkflow;
   }
 
   render() {
@@ -84,7 +88,9 @@ export class ScreenSelectionController {
     const highestPlacementLayer = [...content.querySelectorAll(":scope > .material-frame")]
       .reduce((highest, frame) => Math.max(highest, Number(frame.style.zIndex) || 0), 0);
     this.overlay.style.zIndex = String(highestPlacementLayer + 1);
-    const enabled = this.tool === "marquee" && Boolean(this.screenId) && !this.state.isRenderOnly;
+    const enabled = this.tool === "marquee" &&
+      Boolean(this.screenId) &&
+      !this.isInteractionDisabled();
     this.overlay.style.pointerEvents = enabled ? "auto" : "none";
     preview.classList.toggle("marquee-selection-mode", enabled);
     this.clearRectangle();
@@ -109,8 +115,12 @@ export class ScreenSelectionController {
   }
 
   onPointerDown(event) {
-    if (!this.overlay || this.tool !== "marquee" || event.button !== 0 ||
-        !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return;
+    if (this.isInteractionDisabled() ||
+        !this.overlay ||
+        this.tool !== "marquee" ||
+        event.button !== 0 ||
+        !Number.isFinite(event.clientX) ||
+        !Number.isFinite(event.clientY)) return;
     event.preventDefault();
     event.stopPropagation();
     this.drawing = {
@@ -124,6 +134,11 @@ export class ScreenSelectionController {
   }
 
   onPointerMove(event) {
+    if (this.isInteractionDisabled()) {
+      this.drawing = null;
+      this.clearRectangle();
+      return;
+    }
     const drawing = this.drawing;
     if (!drawing || drawing.pointerId !== event.pointerId) return;
     drawing.current = { x: event.clientX, y: event.clientY };
@@ -133,6 +148,11 @@ export class ScreenSelectionController {
   }
 
   onPointerUp(event) {
+    if (this.isInteractionDisabled()) {
+      this.drawing = null;
+      this.clearRectangle();
+      return;
+    }
     const drawing = this.drawing;
     if (!drawing || drawing.pointerId !== event.pointerId) return;
     this.drawing = null;
@@ -157,6 +177,7 @@ export class ScreenSelectionController {
   }
 
   onContextMenu(event) {
+    if (this.isInteractionDisabled()) return;
     const directFrame = event.composedPath?.().find((node) =>
       node?.classList?.contains("material-frame")
     );

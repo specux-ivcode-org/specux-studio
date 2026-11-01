@@ -38,6 +38,8 @@ export class InspectorRenderer {
         panel,
         state.materialFiles.get(state.activeMaterialFilePath)
       );
+    } else if (state.viewingWorkflow) {
+      this.renderWorkflowPreviewDetails(panel);
     } else {
       const screen = state.screens[state.activeScreenIndex]?.data;
       if (!screen) return;
@@ -58,6 +60,26 @@ export class InspectorRenderer {
         template,
         state.viewingPreviewState
       );
+    }
+  }
+
+  renderWorkflowPreviewDetails(panel) {
+    const { state, services } = this;
+    const screenEntry = state.screens[state.activeScreenIndex];
+    if (!screenEntry?.data) return;
+    this.appendSection(panel, "Workflow preview");
+    panel.append(services.element(
+      "p",
+      "readonly-label",
+      "This Screen preview is read-only. The highlighted placement is the target of the selected workflow node."
+    ));
+    this.appendDetail(panel, "Screen", screenEntry.data.name || screenEntry.data.id);
+    if (state.activeInstancePath.length) {
+      const instance = services.getInstanceAtPath(
+        { data: screenEntry.data },
+        state.activeInstancePath
+      );
+      if (instance) this.appendDetail(panel, "Placement", instance.id);
     }
   }
 
@@ -700,7 +722,7 @@ export class InspectorRenderer {
       0
     ));
     this.appendDetail(panel, "Behavior specs", state.specSources.size);
-    this.appendDetail(panel, "Theme", state.theme?.name || "Not configured");
+    this.appendDetail(panel, "Theme", state.project.theme || "Not configured");
     this.appendDetail(panel, "Project manifest", "specux/project.yml");
     this.appendSection(panel, "Project-wide behavior spec");
     const pendingDraft = [...state.createdSpecDrafts.entries()]

@@ -6,10 +6,8 @@ const booleanHtmlAttributes = new Set([
 ]);
 
 export class TemplateMarkupRenderer {
-  constructor({ appRoot, getThemeStylesheet, getThemeStylesheetBase }) {
+  constructor({ appRoot }) {
     this.appRoot = appRoot;
-    this.getThemeStylesheet = getThemeStylesheet;
-    this.getThemeStylesheetBase = getThemeStylesheetBase;
   }
 
   mount(root, markup, assetBase, instance, template) {
@@ -102,15 +100,6 @@ export class TemplateMarkupRenderer {
       root.append(scopedStyle);
       style.remove();
     });
-    const themeStylesheet = this.getThemeStylesheet();
-    if (themeStylesheet) {
-      const style = document.createElement("style");
-      style.textContent = this.scopeCss(
-        root,
-        this.rewriteCss(themeStylesheet, this.getThemeStylesheetBase())
-      );
-      root.append(style);
-    }
     for (const child of [...parsed.body.childNodes]) {
       root.append(document.importNode(child, true));
     }

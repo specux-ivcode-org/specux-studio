@@ -13,7 +13,7 @@ attributes:
     overridable: true
   color:
     type: string
-    default: "#536174"
+    default: "var(--theme-muted, #536174)"
     overridable: true
   background:
     type: string
@@ -21,11 +21,11 @@ attributes:
     overridable: true
   icon-color:
     type: string
-    default: "#66738a"
+    default: "var(--theme-muted, #66738a)"
     overridable: true
   icon-background:
     type: string
-    default: "#f1f3f8"
+    default: "var(--theme-surface-muted, #f1f3f8)"
     overridable: true
   border-radius:
     type: number

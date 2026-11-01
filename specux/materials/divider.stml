@@ -5,7 +5,7 @@ type: divider
 attributes:
   color:
     type: string
-    default: "#edf0f5"
+    default: "var(--theme-border-muted, #edf0f5)"
     overridable: true
   line-width:
     type: string

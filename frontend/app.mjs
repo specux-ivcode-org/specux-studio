@@ -56,8 +56,6 @@ let materialFiles = new Map();
 let specSources = new Map();
 let workflowSources = new Map();
 let theme;
-let themeStylesheet = "";
-let themeStylesheetBase = appRoot;
 let themeModePreference = "system";
 let systemThemeMode = systemThemeQuery?.matches ? "dark" : "light";
 let appliedThemeTokens = new Set();
@@ -118,9 +116,7 @@ const browserHistory = new BrowserHistory({
   isUpdatesSuppressed: () => historyUpdateSuppressed
 });
 const templateMarkupRenderer = new TemplateMarkupRenderer({
-  appRoot,
-  getThemeStylesheet: () => themeStylesheet,
-  getThemeStylesheetBase: () => themeStylesheetBase
+  appRoot
 });
 const projectRepository = new ProjectRepository({
   appRoot,
@@ -196,6 +192,7 @@ const specEditor = new SpecEditor({
     get assetSpecOwners() { return assetSpecOwners; },
     get specSources() { return specSources; },
     get viewingSpec() { return viewingSpec; },
+    get viewingWorkflow() { return viewingWorkflow; },
     set viewingSpec(value) { viewingSpec = value; },
     get viewingAssetTemplate() { return viewingAssetTemplate; },
     set viewingAssetTemplate(value) { viewingAssetTemplate = value; },
@@ -357,6 +354,7 @@ const screenInstanceRenderer = new ScreenInstanceRenderer({
     get assetInstanceDragType() { return assetInstanceDragType; },
     get assetDragType() { return assetDragType; },
     get viewingSpec() { return viewingSpec; },
+    get viewingWorkflow() { return viewingWorkflow; },
     get screens() { return screens; },
     get activeScreenIndex() { return activeScreenIndex; },
     get isRenderOnly() { return isRenderOnly; },
@@ -698,6 +696,7 @@ const materialCanvas = new MaterialCanvas({
   state: {
     get isRenderOnly() { return isRenderOnly; },
     get viewingSpec() { return viewingSpec; },
+    get viewingWorkflow() { return viewingWorkflow; },
     get activeInstancePath() { return activeInstancePath; },
     get activeInstancePaths() { return activeInstancePaths; },
     get scaleType() { return screenSelectionController?.scaleType || "xy"; }
@@ -717,7 +716,8 @@ const screenMaterialRenderer = new ScreenMaterialRenderer({
     get activeInstancePaths() { return activeInstancePaths; },
     get materialFiles() { return materialFiles; },
     get isRenderOnly() { return isRenderOnly; },
-    get viewingSpec() { return viewingSpec; }
+    get viewingSpec() { return viewingSpec; },
+    get viewingWorkflow() { return viewingWorkflow; }
   },
   services: {
     document,
@@ -858,7 +858,10 @@ workflowEditor = new WorkflowEditor({
   }
 });
 const screenSelectionController = new ScreenSelectionController({
-  state: { isRenderOnly },
+  state: {
+    get isRenderOnly() { return isRenderOnly; },
+    get viewingWorkflow() { return viewingWorkflow; }
+  },
   services: {
     byId,
     document,
@@ -913,6 +916,7 @@ const inspectorRenderer = new InspectorRenderer({
     get viewingProject() { return viewingProject; },
     get viewingTheme() { return viewingTheme; },
     get viewingSpec() { return viewingSpec; },
+    get viewingWorkflow() { return viewingWorkflow; },
     get viewingAssetTemplate() { return viewingAssetTemplate; },
     get viewingMaterialFile() { return viewingMaterialFile; },
     get reviewedInSession() { return reviewedInSession; },
@@ -1178,8 +1182,8 @@ function getActiveThemeMode() {
   return themeEditor.getActiveMode();
 }
 
-function getThemeColors(mode) {
-  return themeEditor.getColors(mode);
+function getThemeTokens(mode) {
+  return themeEditor.getTokens(mode);
 }
 
 function themeModeLabel(mode) {
@@ -1233,8 +1237,6 @@ async function loadProject(selectionToRestore = null) {
       assetSpecOwners.set(filePath, owner);
     }
     theme = loaded.theme;
-    themeStylesheet = loaded.themeStylesheet;
-    themeStylesheetBase = loaded.themeStylesheetBase;
     viewingTheme = false;
     viewingMaterialFile = false;
     viewingProject = false;
@@ -1342,7 +1344,7 @@ async function standaloneScreenHtml() {
   outputDocument.documentElement.lang = "en";
   const rootStyle = document.documentElement.getAttribute("style") || "";
   if (rootStyle) outputDocument.documentElement.setAttribute("style", rootStyle);
-  const themeBackground = getThemeColors().background;
+  const themeBackground = getThemeTokens().background;
   if (themeBackground !== undefined) outputDocument.body.style.backgroundColor = themeBackground;
   const charset = outputDocument.createElement("meta");
   charset.setAttribute("charset", "utf-8");
@@ -1393,16 +1395,16 @@ if (!isRenderOnly && typeof EventSource !== "undefined") {
 }
 
 function applyTheme() {
-  const colors = getThemeColors();
-  const colorNames = new Set(Object.keys(colors));
+  const tokens = getThemeTokens();
+  const tokenNames = new Set(Object.keys(tokens));
   const themeRoot = byId("screen-preview");
   for (const name of appliedThemeTokens) {
-    if (!colorNames.has(name)) themeRoot.style.removeProperty(`--theme-${name}`);
+    if (!tokenNames.has(name)) themeRoot.style.removeProperty(`--theme-${name}`);
   }
-  for (const [name, value] of Object.entries(colors)) {
+  for (const [name, value] of Object.entries(tokens)) {
     themeRoot.style.setProperty(`--theme-${name}`, value);
   }
-  appliedThemeTokens = colorNames;
+  appliedThemeTokens = tokenNames;
   byId("screen-preview").style.colorScheme = getActiveThemeMode();
 }
 
@@ -1749,6 +1751,7 @@ function updateScreenDomContext(screen) {
 }
 
 function selectInstance(path, assetId, options = {}) {
+  if (viewingWorkflow) return;
   const selectedPath = Array.isArray(path) ? path : [];
   if (Array.isArray(options.paths)) {
     activeInstancePaths = options.paths
@@ -1800,7 +1803,7 @@ function selectInstances(paths) {
 }
 
 function openScreenPlacementContextMenu(event, path) {
-  if (isRenderOnly || !Array.isArray(path) || path.length === 0) return;
+  if (isRenderOnly || viewingWorkflow || !Array.isArray(path) || path.length === 0) return;
   const screen = screens[activeScreenIndex];
   if (getActivePreviewStateId(screen?.data) !== "default") {
     closeScreenPlacementContextMenu();

@@ -96,7 +96,8 @@ When a Screen-editor requirement is added, changed, or removed, update this docu
 | SE-045 | Explicit Mermaid `click` links using `specux://screen/<screen-id>/screen.yml` select the linked Screen or `placement` query target and optional `state` in the Screen preview without leaving the workflow editor. |
 | SE-046 | During workflow editing, provide canvas zoom in the workflow layout toolbar alongside Split, Preview, and Diagram controls, and hide the Screen preview-state toolbar. |
 | SE-047 | Workflow links show Default unless their `specux://screen/.../screen.yml` URL explicitly includes `state=<state-id>`; never infer a preview state from placement visibility or node labels. |
-| SE-048 | Behavior specs may link to Screen workflows with `specux://.../workflows/...mmd?node=<node-id>` links; workflow rendering attaches each linked spec to its node. Selecting the icon shows the Markdown file in the preview without canvas rulers or zoom, and provides an up/down section selector that remains visible but is disabled when only one matching section exists. Section navigation does not change the node's preview link. |
+| SE-048 | Behavior specs may link to Screen workflows with `specux://.../workflows/...mmd?node=<node-id>` links; workflow rendering attaches each linked spec to its node. Selecting the icon shows the Markdown file in a workflow-specific preview surface separate from the Screen canvas, and provides an up/down section selector that remains visible but is disabled when only one matching section exists. Section navigation does not change the node's preview link. |
+| SE-049 | The Screen preview in the workflow editor is read-only. Highlight the placement targeted by the selected workflow node without exposing canvas selection, move/resize/rotate, drag/drop, context-menu, marquee, or inspector editing controls. |
 
 ## Persistence and validation
 

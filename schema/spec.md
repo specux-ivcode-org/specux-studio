@@ -21,7 +21,7 @@ Link a behavior spec to a Screen workflow with a regular Markdown link. Place th
 [Save item workflow](specux://screen/home/workflows/add-item.mmd?node=saveItem)
 ```
 
-The Studio attaches the spec link to that workflow node. Selecting its spec icon previews the Markdown and navigates to the link's enclosing section without changing the node's Screen-preview link. When a spec links to the same workflow node from multiple sections, the preview's up/down selector navigates between those sections.
+The Studio attaches the spec link to that workflow node. Selecting its spec icon previews the Markdown in the workflow editor's dedicated spec surface, separate from the Screen canvas, and navigates to the link's enclosing section without changing the node's Screen-preview link. When a spec links to the same workflow node from multiple sections, the preview's up/down selector navigates between those sections.
 
 When creating a new draft, the editor may prefill the example purpose, requirement, and scenario below. Treat that content as a placeholder, not as specified behavior. Do not save a new draft unless its content has been changed. Consult this schema and derive the final requirements from the user's intent and relevant SpecUX context.
 

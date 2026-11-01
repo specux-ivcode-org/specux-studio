@@ -688,25 +688,6 @@ async function validateProject(projectRoot) {
       } catch (error) {
         pushError(errors, project.theme, error);
       }
-      if (theme.styles !== undefined) {
-        if (typeof theme.styles !== "string" || !theme.styles) {
-          errors.push(`${project.theme}: styles must be a relative CSS file path.`);
-        } else {
-          try {
-            safeRelativePath(theme.styles);
-            const themeDirectory = path.posix.dirname(project.theme);
-            const stylesPath = path.posix.join(themeDirectory, theme.styles);
-            const stylesheetPath = await resolveProjectPath(projectRoot, stylesPath, "file");
-            await validateResources(
-              await fs.readFile(stylesheetPath, "utf8"),
-              stylesPath,
-              path.posix.dirname(stylesPath)
-            );
-          } catch (error) {
-            pushError(errors, `${project.theme} styles`, error);
-          }
-        }
-      }
     }
   }
 

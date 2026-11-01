@@ -9,15 +9,15 @@ attributes:
     overridable: true
   color:
     type: string
-    default: "#ffffff"
+    default: "var(--theme-on-primary, #ffffff)"
     overridable: true
   background:
     type: string
-    default: "#4569e8"
+    default: "var(--theme-primary, #4569e8)"
     overridable: true
   border:
     type: string
-    default: "1px solid #4569e8"
+    default: "1px solid var(--theme-primary, #4569e8)"
     overridable: true
   border-radius:
     type: number

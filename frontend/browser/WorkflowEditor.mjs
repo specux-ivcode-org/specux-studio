@@ -498,7 +498,7 @@ export class WorkflowEditor {
     const active = this.activeSpecPreview;
     if (!active) return;
     const { services } = this;
-    const preview = services.byId("screen-preview");
+    const preview = services.byId("workflow-spec-preview");
     const document = preview.ownerDocument;
     const file = document.createElement("pre");
     file.className = "workflow-spec-file";
@@ -518,7 +518,6 @@ export class WorkflowEditor {
       file.append(line);
     });
 
-    preview.className = "screen-preview workflow-spec-preview";
     preview.setAttribute(
       "aria-label",
       `Behavior spec preview: ${active.filePath}`
@@ -562,6 +561,7 @@ export class WorkflowEditor {
     services.byId("workflow-spec-section-position").textContent = active
       ? `${active.referenceIndex + 1} of ${count}`
       : "";
+    services.byId("workflow-spec-preview").hidden = !active;
     services.byId("workflow-spec-section-previous").disabled =
       !active || count < 2 || active.referenceIndex === 0;
     services.byId("workflow-spec-section-next").disabled =

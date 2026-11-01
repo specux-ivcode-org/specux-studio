@@ -17,15 +17,15 @@ attributes:
     overridable: true
   color:
     type: string
-    default: "#485569"
+    default: "var(--theme-ink, #485569)"
     overridable: true
   background:
     type: string
-    default: "#ffffff"
+    default: "var(--theme-surface, #ffffff)"
     overridable: true
   border:
     type: string
-    default: "1px solid #dce2ec"
+    default: "1px solid var(--theme-border, #dce2ec)"
     overridable: true
   border-radius:
     type: number

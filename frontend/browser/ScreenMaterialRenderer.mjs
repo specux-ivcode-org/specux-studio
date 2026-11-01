@@ -9,6 +9,7 @@ export class ScreenMaterialRenderer {
   render(material, index, path = [index]) {
     const { state, services } = this;
     const group = isScreenGroup(material);
+    const editorInteractionsEnabled = !state.isRenderOnly && !state.viewingWorkflow;
     const definition = group ? null : state.materialFiles.get(material.src);
     if (!group && !definition) {
       throw new Error(`Screen placement "${material.id}" references unavailable Material "${material.src}".`);
@@ -22,7 +23,7 @@ export class ScreenMaterialRenderer {
     host.setAttribute("aria-label", group
       ? `Group: ${material.id}`
       : `Material: ${definition.data.name}`);
-    if (!state.isRenderOnly) {
+    if (editorInteractionsEnabled) {
       host.tabIndex = 0;
       host.setAttribute("role", "group");
     }
@@ -38,7 +39,7 @@ export class ScreenMaterialRenderer {
     } else {
       services.templateMarkupRenderer.mount(host, definition.html, definition.base, material, definition);
     }
-    if (!state.isRenderOnly) {
+    if (editorInteractionsEnabled) {
       host.addEventListener("click", (event) => {
         if (event?.detail > 0 && !state.viewingSpec) return;
         event?.stopPropagation?.();

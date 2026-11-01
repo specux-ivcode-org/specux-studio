@@ -18,7 +18,8 @@ function createElement(tagName) {
     className: "",
     classList: {
       toggle() {},
-      add() {}
+      values: new Set(),
+      add(name) { this.values.add(name); }
     },
     listeners,
     attributes,
@@ -99,7 +100,7 @@ function createDocument() {
   };
 }
 
-async function createHarness(scaleType = "xy") {
+async function createHarness(scaleType = "xy", viewingWorkflow = false) {
   const content = createElement("div");
   content.offsetWidth = 1000;
   content.offsetHeight = 800;
@@ -118,7 +119,7 @@ async function createHarness(scaleType = "xy") {
   const calls = { edited: 0, selected: 0, inspector: 0 };
   const { MaterialCanvas } = await import("../frontend/browser/MaterialCanvas.mjs");
   const canvas = new MaterialCanvas({
-    state: { isRenderOnly: false, scaleType },
+    state: { isRenderOnly: false, viewingWorkflow, scaleType },
     services: {
       document: createDocument(),
       markEdited() { calls.edited += 1; },
@@ -189,6 +190,17 @@ test("moves a selected material in canvas coordinates and persists its position"
   assert.equal(calls.selected, 1);
   assert.equal(calls.edited, 1);
   assert.equal(calls.inspector, 1);
+});
+
+test("workflow preview does not create selection or transform controls", async () => {
+  const { frame, host } = await createHarness("xy", true);
+
+  assert.deepEqual(frame.querySelectorAll(".material-control"), []);
+  assert.equal(frame.listeners.has("pointerdown"), false);
+  assert.equal(frame.listeners.has("pointermove"), false);
+  assert.equal(frame.listeners.has("pointerup"), false);
+  assert.equal(host.listeners.has("pointerdown"), false);
+  assert.equal(host.listeners.has("click"), false);
 });
 
 test("resizes and rotates materials with pointer handles", async () => {
@@ -1433,4 +1445,44 @@ test("renders Label and Button instances with their placement-specific text", as
   text.listeners.get("click")();
   button.listeners.get("click")();
   assert.deepEqual(calls, [[0], [1]]);
+});
+
+test("keeps the active Material highlighted without selection interactions in workflow preview", async () => {
+  const { ScreenMaterialRenderer } = await import("../frontend/browser/ScreenMaterialRenderer.mjs");
+  const materialFiles = new Map([
+    ["materials/title.stml", {
+      id: "title",
+      data: { id: "label", name: "Label", type: "label" },
+      base: new URL("http://localhost/specux/materials/"),
+      html: '<div class="material-visual">${attributes.text}</div>'
+    }]
+  ]);
+  const renderer = new ScreenMaterialRenderer({
+    state: {
+      isRenderOnly: false,
+      viewingWorkflow: true,
+      activeInstancePath: [0],
+      materialFiles
+    },
+    services: {
+      document: { createElement },
+      sameInstancePath: () => true,
+      selectInstance() {
+        assert.fail("workflow preview must not select Materials");
+      },
+      templateMarkupRenderer: {
+        mount(host) { host.append(createElement("div")); }
+      }
+    }
+  });
+
+  const host = renderer.render(
+    { id: "page-title", src: "materials/title.stml", attributes: { text: "Welcome" } },
+    0
+  );
+
+  assert.ok(host.classList.values.has("selected"));
+  assert.equal(host.tabIndex, undefined);
+  assert.equal(host.listeners.has("click"), false);
+  assert.equal(host.listeners.has("keydown"), false);
 });

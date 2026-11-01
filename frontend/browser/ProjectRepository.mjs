@@ -537,30 +537,13 @@ export class ProjectRepository {
       specSources,
       workflowSources,
       assetSpecOwners,
-      theme: loadedTheme.data,
-      themeStylesheet: loadedTheme.stylesheet,
-      themeStylesheetBase: loadedTheme.stylesheetBase
+      theme: loadedTheme
     };
   }
 
   async loadTheme(themePath) {
     const data = await this.loadYaml(themePath);
     this.validation.validateTheme(data, themePath);
-    const themeDirectory = themePath.includes("/")
-      ? themePath.slice(0, themePath.lastIndexOf("/") + 1)
-      : "";
-    const themeBase = themeDirectory ? this.safeProjectUrl(themeDirectory) : this.appRoot;
-    if (data.styles === undefined) return { data, stylesheet: "", stylesheetBase: themeBase };
-    if (typeof data.styles !== "string" || !data.styles) {
-      throw new Error(`${themePath} styles must be a relative CSS file path.`);
-    }
-    const stylesDirectory = data.styles.includes("/")
-      ? data.styles.slice(0, data.styles.lastIndexOf("/") + 1)
-      : "";
-    return {
-      data,
-      stylesheet: await this.loadText(data.styles, themeBase),
-      stylesheetBase: stylesDirectory ? this.safeProjectUrl(stylesDirectory, themeBase) : themeBase
-    };
+    return data;
   }
 }

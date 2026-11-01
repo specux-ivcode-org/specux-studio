@@ -180,7 +180,7 @@
               type="button"
               aria-label="Previous linked section"
               title="Previous linked section"
-              aria-controls="screen-preview"
+              aria-controls="workflow-spec-preview"
             >↑</button>
             <span
               class="workflow-spec-section-position"
@@ -193,7 +193,7 @@
               type="button"
               aria-label="Next linked section"
               title="Next linked section"
-              aria-controls="screen-preview"
+              aria-controls="workflow-spec-preview"
             >↓</button>
           </div>
           <div class="screen-view-selector workflow-view-selector" role="group" aria-label="Workflow view">
@@ -355,6 +355,12 @@
             <div class="loading-message">Reading project files...</div>
           </article>
         </div>
+        <article
+          class="workflow-spec-preview"
+          id="workflow-spec-preview"
+          aria-label="Behavior spec preview"
+          hidden
+        ></article>
         <section class="screen-yaml-editor-panel" id="screen-yaml-editor-panel" aria-label="Screen YAML editor" hidden>
           <h2 class="screen-yaml-editor-heading">Screen YAML</h2>
           <textarea

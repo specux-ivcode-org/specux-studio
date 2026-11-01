@@ -83,12 +83,6 @@ export class ProjectFileNavigator {
     const filePaths = new Set(state.projectFilePaths);
     filePaths.add("project.yml");
     if (state.project?.theme) filePaths.add(state.project.theme);
-    if (state.theme?.styles) {
-      const themeDirectory = state.project.theme.includes("/")
-        ? state.project.theme.slice(0, state.project.theme.lastIndexOf("/") + 1)
-        : "";
-      filePaths.add(`${themeDirectory}${state.theme.styles}`);
-    }
     for (const screen of state.screens) filePaths.add(screen.file);
     for (const asset of state.assets.values()) filePaths.add(asset.templateFile);
     for (const filePath of state.specSources.keys()) filePaths.add(filePath);
@@ -154,10 +148,7 @@ export class ProjectFileNavigator {
     if (filePath === "project.yml") return { kind: "project" };
     const screenIndex = state.screens.findIndex((screen) => screen.file === filePath);
     if (screenIndex >= 0) return { kind: "screen", screenIndex };
-    const themeStylesPath = state.theme?.styles
-      ? `${state.project.theme.includes("/") ? state.project.theme.slice(0, state.project.theme.lastIndexOf("/") + 1) : ""}${state.theme.styles}`
-      : null;
-    if (filePath === state.project?.theme || filePath === themeStylesPath) return { kind: "theme" };
+    if (filePath === state.project?.theme) return { kind: "theme" };
     for (const asset of state.assets.values()) {
       if (filePath === asset.templateFile) return { kind: "asset", asset };
     }

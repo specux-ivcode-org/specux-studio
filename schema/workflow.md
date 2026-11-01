@@ -11,13 +11,15 @@ Use Mermaid `click` directives to link nodes to the Screen preview. Preview link
 
 Clicking a linked node updates the Screen preview above the diagram. Nodes without a SpecUX `click` link remain in the diagram but do not change the preview. Use node IDs as the `click` target; the visible label can be any descriptive text.
 
+The Screen preview in the workflow editor is read-only. The placement targeted by the selected node is highlighted for reference, but cannot be selected, moved, resized, rotated, rearranged, or edited from the inspector.
+
 Link to a workflow from the behavior spec using a regular Markdown link. The reference may appear anywhere in the spec; the Studio associates it with the workflow node named by `node` and adds a separate spec icon to that node:
 
 ```md
 [Save item](specux://screen/<screen-id>/workflows/<workflow-id>.mmd?node=<node-id>)
 ```
 
-Clicking the spec icon shows the Markdown file in the workflow preview panel, hides the canvas rulers and zoom controls, and scrolls to the link's enclosing section. The up/down section selector remains visible in the preview header; it is disabled when there is only one matching section. Moving between linked sections does not change the node's Screen preview link.
+Clicking the spec icon shows the Markdown file in the workflow editor's dedicated spec preview surface, separate from the Screen canvas preview, and scrolls to the link's enclosing section. The up/down section selector remains visible in the preview header; it is disabled when there is only one matching section. Moving between linked sections does not change the node's Screen preview link.
 
 Use Mermaid flowcharts to describe user journeys and branches. Normative behavior and acceptance criteria remain in the linked Screen or Element behavior specs; do not duplicate those requirements in the workflow.
 

@@ -18,6 +18,49 @@ test("validates Screen-scoped Mermaid workflow paths", () => {
   }
 });
 
+test("workflow inspector exposes read-only placement context", async () => {
+  const { InspectorRenderer } = await import("../frontend/browser/InspectorRenderer.mjs");
+  const panel = {
+    children: [],
+    parentElement: { classList: { toggle() {} } },
+    replaceChildren(...children) { this.children = children; },
+    append(...children) { this.children.push(...children); }
+  };
+  const createElement = (tagName, className, textContent) => ({
+    tagName,
+    className,
+    textContent,
+    children: [],
+    append(...children) { this.children.push(...children); },
+    setAttribute() {},
+    addEventListener() {}
+  });
+  const renderer = new InspectorRenderer({
+    state: {
+      viewingWorkflow: true,
+      screens: [{ data: { id: "home", name: "Home" } }],
+      activeScreenIndex: 0,
+      activeInstancePath: [0]
+    },
+    services: {
+      byId: () => panel,
+      element: createElement,
+      getInstanceAtPath: (_screen, path) =>
+        path[0] === 0 ? { id: "save-button" } : null
+    }
+  });
+
+  renderer.render();
+
+  const rendered = panel.children.flatMap((child) => [
+    child,
+    ...(child.children || [])
+  ]);
+  assert.ok(rendered.some((node) => node.textContent === "This Screen preview is read-only. The highlighted placement is the target of the selected workflow node."));
+  assert.ok(rendered.some((node) => node.textContent === "save-button"));
+  assert.equal(rendered.some((node) => node.tagName === "button" || node.tagName === "input"), false);
+});
+
 test("parses explicit SpecUX workflow links", async () => {
   const {
     WorkflowEditor,
@@ -155,6 +198,8 @@ test("parses explicit SpecUX workflow links", async () => {
     return element;
   };
   const preview = {
+    className: "workflow-spec-preview",
+    hidden: true,
     ownerDocument: {
       createElement
     },
@@ -167,6 +212,7 @@ test("parses explicit SpecUX workflow links", async () => {
   const stage = {
     setAttribute: (name, value) => stageAttributes.set(name, value)
   };
+  const screenPreview = { className: "screen-preview" };
   const mainClasses = new Set();
   const main = {
     classList: {
@@ -184,7 +230,8 @@ test("parses explicit SpecUX workflow links", async () => {
     state: {},
     services: {
       byId: (id) => id === "main" ? main
-        : id === "screen-preview" ? preview
+        : id === "workflow-spec-preview" ? preview
+        : id === "screen-preview" ? screenPreview
         : id === "screen-stage" ? stage
           : id === "workflow-spec-section-navigation" ? sectionNav
             : id === "workflow-spec-section-position" ? sectionPosition
@@ -201,7 +248,8 @@ test("parses explicit SpecUX workflow links", async () => {
       { lineIndex: 0, sectionLineIndex: 0 }
     ]
   );
-  assert.equal(preview.className, "screen-preview workflow-spec-preview");
+  assert.equal(preview.className, "workflow-spec-preview");
+  assert.equal(preview.hidden, false);
   assert.equal(preview.children[0].tagName, "pre");
   assert.equal(preview.children[0].children[2].textContent, "## Purpose");
   assert.equal(preview.scrollTop, 20);
@@ -231,7 +279,10 @@ test("parses explicit SpecUX workflow links", async () => {
   previewEditor.activeSpecPreview = null;
   previewEditor.updateSpecSectionNavigation();
   assert.equal(sectionNav.hidden, true);
+  assert.equal(preview.hidden, true);
   assert.equal(mainClasses.has("workflow-spec-preview-active"), false);
+  assert.equal(screenPreview.className, "screen-preview");
+  assert.equal(screenPreview.children, undefined);
 });
 
 test("keeps the workflow owner Screen in the editor selection while previewing another Screen", async () => {

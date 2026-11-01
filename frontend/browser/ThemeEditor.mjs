@@ -11,7 +11,7 @@ export class ThemeEditor {
       modes && Object.hasOwn(modes, mode)
     );
     if (definedModes.length) return definedModes;
-    return theme && Object.hasOwn(theme, "colors") ? ["light"] : [];
+    return theme && Object.hasOwn(theme, "tokens") ? ["light"] : [];
   }
 
   getActiveMode() {
@@ -21,17 +21,17 @@ export class ThemeEditor {
     return modes.includes(requestedMode) ? requestedMode : modes[0] || requestedMode;
   }
 
-  getColors(mode = this.getActiveMode()) {
+  getTokens(mode = this.getActiveMode()) {
     const { theme } = this.state;
     const modes = this.getDefinedModes();
     const activeMode = modes.includes(mode) ? mode : modes[0];
     if (!activeMode) return {};
-    if (!theme?.modes || !Object.hasOwn(theme.modes, activeMode)) return theme?.colors || {};
+    if (!theme?.modes || !Object.hasOwn(theme.modes, activeMode)) return theme?.tokens || {};
 
     const fallbackMode = activeMode === "light" ? "dark" : "light";
     return {
-      ...(theme.modes[fallbackMode]?.colors || {}),
-      ...(theme.modes[activeMode]?.colors || {})
+      ...(theme.modes[fallbackMode]?.tokens || {}),
+      ...(theme.modes[activeMode]?.tokens || {})
     };
   }
 
@@ -42,12 +42,6 @@ export class ThemeEditor {
   renderDetails(panel) {
     const { state, services } = this;
     services.appendSection(panel, "Theme");
-    services.appendEditableField(panel, "Name", state.theme.name || "Theme", (value) => {
-      state.theme.name = value;
-      services.applyTheme();
-      if (state.viewingTheme) services.byId("screen-heading").textContent = value || "Theme";
-      services.markEdited(state.project.theme);
-    });
     const definedModes = this.getDefinedModes();
     services.appendSection(panel, "Appearance");
     const modeControls = services.element("div", "theme-mode-controls");
@@ -111,38 +105,38 @@ export class ThemeEditor {
       ));
     }
 
-    services.appendSection(panel, `${this.modeLabel(activeMode)} colors`);
-    const colors = this.getColors(activeMode);
-    for (const [name, value] of Object.entries(colors)) {
+    services.appendSection(panel, `${this.modeLabel(activeMode)} tokens`);
+    const tokens = this.getTokens(activeMode);
+    for (const [name, value] of Object.entries(tokens)) {
       services.appendEditableField(panel, name, value, (updated) => {
         if (state.theme.modes?.[activeMode]) {
-          state.theme.modes[activeMode].colors ||= {};
-          state.theme.modes[activeMode].colors[name] = updated;
+          state.theme.modes[activeMode].tokens ||= {};
+          state.theme.modes[activeMode].tokens[name] = updated;
         } else {
-          state.theme.colors[name] = updated;
+          state.theme.tokens[name] = updated;
         }
         services.applyTheme();
         services.markEdited(state.project.theme);
-      }, { color: true });
+      });
     }
-    if (!Object.keys(colors).length) {
-      panel.append(services.element("div", "theme-mode-note", "No color tokens are defined for this appearance."));
+    if (!Object.keys(tokens).length) {
+      panel.append(services.element("div", "theme-mode-note", "No tokens are defined for this appearance."));
     }
   }
 
   addMode(mode) {
     const { state, services } = this;
-    const sourceColors = { ...this.getColors() };
+    const sourceTokens = { ...this.getTokens() };
     state.theme.modes ||= {};
-    if (Object.hasOwn(state.theme, "colors")) {
+    if (Object.hasOwn(state.theme, "tokens")) {
       const lightMode = state.theme.modes.light || {};
       state.theme.modes.light = {
         ...lightMode,
-        colors: { ...state.theme.colors, ...(lightMode.colors || {}) }
+        tokens: { ...state.theme.tokens, ...(lightMode.tokens || {}) }
       };
-      delete state.theme.colors;
+      delete state.theme.tokens;
     }
-    state.theme.modes[mode] = { colors: sourceColors };
+    state.theme.modes[mode] = { tokens: sourceTokens };
     state.themeModePreference = mode;
     services.applyTheme();
     services.markEdited(state.project.theme);
@@ -175,7 +169,7 @@ export class ThemeEditor {
     state.activeInstancePath = [];
     state.viewingTheme = true;
     services.byId("breadcrumb").textContent = "Project theme";
-    services.byId("screen-heading").textContent = state.theme.name || "Theme";
+    services.byId("screen-heading").textContent = "Theme";
     services.hideEditorMessage();
     services.updateNavigationSelection();
     services.renderInspector();

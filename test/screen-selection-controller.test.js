@@ -169,3 +169,58 @@ test("context-menu handling works through the marquee overlay and normal canvas"
   });
   assert.deepEqual(calls, [[3]]);
 });
+
+test("workflow preview disables selection tools and context-menu interactions", async () => {
+  const { ScreenSelectionController } =
+    await import("../frontend/browser/ScreenSelectionController.mjs");
+  const selectionButtons = ["select", "marquee"].map((selectionTool) => ({
+    dataset: { selectionTool },
+    setAttribute(name, value) { this[name] = value; }
+  }));
+  const scaleButtons = ["xy", "transform"].map((scaleType) => ({
+    dataset: { scaleType },
+    setAttribute(name, value) { this[name] = value; }
+  }));
+  const selected = [];
+  const contextMenus = [];
+  const controller = new ScreenSelectionController({
+    state: { viewingWorkflow: true },
+    services: {
+      document: {
+        querySelectorAll(selector) {
+          return selector === "[data-selection-tool]" ? selectionButtons : scaleButtons;
+        }
+      },
+      selectInstances: (paths) => selected.push(paths),
+      openPlacementContextMenu: (_event, path) => contextMenus.push(path)
+    }
+  });
+  controller.screenId = "home";
+  controller.tool = "marquee";
+  controller.overlay = { style: {}, pointerEvents: "auto" };
+  controller.selectTool("select");
+  controller.selectScaleType("transform");
+  controller.updateControls();
+  controller.onPointerDown({
+    button: 0,
+    pointerId: 1,
+    clientX: 10,
+    clientY: 10,
+    preventDefault() {},
+    stopPropagation() {}
+  });
+  controller.onContextMenu({
+    composedPath: () => [],
+    clientX: 10,
+    clientY: 10,
+    preventDefault() {}
+  });
+
+  assert.equal(controller.tool, "marquee");
+  assert.equal(controller.scaleType, "xy");
+  assert.ok(selectionButtons.every((button) => button.disabled));
+  assert.ok(scaleButtons.every((button) => button.disabled));
+  assert.equal(controller.drawing, null);
+  assert.deepEqual(selected, []);
+  assert.deepEqual(contextMenus, []);
+});

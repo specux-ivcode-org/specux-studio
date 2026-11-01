@@ -10,11 +10,11 @@ attributes:
     overridable: true
   track:
     type: string
-    default: "#e9edf6"
+    default: "var(--theme-border-muted, #e9edf6)"
     overridable: true
   fill:
     type: string
-    default: "#5a70dc"
+    default: "var(--theme-primary, #5a70dc)"
     overridable: true
   border-radius:
     type: number
