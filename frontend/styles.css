@@ -1059,7 +1059,7 @@
       box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--blue) 12%, transparent);
     }
 
-    .canvas.asset-editing {
+    .canvas.material-editing {
       height: 100%;
       min-height: 0;
       display: grid;
@@ -1067,20 +1067,16 @@
       padding: 0;
       grid-template-rows:
         48px
-        minmax(180px, var(--asset-preview-track, 2fr))
+        minmax(180px, var(--material-preview-track, 2fr))
         12px
-        minmax(220px, var(--asset-source-track, 3fr))
+        minmax(220px, var(--material-source-track, 3fr))
         auto;
       align-content: stretch;
       gap: 0;
       overflow: hidden;
     }
-    .canvas.asset-editing .form-content { padding: 0; }
-    .canvas.asset-editing .screen-preview > .form-content > .asset-instance {
-      margin: 0;
-      padding: 0;
-    }
-    .asset-view-toolbar {
+    .canvas.material-editing .form-content { padding: 0; }
+    .material-view-toolbar {
       display: none;
       min-width: 0;
       align-items: center;
@@ -1090,15 +1086,15 @@
       border-bottom: 1px solid var(--line);
       background: var(--panel);
     }
-    .canvas.asset-editing > .asset-view-toolbar { display: flex; }
-    .asset-view-heading {
+    .canvas.material-editing > .material-view-toolbar { display: flex; }
+    .material-view-heading {
       margin: 0;
       color: var(--ui-text-medium);
       font-size: 12px;
       font-weight: 700;
     }
-    .asset-view-selector { margin-left: auto; }
-    .canvas.asset-editing > .stage {
+    .material-view-selector { margin-left: auto; }
+    .canvas.material-editing > .stage {
       min-width: 0;
       min-height: 0;
       height: 100%;
@@ -1110,11 +1106,11 @@
       background: transparent;
       overflow: hidden;
     }
-    .canvas.asset-editing > .asset-split-resizer {
+    .canvas.material-editing > .material-split-resizer {
       grid-column: 1;
       grid-row: 3;
     }
-    .asset-document-editor-panel {
+    .material-document-editor-panel {
       min-width: 0;
       min-height: 0;
       height: 100%;
@@ -1127,8 +1123,8 @@
       border-radius: 0;
       background: transparent;
     }
-    .asset-document-editor-panel[hidden] { display: none; }
-    .asset-document-editor-heading {
+    .material-document-editor-panel[hidden] { display: none; }
+    .material-document-editor-heading {
       margin: 0;
       padding: 8px 12px;
       border-bottom: 1px solid var(--line);
@@ -1136,7 +1132,7 @@
       font-size: 12px;
       font-weight: 700;
     }
-    .asset-document-source {
+    .material-document-source {
       width: 100%;
       min-height: 0;
       flex: 1;
@@ -1150,8 +1146,8 @@
       tab-size: 2;
       white-space: pre;
     }
-    .asset-document-source:focus { outline: 2px solid var(--ui-primary-hover-border); border-color: var(--ui-primary-hover-border); }
-    .asset-document-status {
+    .material-document-source:focus { outline: 2px solid var(--ui-primary-hover-border); border-color: var(--ui-primary-hover-border); }
+    .material-document-status {
       min-height: 18px;
       margin: 0;
       padding: 4px 12px;
@@ -1159,36 +1155,36 @@
       font-size: 11px;
       line-height: 1.4;
     }
-    .asset-document-status.error { color: var(--ui-danger); }
-    .canvas.asset-editing > .editor-message {
+    .material-document-status.error { color: var(--ui-danger); }
+    .canvas.material-editing > .editor-message {
       grid-column: 1;
       grid-row: 5;
       width: 100%;
       margin: 0;
     }
-    .canvas.asset-editing[data-asset-view="preview"] {
+    .canvas.material-editing[data-material-view="preview"] {
       grid-template-rows: 48px minmax(0, 1fr) auto;
     }
-    .canvas.asset-editing[data-asset-view="preview"] > .asset-document-editor-panel,
-    .canvas.asset-editing[data-asset-view="source"] > .stage {
+    .canvas.material-editing[data-material-view="preview"] > .material-document-editor-panel,
+    .canvas.material-editing[data-material-view="source"] > .stage {
       display: none;
     }
-    .canvas.asset-editing[data-asset-view="preview"] > .stage,
-    .canvas.asset-editing[data-asset-view="source"] > .asset-document-editor-panel {
+    .canvas.material-editing[data-material-view="preview"] > .stage,
+    .canvas.material-editing[data-material-view="source"] > .material-document-editor-panel {
       grid-row: 2;
     }
-    .canvas.asset-editing[data-asset-view="preview"] > .editor-message,
-    .canvas.asset-editing[data-asset-view="source"] > .editor-message {
+    .canvas.material-editing[data-material-view="preview"] > .editor-message,
+    .canvas.material-editing[data-material-view="source"] > .editor-message {
       grid-row: 3;
     }
-    .canvas.asset-editing[data-asset-view="preview"] > .asset-split-resizer,
-    .canvas.asset-editing[data-asset-view="source"] > .asset-split-resizer {
+    .canvas.material-editing[data-material-view="preview"] > .material-split-resizer,
+    .canvas.material-editing[data-material-view="source"] > .material-split-resizer {
       display: none;
     }
-    .canvas.asset-editing[data-asset-view="source"] {
+    .canvas.material-editing[data-material-view="source"] {
       grid-template-rows: 48px minmax(0, 1fr) auto;
     }
-    .canvas.asset-editing[data-asset-view="split"] > .asset-split-resizer {
+    .canvas.material-editing[data-material-view="split"] > .material-split-resizer {
       display: block;
     }
 
@@ -1209,9 +1205,24 @@
       overflow: hidden;
     }
     .canvas.spec-editing .form-content { padding: 0; }
-    .canvas.spec-editing .screen-preview > .form-content > .asset-instance {
-      margin: 0;
-      padding: 0;
+    .canvas.spec-editing .material-instance.spec-focus-target,
+    .canvas.spec-editing .material-group.spec-focus-target {
+      outline: 2px solid var(--studio-primary);
+      outline-offset: 3px;
+      box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--studio-primary) 18%, transparent);
+    }
+    .spec-workflow-preview {
+      box-sizing: border-box;
+      min-width: 0;
+      min-height: 0;
+      flex: 1;
+      overflow: auto;
+      padding: 16px;
+      background: var(--canvas);
+    }
+    .spec-workflow-preview[hidden] { display: none; }
+    .canvas.spec-editing.spec-workflow-preview-active .screen-canvas-viewport {
+      display: none !important;
     }
     .spec-view-toolbar {
       display: none;
@@ -1401,6 +1412,7 @@
       gap: 4px;
     }
     .workflow-spec-section-navigation[hidden] { display: none; }
+    .spec-reference-navigation[hidden] { display: none; }
     .workflow-spec-reference-navigation {
       display: flex;
       align-items: center;
@@ -1525,12 +1537,15 @@
       stroke-width: 1.5px !important;
       filter: none !important;
     }
-    .workflow-diagram .node.selected rect,
-    .workflow-diagram .node.selected polygon,
-    .workflow-diagram .node.selected circle,
-    .workflow-diagram .node.selected path {
-      stroke: var(--studio-focus) !important;
-      stroke-width: 3px !important;
+    .workflow-diagram .node.selected {
+      outline: 2px solid var(--studio-primary);
+      outline-offset: 3px;
+    }
+    .workflow-diagram .node.selected > .workflow-node-focus-inset {
+      fill: none !important;
+      stroke: color-mix(in srgb, var(--studio-primary) 18%, transparent) !important;
+      stroke-width: 1px !important;
+      filter: none !important;
     }
     .workflow-source {
       width: 100%;
@@ -1578,28 +1593,74 @@
     .canvas.workflow-editing[data-workflow-view="diagram"] {
       grid-template-rows: 48px minmax(0, 1fr) auto;
     }
-    .spec-editor-heading {
-      margin: 0;
-      padding: 8px 12px;
+    .spec-editor-toolbar {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 2px 12px;
       border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .spec-editor-heading {
+      min-width: 0;
+      margin: 0;
       color: var(--ui-text-medium);
       font-size: 12px;
       font-weight: 700;
       overflow-wrap: anywhere;
     }
-    .spec-source {
-      width: 100%;
+    .spec-editor-toolbar .spec-reference-navigation {
+      flex: none;
+      margin-left: auto;
+    }
+    .spec-source-container {
+      position: relative;
+      min-width: 0;
       min-height: 0;
       flex: 1;
+      overflow: hidden;
+      background: var(--ui-input-alt);
+    }
+    .spec-source-highlight {
+      position: absolute;
+      inset: 0;
+      box-sizing: border-box;
+      overflow: hidden;
+      margin: 0;
+      padding: 14px;
+      color: var(--ui-text-strong);
+      background: transparent;
+      font: 12px/1.6 Consolas, "SFMono-Regular", monospace;
+      tab-size: 2;
+      white-space: pre;
+      pointer-events: none;
+    }
+    .spec-source-highlight .workflow-spec-line {
+      min-height: 1.6em;
+      white-space: pre;
+    }
+    .spec-source {
+      position: absolute;
+      inset: 0;
+      box-sizing: border-box;
+      width: 100%;
+      height: 100%;
       resize: none;
       padding: 14px;
       border: 0;
       border-radius: 0;
-      color: var(--ui-text-strong);
-      background: var(--ui-input-alt);
+      color: transparent;
+      background: transparent;
       font: 12px/1.6 Consolas, "SFMono-Regular", monospace;
       tab-size: 2;
       white-space: pre;
+    }
+    .spec-source-container:focus-within .spec-source-highlight { display: none; }
+    .spec-source-container:focus-within .spec-source {
+      color: var(--ui-text-strong);
+      background: var(--ui-input-alt);
     }
     .spec-source:focus { outline: 2px solid var(--ui-primary-hover-border); }
     .spec-action-button {
@@ -1818,37 +1879,6 @@
     }
     .project-overview-config-note { margin: 4px 0 0; }
 
-    .asset-instance {
-      position: relative;
-      margin-bottom: 18px;
-      padding: 8px;
-      border: 1px solid transparent;
-      border-radius: 9px;
-      cursor: pointer;
-    }
-    .asset-instance[hidden] { display: none !important; }
-
-    .asset-instance:hover { border-color: var(--studio-border); }
-    .asset-instance.selected {
-      border-color: var(--studio-focus);
-      background: color-mix(in srgb, var(--studio-primary) 4%, transparent);
-    }
-    .asset-instance:last-child { margin-bottom: 0; }
-    .asset-instance.dragging { opacity: .45; }
-    .asset-instance.drop-before::before, .asset-instance.drop-after::after {
-      position: absolute;
-      right: 0;
-      left: 0;
-      height: 3px;
-      border-radius: 3px;
-      background: var(--blue);
-      content: "";
-      pointer-events: none;
-    }
-    .asset-instance.drop-before::before { top: -3px; }
-    .asset-instance.drop-after::after { bottom: -3px; }
-    .asset-instance:focus-visible { outline: 2px solid var(--studio-focus); outline-offset: 2px; }
-
     .material-frame {
       position: absolute;
       z-index: 1;
@@ -1868,9 +1898,7 @@
     }
     .material-instance.selected { outline: none; }
     .canvas.workflow-editing .material-instance { cursor: default; }
-    .canvas.workflow-editing .asset-instance { cursor: default; }
-    .canvas.workflow-editing .material-instance.selected,
-    .canvas.workflow-editing .asset-instance.selected {
+    .canvas.workflow-editing .material-instance.selected {
       outline: 2px solid var(--studio-primary);
       outline-offset: 3px;
       box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--studio-primary) 18%, transparent);
@@ -1911,11 +1939,6 @@
     .canvas.screen-editing .material-frame.sized > .material-instance {
       width: 100%;
       height: 100%;
-    }
-    .material-frame.sized > .asset-instance > .screen-image {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
     }
     .canvas.screen-editing .material-frame.legacy-layout {
       width: 100%;
@@ -1967,18 +1990,6 @@
       cursor: grab;
     }
     .material-control:focus-visible { outline: 2px solid var(--studio-focus); outline-offset: 3px; }
-
-    .asset-instance-label {
-      display: block;
-      margin: 0 0 7px;
-      color: var(--studio-muted);
-      font-size: 10px;
-      font-weight: 650;
-      letter-spacing: .02em;
-    }
-
-    .asset-instance-shell { display: block; }
-    .asset-instance-shell > * { display: block; }
 
     .editor-message {
       display: none;
@@ -2037,22 +2048,22 @@
     }
 
     @media (max-width: 800px) {
-      .canvas.asset-editing {
+      .canvas.material-editing {
         grid-template-columns: minmax(0, 1fr);
         grid-template-rows:
           48px
-          minmax(180px, var(--asset-preview-track, 1fr))
+          minmax(180px, var(--material-preview-track, 1fr))
           12px
-          minmax(220px, var(--asset-source-track, 1fr))
+          minmax(220px, var(--material-source-track, 1fr))
           auto;
       }
-      .canvas.asset-editing > .asset-view-toolbar { grid-column: 1; grid-row: 1; }
-      .canvas.asset-editing > .stage,
-      .canvas.asset-editing > .asset-document-editor-panel { grid-column: 1; }
-      .canvas.asset-editing > .stage { grid-row: 2; }
-      .canvas.asset-editing > .asset-split-resizer { grid-column: 1; grid-row: 3; }
-      .canvas.asset-editing > .asset-document-editor-panel { grid-row: 4; }
-      .canvas.asset-editing > .editor-message { grid-row: 5; }
+      .canvas.material-editing > .material-view-toolbar { grid-column: 1; grid-row: 1; }
+      .canvas.material-editing > .stage,
+      .canvas.material-editing > .material-document-editor-panel { grid-column: 1; }
+      .canvas.material-editing > .stage { grid-row: 2; }
+      .canvas.material-editing > .material-split-resizer { grid-column: 1; grid-row: 3; }
+      .canvas.material-editing > .material-document-editor-panel { grid-row: 4; }
+      .canvas.material-editing > .editor-message { grid-row: 5; }
       .canvas.spec-editing {
         grid-template-columns: minmax(0, 1fr);
         grid-template-rows:
@@ -2614,7 +2625,7 @@
       cursor: pointer;
     }
     .delete-instance-button:hover { border-color: var(--ui-danger-hover-border); background: var(--ui-danger-soft); }
-    .asset-context-menu {
+    .context-menu {
       position: fixed;
       z-index: 20;
       display: flex;
@@ -2628,8 +2639,8 @@
       box-shadow: 0 8px 24px rgba(34, 50, 84, .18);
     }
     .screen-placement-context-menu { z-index: 10000; }
-    .asset-context-menu[hidden] { display: none; }
-    .asset-context-menu button {
+    .context-menu[hidden] { display: none; }
+    .context-menu button {
       width: 100%;
       padding: 8px 10px;
       border: 0;
@@ -2640,62 +2651,10 @@
       text-align: left;
       cursor: pointer;
     }
-    .asset-context-menu button:hover,
-    .asset-context-menu button:focus-visible {
+    .context-menu button:hover,
+    .context-menu button:focus-visible {
       outline: none;
       background: var(--ui-hover-strong);
-    }
-    .asset-context-menu .danger { color: var(--ui-danger); }
-    .asset-context-menu .danger:hover,
-    .asset-context-menu .danger:focus-visible { background: var(--ui-danger-soft); }
-    .asset-context-menu [role="separator"] {
-      height: 1px;
-      margin: 3px 4px;
-      background: var(--line);
-    }
-    .asset-delete-dialog {
-      width: min(420px, calc(100vw - 32px));
-      padding: 22px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      color: var(--ink);
-      background: var(--panel);
-      box-shadow: var(--shadow);
-    }
-    .asset-delete-dialog::backdrop { background: rgba(23, 32, 51, .48); }
-    .asset-delete-dialog h2 {
-      margin: 0 0 10px;
-      font-size: 16px;
-    }
-    .asset-delete-dialog p {
-      margin: 0;
-      color: var(--ui-text-medium);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-    .asset-delete-dialog-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      margin-top: 22px;
-    }
-    .asset-delete-dialog-actions button {
-      padding: 8px 12px;
-      border: 1px solid var(--ui-border-strong);
-      border-radius: 6px;
-      color: var(--ui-text-medium);
-      background: var(--panel);
-      font: 600 12px Inter, "Segoe UI", Arial, sans-serif;
-      cursor: pointer;
-    }
-    .asset-delete-dialog-actions button:focus-visible {
-      outline: 2px solid var(--ui-primary-hover-border);
-      outline-offset: 2px;
-    }
-    .asset-delete-dialog-actions .danger {
-      border-color: var(--ui-danger);
-      color: var(--ui-on-primary);
-      background: var(--ui-danger);
     }
 
     @media (max-width: 1120px) {
@@ -2722,7 +2681,7 @@
       .canvas { min-height: calc(100vh - 58px); padding: 20px 12px; }
       .canvas.screen-editing { height: calc(100vh - 58px); min-height: 0; padding: 0; }
       .canvas.spec-editing { height: calc(100vh - 58px); min-height: 640px; }
-      .canvas.asset-editing { height: calc(100vh - 58px); min-height: 640px; }
+      .canvas.material-editing { height: calc(100vh - 58px); min-height: 640px; }
       .canvas.workflow-editing { height: calc(100vh - 58px); min-height: 640px; }
       .stage { min-height: 70vh; flex: none; }
       .screen-preview { min-height: 70vh; }
@@ -2751,18 +2710,9 @@
     body.render-only .inspector,
     body.render-only .panel-resizer,
     body.render-only .editor-message,
-    body.render-only .asset-context-menu,
-    body.render-only .asset-delete-dialog,
     body.render-only .annotation-toolbar { display: none !important; }
-    body.render-only .asset-instance { cursor: auto; }
-    body.render-only .asset-instance:hover { border-color: transparent; }
-    body.render-only .asset-instance.selected {
-      border-color: transparent;
-      background: transparent;
-    }
     body.render-only .material-instance { cursor: auto; }
     body.render-only .material-instance.selected { outline: 0; }
-    body.render-only .screen-preview > .form-content > .asset-instance { border: 0; }
     body.render-only .workspace { display: block; width: 100%; height: auto; min-height: 100vh; }
     body.render-only .canvas { width: 100%; height: auto; min-height: 100vh; padding: 0; background: none; }
     body.render-only .canvas.screen-editing > .stage {

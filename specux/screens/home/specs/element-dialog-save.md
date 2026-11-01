@@ -1,8 +1,6 @@
----
-element-id: dialog-save
----
-
 # Add item button behavior
+
+[Add item button](specux://screen/home/screen.yml?placement=dialog-save&state=add-item-open)
 
 ## Purpose
 

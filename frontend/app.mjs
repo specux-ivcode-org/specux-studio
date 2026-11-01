@@ -1,6 +1,5 @@
 import "/shared/yaml.js";
 import "/shared/validation.js";
-import { AssetEditor } from "./browser/AssetEditor.mjs";
 import { BrowserHistory } from "./browser/BrowserHistory.mjs";
 import { EditorNavigation } from "./browser/EditorNavigation.mjs";
 import { EditorEventController } from "./browser/EditorEventController.mjs";
@@ -13,12 +12,11 @@ import { ProjectPersistence } from "./browser/ProjectPersistence.mjs";
 import { ProjectRepository } from "./browser/ProjectRepository.mjs";
 import { PreviewStateController } from "./browser/PreviewStateController.mjs";
 import { ResponsiveToolbarController } from "./browser/ResponsiveToolbarController.mjs";
-import { ScreenElementController } from "./browser/ScreenElementController.mjs";
+import { ScreenController } from "./browser/ScreenController.mjs";
 import { ScreenAnnotationController } from "./browser/ScreenAnnotationController.mjs";
 import { ScreenSelectionController } from "./browser/ScreenSelectionController.mjs";
 import { ScreenRulerController } from "./browser/ScreenRulerController.mjs";
 import { ScreenYamlEditor } from "./browser/ScreenYamlEditor.mjs";
-import { ScreenInstanceRenderer } from "./browser/ScreenInstanceRenderer.mjs";
 import { MaterialCanvas } from "./browser/MaterialCanvas.mjs";
 import { ScreenMaterialController } from "./browser/ScreenMaterialController.mjs";
 import { ScreenMaterialRenderer } from "./browser/ScreenMaterialRenderer.mjs";
@@ -38,20 +36,17 @@ import { WorkflowEditor } from "./browser/WorkflowEditor.mjs";
 const appRoot = new URL("./specux/", window.location.href);
 const sharedValidation = globalThis.SpecuxValidation;
 const parseSpecuxYaml = globalThis.SpecuxYamlParser;
-const { TEMPLATE_FILE_EXTENSION, attributeTypes, numberFormats, themeModeNames } = sharedValidation;
+const { MATERIAL_FILE_EXTENSION, themeModeNames } = sharedValidation;
 const systemThemeQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
 const renderParameters = new URLSearchParams(window.location.search);
 const renderRequestedScreen = renderParameters.get("render");
 const renderRequestedState = renderParameters.get("state");
 const renderRequestedAnnotations = renderParameters.get("annotations") === "true";
 const isRenderOnly = renderRequestedScreen !== null;
-const assetDragType = "application/x-specux-asset-template";
-const assetInstanceDragType = "application/x-specux-asset-instance";
 const byId = (id) => document.getElementById(id);
 
 let project;
 let screens = [];
-let assets = new Map();
 let materialFiles = new Map();
 let specSources = new Map();
 let workflowSources = new Map();
@@ -62,13 +57,10 @@ let appliedThemeTokens = new Set();
 let activeScreenIndex = 0;
 const activePreviewStateIds = new Map();
 let projectFilePaths = [];
-let assetFiles = new Map();
-let activeAssetId = null;
 let activeMaterialFilePath = null;
 let activeInstancePath = [];
 let activeInstancePaths = [];
 let screenPlacementMenuTarget = null;
-let viewingAssetTemplate = false;
 let viewingMaterialFile = false;
 let viewingTheme = false;
 let viewingProject = false;
@@ -80,33 +72,26 @@ let workflowScreenIndex = 0;
 let selectedWorkflowNodeId = null;
 let workflowViewMode = "split";
 let activeSpecPath = null;
+let activeSpecScreenFile = null;
 let activeSpecInstancePath = [];
 let activeSpecOwner = "instance";
 let activeProjectFilePath = null;
-let assetEditorRestoreId = null;
-let paletteAssetDropHandled = false;
 let reviewedInSession = false;
 let hasEdits = false;
-let assetContextMenuTarget = null;
-let pendingAssetDeletion = null;
-let deleteDialogReturnFocus = null;
-const pendingAssetCopies = [];
 const dirtyFiles = new Map();
 const invalidYamlFiles = new Map();
 const invalidWorkflowFiles = new Map();
-const pendingAssetSerializations = new Set();
 const createdScreenFiles = new Set();
 const createdMaterialFiles = new Set();
 const createdSpecFiles = new Set();
 const createdSpecDrafts = new Map();
-const assetSpecOwners = new Map();
+const elementSpecOwners = new Map();
 let editVersion = 0;
 let isSaving = false;
 let historyUpdateSuppressed = false;
-let assetPreviewTimer = null;
-let assetPreviewVersion = 0;
+let previewTimer = null;
+let previewVersion = 0;
 let editorFieldId = 0;
-let assetStyleScopeId = 0;
 let workflowEditor;
 const browserHistory = new BrowserHistory({
   windowObject: window,
@@ -123,7 +108,7 @@ const projectRepository = new ProjectRepository({
   fetcher: (url, options) => fetch(url, options),
   parseYaml: parseSpecuxYaml,
   validation: sharedValidation,
-  templateFileExtension: TEMPLATE_FILE_EXTENSION
+  materialFileExtension: MATERIAL_FILE_EXTENSION
 });
 const projectFileTree = new ProjectFileTree({
   container: byId("project-file-tree"),
@@ -157,17 +142,17 @@ const specViewLayout = new SplitViewLayout({
   previewTrackProperty: "--spec-preview-track",
   editorTrackProperty: "--spec-markdown-track"
 });
-const assetViewLayout = new SplitViewLayout({
+const materialViewLayout = new SplitViewLayout({
   windowObject: window,
   documentObject: document,
   modes: ["split", "preview", "source"],
-  viewIdPrefix: "asset-view",
-  viewAttribute: "data-asset-view",
-  headingId: "asset-view-heading",
+  viewIdPrefix: "material-view",
+  viewAttribute: "data-material-view",
+  headingId: "material-view-heading",
   headingLabels: { split: "Preview", preview: "Preview", source: "Source" },
-  resizerId: "asset-split-resizer",
-  previewTrackProperty: "--asset-preview-track",
-  editorTrackProperty: "--asset-source-track"
+  resizerId: "material-split-resizer",
+  previewTrackProperty: "--material-preview-track",
+  editorTrackProperty: "--material-source-track"
 });
 const workflowViewLayout = new SplitViewLayout({
   windowObject: window,
@@ -189,13 +174,11 @@ const specEditor = new SpecEditor({
     get activeProjectFilePath() { return activeProjectFilePath; },
     set activeProjectFilePath(value) { activeProjectFilePath = value; },
     get createdSpecDrafts() { return createdSpecDrafts; },
-    get assetSpecOwners() { return assetSpecOwners; },
+    get elementSpecOwners() { return elementSpecOwners; },
     get specSources() { return specSources; },
     get viewingSpec() { return viewingSpec; },
     get viewingWorkflow() { return viewingWorkflow; },
     set viewingSpec(value) { viewingSpec = value; },
-    get viewingAssetTemplate() { return viewingAssetTemplate; },
-    set viewingAssetTemplate(value) { viewingAssetTemplate = value; },
     set viewingMaterialFile(value) { viewingMaterialFile = value; },
     get viewingTheme() { return viewingTheme; },
     set viewingTheme(value) { viewingTheme = value; },
@@ -205,12 +188,12 @@ const specEditor = new SpecEditor({
     set viewingPreviewState(value) { viewingPreviewState = value; },
     get activeSpecPath() { return activeSpecPath; },
     set activeSpecPath(value) { activeSpecPath = value; },
+    get activeSpecScreenFile() { return activeSpecScreenFile; },
+    set activeSpecScreenFile(value) { activeSpecScreenFile = value; },
     get activeSpecOwner() { return activeSpecOwner; },
     set activeSpecOwner(value) { activeSpecOwner = value; },
     get activeSpecInstancePath() { return activeSpecInstancePath; },
     set activeSpecInstancePath(value) { activeSpecInstancePath = value; },
-    get activeAssetId() { return activeAssetId; },
-    set activeAssetId(value) { activeAssetId = value; },
     get activeInstancePath() { return activeInstancePath; },
     set activeInstancePath(value) {
       activeInstancePath = value;
@@ -230,19 +213,22 @@ const specEditor = new SpecEditor({
     hideEditorMessage,
     showEditorMessage,
     updateNavigationSelection,
-    refreshAssetSpecOwner,
+    refreshElementSpecOwner,
     clearEdited,
     renderNavigation,
     markEdited,
     renderInspector,
     selectInstanceInPreview,
     getElementLabel,
-    getTemplateByPath,
-    getAssetSpecPath,
+    getElementSpecPath,
     safeProjectUrl,
     fetcher: (url, options) => fetch(url, options),
     projectFileTree,
-    getScreenPreviewStates
+    getScreenPreviewStates,
+    showSpecReference,
+    showSpecWorkflowReference: (reference, filePath) =>
+      workflowEditor.showSpecReferencePreview(reference, filePath),
+    clearSpecWorkflowPreview: () => workflowEditor.clearSpecReferencePreview()
   }
 });
 const screenMaterialController = new ScreenMaterialController({
@@ -279,12 +265,9 @@ const projectPersistence = new ProjectPersistence({
   state: {
     get project() { return project; },
     get screens() { return screens; },
-    get assets() { return assets; },
     get materialFiles() { return materialFiles; },
     get createdMaterialFiles() { return createdMaterialFiles; },
     get theme() { return theme; },
-    get activeAssetId() { return activeAssetId; },
-    get viewingAssetTemplate() { return viewingAssetTemplate; },
     get isSaving() { return isSaving; },
     set isSaving(value) { isSaving = value; },
     get dirtyFiles() { return dirtyFiles; },
@@ -296,13 +279,11 @@ const projectPersistence = new ProjectPersistence({
     get hasEdits() { return hasEdits; },
     set hasEdits(value) { hasEdits = value; },
     set reviewedInSession(value) { reviewedInSession = value; },
-    get pendingAssetSerializations() { return pendingAssetSerializations; },
     get specSources() { return specSources; },
     get createdSpecFiles() { return createdSpecFiles; },
     get createdScreenFiles() { return createdScreenFiles; },
     get createdSpecDrafts() { return createdSpecDrafts; },
-    get assetSpecOwners() { return assetSpecOwners; },
-    get pendingAssetCopies() { return pendingAssetCopies; },
+    get elementSpecOwners() { return elementSpecOwners; },
     get projectFilePaths() { return projectFilePaths; },
     set projectFilePaths(value) { projectFilePaths = value; },
     get activeSpecPath() { return activeSpecPath; }
@@ -311,7 +292,6 @@ const projectPersistence = new ProjectPersistence({
     byId,
     fetcher: (url, options) => fetch(url, options),
     validation: sharedValidation,
-    setAssetDocumentStatus,
     setScreenYamlStatus,
     getInstanceAtPath,
     findInstancePathById,
@@ -346,58 +326,13 @@ const previewStateController = new PreviewStateController({
     addPreviewState: (...args) => addPreviewState(...args)
   }
 });
-const screenInstanceRenderer = new ScreenInstanceRenderer({
-  state: {
-    get activeInstancePath() { return activeInstancePath; },
-    get assetStyleScopeId() { return assetStyleScopeId; },
-    set assetStyleScopeId(value) { assetStyleScopeId = value; },
-    get assetInstanceDragType() { return assetInstanceDragType; },
-    get assetDragType() { return assetDragType; },
-    get viewingSpec() { return viewingSpec; },
-    get viewingWorkflow() { return viewingWorkflow; },
-    get screens() { return screens; },
-    get activeScreenIndex() { return activeScreenIndex; },
-    get isRenderOnly() { return isRenderOnly; },
-    get assetFiles() { return assetFiles; },
-    get paletteAssetDropHandled() { return paletteAssetDropHandled; },
-    set paletteAssetDropHandled(value) { paletteAssetDropHandled = value; }
-  },
-  services: {
-    element,
-    isInstanceVisible,
-    isValidAttributeValue,
-    sameInstancePath,
-    getElementLabel,
-    templateMarkupRenderer,
-    safeProjectUrl,
-    clearDropIndicators,
-    readDraggedInstance,
-    moveAssetInstance,
-    showAddAssetError,
-    showEditorMessage,
-    addAssetToContainer,
-    getEventInstance,
-    selectInstance,
-    getInstanceAtPath,
-    getAssetSpecPath,
-    createSpecForInstance,
-    renderSpecEditor,
-    openAssetContextMenu,
-    addAssetToSlot,
-    getTemplateByPath
-  }
-});
-const screenElementController = new ScreenElementController({
+const screenController = new ScreenController({
   state: {
     get project() { return project; },
     get screens() { return screens; },
     get activeScreenIndex() { return activeScreenIndex; },
     set activeScreenIndex(value) { activeScreenIndex = value; },
-    get assets() { return assets; },
-    get assetFiles() { return assetFiles; },
-    get createdScreenFiles() { return createdScreenFiles; },
-    get pendingAssetCopies() { return pendingAssetCopies; },
-    get templateFileExtension() { return TEMPLATE_FILE_EXTENSION; }
+    get createdScreenFiles() { return createdScreenFiles; }
   },
   services: {
     prompt: (message, defaultValue) => window.prompt(message, defaultValue),
@@ -409,13 +344,7 @@ const screenElementController = new ScreenElementController({
     renderScreenSelector,
     renderNavigation,
     renderScreen,
-    showFatalError,
-    validation: sharedValidation,
-    getTemplateByPath,
-    getElementLabel,
-    selectInstance,
-    findAssetInstances,
-    byId
+    showFatalError
   }
 });
 const themeEditor = new ThemeEditor({
@@ -434,18 +363,17 @@ const themeEditor = new ThemeEditor({
     set viewingTheme(value) { viewingTheme = value; },
     get activeProjectFilePath() { return activeProjectFilePath; },
     set activeProjectFilePath(value) { activeProjectFilePath = value; },
-    get assetPreviewTimer() { return assetPreviewTimer; },
-    set assetPreviewTimer(value) { assetPreviewTimer = value; },
-    get assetPreviewVersion() { return assetPreviewVersion; },
-    set assetPreviewVersion(value) { assetPreviewVersion = value; },
-    set viewingAssetTemplate(value) { viewingAssetTemplate = value; },
+    get previewTimer() { return previewTimer; },
+    set previewTimer(value) { previewTimer = value; },
+    get previewVersion() { return previewVersion; },
+    set previewVersion(value) { previewVersion = value; },
     set viewingMaterialFile(value) { viewingMaterialFile = value; },
     set viewingProject(value) { viewingProject = value; },
     set viewingSpec(value) { viewingSpec = value; },
     set viewingPreviewState(value) { viewingPreviewState = value; },
     set activeSpecPath(value) { activeSpecPath = value; },
+    set activeSpecScreenFile(value) { activeSpecScreenFile = value; },
     set activeSpecInstancePath(value) { activeSpecInstancePath = value; },
-    set activeAssetId(value) { activeAssetId = value; },
     set activeInstancePath(value) {
       activeInstancePath = value;
       activeInstancePaths = value.length ? [value] : [];
@@ -474,74 +402,6 @@ const themeEditor = new ThemeEditor({
     showFatalError
   }
 });
-const assetEditor = new AssetEditor({
-  state: {
-    get project() { return project; },
-    get screens() { return screens; },
-    get assets() { return assets; },
-    get activeScreenIndex() { return activeScreenIndex; },
-    get activeAssetId() { return activeAssetId; },
-    set activeAssetId(value) { activeAssetId = value; },
-    get activeInstancePath() { return activeInstancePath; },
-    set activeInstancePath(value) {
-      activeInstancePath = value;
-      activeInstancePaths = value.length ? [value] : [];
-    },
-    get viewingAssetTemplate() { return viewingAssetTemplate; },
-    get viewingMaterialFile() { return viewingMaterialFile; },
-    set viewingAssetTemplate(value) { viewingAssetTemplate = value; },
-    set viewingMaterialFile(value) { viewingMaterialFile = value; },
-    set viewingTheme(value) { viewingTheme = value; },
-    set viewingProject(value) { viewingProject = value; },
-    set viewingSpec(value) { viewingSpec = value; },
-    set viewingPreviewState(value) { viewingPreviewState = value; },
-    set activeSpecPath(value) { activeSpecPath = value; },
-    set activeSpecInstancePath(value) { activeSpecInstancePath = value; },
-    get activeProjectFilePath() { return activeProjectFilePath; },
-    set activeProjectFilePath(value) { activeProjectFilePath = value; },
-    get invalidYamlFiles() { return invalidYamlFiles; },
-    get pendingAssetSerializations() { return pendingAssetSerializations; },
-    get assetPreviewTimer() { return assetPreviewTimer; },
-    set assetPreviewTimer(value) { assetPreviewTimer = value; },
-    get assetPreviewVersion() { return assetPreviewVersion; },
-    set assetPreviewVersion(value) { assetPreviewVersion = value; },
-    get assetContextMenuTarget() { return assetContextMenuTarget; },
-    set assetContextMenuTarget(value) { assetContextMenuTarget = value; },
-    get pendingAssetDeletion() { return pendingAssetDeletion; },
-    set pendingAssetDeletion(value) { pendingAssetDeletion = value; },
-    get deleteDialogReturnFocus() { return deleteDialogReturnFocus; },
-    set deleteDialogReturnFocus(value) { deleteDialogReturnFocus = value; }
-  },
-  services: {
-    byId,
-    element,
-    window,
-    document,
-    clipboard: navigator.clipboard,
-    validation: sharedValidation,
-    parseYamlSource,
-    validateAssetCategory: assetCategoryPath,
-    validateAssetAttributes,
-    validateAssetSlots,
-    validateAssetSlotMarkup,
-    hidePreviewStateControls,
-    discardUneditedActiveSpecDraft,
-    updateScreenDomContext,
-    hideEditorMessage,
-    updateNavigationSelection,
-    renderNavigation,
-    updateSaveControls,
-    renderInspector,
-    markEdited,
-    setPreviewMessage,
-    renderInstance,
-    getInstanceAtPath,
-    getTemplateByPath,
-    getElementLabel,
-    setAssetViewMode: (mode) => assetViewLayout.setViewMode(mode),
-    showEditorMessage
-  }
-});
 const materialFileEditor = new MaterialFileEditor({
   state: {
     get materialFiles() { return materialFiles; },
@@ -549,21 +409,19 @@ const materialFileEditor = new MaterialFileEditor({
     set activeMaterialFilePath(value) { activeMaterialFilePath = value; },
     get activeProjectFilePath() { return activeProjectFilePath; },
     set activeProjectFilePath(value) { activeProjectFilePath = value; },
-    get assetPreviewTimer() { return assetPreviewTimer; },
-    set assetPreviewTimer(value) { assetPreviewTimer = value; },
-    get assetPreviewVersion() { return assetPreviewVersion; },
-    set assetPreviewVersion(value) { assetPreviewVersion = value; },
-    get activeAssetId() { return activeAssetId; },
-    set activeAssetId(value) { activeAssetId = value; },
+    get previewTimer() { return previewTimer; },
+    set previewTimer(value) { previewTimer = value; },
+    get previewVersion() { return previewVersion; },
+    set previewVersion(value) { previewVersion = value; },
     set activeInstancePath(value) {
       activeInstancePath = value;
       activeInstancePaths = value.length ? [value] : [];
     },
     set activeSpecPath(value) { activeSpecPath = value; },
+    set activeSpecScreenFile(value) { activeSpecScreenFile = value; },
     set activeSpecInstancePath(value) { activeSpecInstancePath = value; },
     get viewingMaterialFile() { return viewingMaterialFile; },
     set viewingMaterialFile(value) { viewingMaterialFile = value; },
-    set viewingAssetTemplate(value) { viewingAssetTemplate = value; },
     set viewingTheme(value) { viewingTheme = value; },
     set viewingProject(value) { viewingProject = value; },
     set viewingSpec(value) { viewingSpec = value; },
@@ -576,12 +434,11 @@ const materialFileEditor = new MaterialFileEditor({
     validation: sharedValidation,
     parseYamlSource,
     hidePreviewStateControls,
-    closeAssetContextMenu,
     updateScreenDomContext,
     discardUneditedActiveSpecDraft,
     updateNavigationSelection,
     hideEditorMessage,
-    setAssetViewMode: (mode) => assetViewLayout.setViewMode(mode),
+    setMaterialViewMode: (mode) => materialViewLayout.setViewMode(mode),
     renderInspector,
     renderNavigation,
     updateSaveControls,
@@ -595,10 +452,8 @@ const editorNavigation = new EditorNavigation({
   state: {
     get project() { return project; },
     get screens() { return screens; },
-    get assets() { return assets; },
     get activeScreenIndex() { return activeScreenIndex; },
     set activeScreenIndex(value) { activeScreenIndex = value; },
-    get activeAssetId() { return activeAssetId; },
     get activeMaterialFilePath() { return activeMaterialFilePath; },
     set activeMaterialFilePath(value) { activeMaterialFilePath = value; },
     get activeProjectFilePath() { return activeProjectFilePath; },
@@ -610,19 +465,18 @@ const editorNavigation = new EditorNavigation({
     get workflowScreenIndex() { return workflowScreenIndex; },
     get activeSpecOwner() { return activeSpecOwner; },
     get activeSpecPath() { return activeSpecPath; },
+    get activeSpecScreenFile() { return activeSpecScreenFile; },
     get activeSpecInstancePath() { return activeSpecInstancePath; },
     get materialFiles() { return materialFiles; },
-    get viewingAssetTemplate() { return viewingAssetTemplate; },
     get viewingMaterialFile() { return viewingMaterialFile; },
     set viewingMaterialFile(value) { viewingMaterialFile = value; },
     get activeInstancePath() { return activeInstancePath; },
     get createdSpecDrafts() { return createdSpecDrafts; },
-    get assetSpecOwners() { return assetSpecOwners; },
+    get elementSpecOwners() { return elementSpecOwners; },
     get hasEdits() { return hasEdits; }
   },
   services: {
     getInstanceAtPath,
-    getTemplateByPath,
     getElementLabel,
     getProjectFileAction,
     openProjectFile,
@@ -634,7 +488,6 @@ const editorNavigation = new EditorNavigation({
     createSpecForInstance,
     renderSpecEditor,
     renderThemeView,
-    renderAssetTemplate,
     renderMaterialFile,
     sameInstancePath,
     renderWorkflowEditor: (filePath, screenIndex) => {
@@ -654,15 +507,12 @@ const projectFileNavigator = new ProjectFileNavigator({
     set activeScreenIndex(value) { activeScreenIndex = value; },
     get projectFilePaths() { return projectFilePaths; },
     get theme() { return theme; },
-    get viewingAssetTemplate() { return viewingAssetTemplate; },
     get viewingTheme() { return viewingTheme; },
     get viewingProject() { return viewingProject; },
     get viewingSpec() { return viewingSpec; },
     get viewingWorkflow() { return viewingWorkflow; },
     get activeProjectFilePath() { return activeProjectFilePath; },
     get activeSpecPath() { return activeSpecPath; },
-    get activeAssetId() { return activeAssetId; },
-    get assets() { return assets; },
     get materialFiles() { return materialFiles; },
     get activeMaterialFilePath() { return activeMaterialFilePath; },
     get viewingMaterialFile() { return viewingMaterialFile; },
@@ -672,17 +522,10 @@ const projectFileNavigator = new ProjectFileNavigator({
     get createdSpecDrafts() { return createdSpecDrafts; },
     get createdScreenFiles() { return createdScreenFiles; },
     get createdSpecFiles() { return createdSpecFiles; },
-    get pendingAssetCopies() { return pendingAssetCopies; },
-    get assetFiles() { return assetFiles; },
-    get assetSpecOwners() { return assetSpecOwners; },
+    get elementSpecOwners() { return elementSpecOwners; },
     get historyUpdateSuppressed() { return historyUpdateSuppressed; },
     set historyUpdateSuppressed(value) { historyUpdateSuppressed = value; },
     get activeSpecOwner() { return activeSpecOwner; },
-    get assetDragType() { return assetDragType; },
-    get assetEditorRestoreId() { return assetEditorRestoreId; },
-    set assetEditorRestoreId(value) { assetEditorRestoreId = value; },
-    get paletteAssetDropHandled() { return paletteAssetDropHandled; },
-    set paletteAssetDropHandled(value) { paletteAssetDropHandled = value; }
   },
   services: {
     byId,
@@ -692,7 +535,6 @@ const projectFileNavigator = new ProjectFileNavigator({
     showFatalError,
     renderProjectOverview,
     renderThemeView,
-    renderAssetTemplate,
     renderMaterialFile,
     renderSpecEditor,
     renderWorkflowEditor: (filePath, screenIndex) => {
@@ -700,7 +542,7 @@ const projectFileNavigator = new ProjectFileNavigator({
       return workflowEditor.render(filePath, screenIndex);
     },
     syncBrowserHistory,
-    clearDropIndicators,
+    closeScreenPlacementContextMenu,
     showEditorMessage
   },
   projectFileTree
@@ -749,11 +591,10 @@ const workspaceViewRenderer = new WorkspaceViewRenderer({
     set activeScreenIndex(value) { activeScreenIndex = value; },
     get activeProjectFilePath() { return activeProjectFilePath; },
     set activeProjectFilePath(value) { activeProjectFilePath = value; },
-    get assetPreviewTimer() { return assetPreviewTimer; },
-    set assetPreviewTimer(value) { assetPreviewTimer = value; },
-    get assetPreviewVersion() { return assetPreviewVersion; },
-    set assetPreviewVersion(value) { assetPreviewVersion = value; },
-    set viewingAssetTemplate(value) { viewingAssetTemplate = value; },
+    get previewTimer() { return previewTimer; },
+    set previewTimer(value) { previewTimer = value; },
+    get previewVersion() { return previewVersion; },
+    set previewVersion(value) { previewVersion = value; },
     set viewingMaterialFile(value) { viewingMaterialFile = value; },
     set viewingTheme(value) { viewingTheme = value; },
     set viewingProject(value) { viewingProject = value; },
@@ -762,13 +603,12 @@ const workspaceViewRenderer = new WorkspaceViewRenderer({
     set activeWorkflowPath(value) { activeWorkflowPath = value; },
     set viewingPreviewState(value) { viewingPreviewState = value; },
     set activeSpecPath(value) { activeSpecPath = value; },
+    set activeSpecScreenFile(value) { activeSpecScreenFile = value; },
     set activeSpecInstancePath(value) { activeSpecInstancePath = value; },
-    set activeAssetId(value) { activeAssetId = value; },
     set activeInstancePath(value) {
       activeInstancePath = value;
       activeInstancePaths = value.length ? [value] : [];
     },
-    get assets() { return assets; },
     get theme() { return theme; },
     get specSources() { return specSources; }
   },
@@ -776,7 +616,7 @@ const workspaceViewRenderer = new WorkspaceViewRenderer({
     byId,
     element,
     discardUneditedActiveSpecDraft,
-    closeAssetContextMenu,
+    closeScreenPlacementContextMenu,
     renderScreenSelector,
     projectFileTree,
     hideEditorMessage,
@@ -824,6 +664,7 @@ workflowEditor = new WorkflowEditor({
   state: {
     get workflowSources() { return workflowSources; },
     get invalidWorkflowFiles() { return invalidWorkflowFiles; },
+    get viewingSpec() { return viewingSpec; },
     get viewingWorkflow() { return viewingWorkflow; },
     set viewingWorkflow(value) { viewingWorkflow = value; },
     get activeWorkflowPath() { return activeWorkflowPath; },
@@ -918,25 +759,23 @@ const inspectorRenderer = new InspectorRenderer({
   state: {
     get project() { return project; },
     get screens() { return screens; },
-    get assets() { return assets; },
     get theme() { return theme; },
     get specSources() { return specSources; },
     get createdSpecDrafts() { return createdSpecDrafts; },
     get activeScreenIndex() { return activeScreenIndex; },
-    get activeAssetId() { return activeAssetId; },
     get activeMaterialFilePath() { return activeMaterialFilePath; },
     get materialFiles() { return materialFiles; },
     get activeInstancePath() { return activeInstancePath; },
     get activeInstancePaths() { return activeInstancePaths; },
     get activeSpecOwner() { return activeSpecOwner; },
     get activeSpecPath() { return activeSpecPath; },
+    get activeSpecScreenFile() { return activeSpecScreenFile; },
     get activeSpecInstancePath() { return activeSpecInstancePath; },
     get viewingPreviewState() { return viewingPreviewState; },
     get viewingProject() { return viewingProject; },
     get viewingTheme() { return viewingTheme; },
     get viewingSpec() { return viewingSpec; },
     get viewingWorkflow() { return viewingWorkflow; },
-    get viewingAssetTemplate() { return viewingAssetTemplate; },
     get viewingMaterialFile() { return viewingMaterialFile; },
     get reviewedInSession() { return reviewedInSession; },
     set reviewedInSession(value) { reviewedInSession = value; }
@@ -945,7 +784,6 @@ const inspectorRenderer = new InspectorRenderer({
     byId,
     element,
     getInstanceAtPath,
-    getTemplateByPath,
     getActivePreviewStateId,
     getScreenPreviewStates,
     appendEditableField,
@@ -994,11 +832,7 @@ const inspectorRenderer = new InspectorRenderer({
     confirm: (message) => window.confirm(message),
     renderNavigation,
     refreshActiveView,
-    getAssetSpecPath,
-    confirmDeleteAsset,
-    markAssetTemplateEdited,
-    attributeTypes,
-    numberFormats,
+    getElementSpecPath,
     themeEditor,
     createSpecForInstance,
     renderInspector: () => renderInspector()
@@ -1052,10 +886,6 @@ function persistStatePlacements(screen, placements, stateId) {
   for (const placement of placements) {
     previewStateController.savePlacement(screen, placement, stateId);
   }
-}
-
-function getTemplateByPath(filePath) {
-  return [...assets.values()].find((template) => template.templateFile === filePath) || null;
 }
 
 function getElementLabel(instance) {
@@ -1162,35 +992,19 @@ function validateScreenMaterials(screen) {
   projectRepository.validateScreenMaterials(screen);
 }
 
-function findInstancePathById(instances, assetId, parentPath = []) {
-  return projectRepository.findInstancePathById(instances, assetId, parentPath);
+function findInstancePathById(instances, elementId, parentPath = []) {
+  return projectRepository.findInstancePathById(instances, elementId, parentPath);
 }
 
-function refreshAssetSpecOwner(filePath, source) {
-  return projectRepository.refreshAssetSpecOwner(filePath, source, screens, assetSpecOwners);
+function refreshElementSpecOwner(filePath, source) {
+  return projectRepository.refreshElementSpecOwner(filePath, source, screens, elementSpecOwners);
 }
 
-function getAssetSpecPath(screen, instance) {
-  for (const [filePath, owner] of assetSpecOwners) {
+function getElementSpecPath(screen, instance) {
+  for (const [filePath, owner] of elementSpecOwners) {
     if (owner.screenFile === screen.file && owner.elementId === instance.id) return filePath;
   }
   return null;
-}
-
-function assetCategoryPath(template, source) {
-  return projectRepository.validation.assetCategoryPath(template, source);
-}
-
-function validateAssetAttributes(template, source) {
-  return projectRepository.validation.validateAssetAttributes(template, source);
-}
-
-function validateAssetSlots(template, source) {
-  return projectRepository.validation.validateAssetSlots(template, source);
-}
-
-function validateAssetSlotMarkup(template, markup, source) {
-  return projectRepository.validation.validateAssetSlotMarkup(template, markup, source);
 }
 
 function getDefinedThemeModes() {
@@ -1209,18 +1023,10 @@ function themeModeLabel(mode) {
   return themeEditor.modeLabel(mode);
 }
 
-function isValidAttributeValue(definition, value) {
-  return sharedValidation.isValidAttributeValue(definition, value);
-}
-
 async function loadProject(selectionToRestore = null) {
-  clearTimeout(assetPreviewTimer);
-  assetPreviewTimer = null;
-  assetPreviewVersion += 1;
-  for (const template of assets.values()) {
-    clearTimeout(template.yamlTimer);
-    template.yamlParseVersion += 1;
-  }
+  clearTimeout(previewTimer);
+  previewTimer = null;
+  previewVersion += 1;
   for (const material of materialFiles.values()) {
     clearTimeout(material.parseTimer);
     material.parseVersion = (material.parseVersion || 0) + 1;
@@ -1235,25 +1041,22 @@ async function loadProject(selectionToRestore = null) {
   createdMaterialFiles.clear();
   createdSpecFiles.clear();
   createdSpecDrafts.clear();
-  assetSpecOwners.clear();
+  elementSpecOwners.clear();
   activeProjectFilePath = null;
   activeMaterialFilePath = null;
-  pendingAssetCopies.length = 0;
   setPreviewMessage("loading", "Reading project files...");
   try {
     const loaded = await projectRepository.load();
     project = loaded.project;
     projectFilePaths = loaded.projectFilePaths;
-    assetFiles = loaded.assetFiles;
     screens = loaded.screens;
     materialFiles = loaded.materialFiles;
     activePreviewStateIds.clear();
-    assets = loaded.assets;
     specSources = loaded.specSources;
     workflowSources = loaded.workflowSources;
-    assetSpecOwners.clear();
-    for (const [filePath, owner] of loaded.assetSpecOwners) {
-      assetSpecOwners.set(filePath, owner);
+    elementSpecOwners.clear();
+    for (const [filePath, owner] of loaded.elementSpecOwners) {
+      elementSpecOwners.set(filePath, owner);
     }
     theme = loaded.theme;
     viewingTheme = false;
@@ -1267,13 +1070,13 @@ async function loadProject(selectionToRestore = null) {
     selectedWorkflowNodeId = null;
     workflowViewMode = "split";
     activeSpecPath = null;
+    activeSpecScreenFile = null;
     activeSpecInstancePath = [];
     activeSpecOwner = "instance";
     hasEdits = false;
     dirtyFiles.clear();
     invalidYamlFiles.clear();
     invalidWorkflowFiles.clear();
-    pendingAssetSerializations.clear();
     byId("create-screen").disabled = false;
     updateSaveControls();
     reviewedInSession = false;
@@ -1455,105 +1258,13 @@ async function openProjectFile(filePath) {
   return projectFileNavigator.openProjectFile(filePath);
 }
 
-function updateAssetTemplateTreeFile(button, asset) {
-  return projectFileNavigator.updateAssetTemplateTreeFile(button, asset);
-}
-
 async function createScreen() {
-  return screenElementController.createScreen();
-}
-
-function createAssetInstanceId(screen, name, fallback) {
-  return screenElementController.createInstanceId(screen, name, fallback);
-}
-
-function createTemplateElement(template, siblings, screen) {
-  return screenElementController.createTemplateElement(template, siblings, screen);
-}
-
-async function ensureAssetOnScreen(template, screen) {
-  return screenElementController.ensureAssetOnScreen(template, screen);
+  return screenController.createScreen();
 }
 
 function getInstanceAtPath(screen, path) {
   const materials = screen.data?.materials || screen.materials || [];
   return getScreenPlacementAtPath(materials, path);
-}
-
-function getSiblingList(screen, parentPath, slotId) {
-  return screenElementController.getSiblingList(screen, parentPath, slotId);
-}
-
-function getInstanceLocation(screen, path) {
-  return screenElementController.getInstanceLocation(screen, path);
-}
-
-function instancePathFor(parentPath, slotId, index) {
-  return screenElementController.instancePathFor(parentPath, slotId, index);
-}
-
-async function addAssetToContainer(assetPath, parentPath, slotId, requestedIndex = null) {
-  return screenElementController.addToContainer(assetPath, parentPath, slotId, requestedIndex);
-}
-
-async function addAssetToScreen(assetPath, position) {
-  return screenElementController.addToScreen(assetPath, position);
-}
-
-function addAssetToSlot(parentPath, slotId, assetPath) {
-  return screenElementController.addToSlot(parentPath, slotId, assetPath);
-}
-
-function pathStartsWith(path, prefix) {
-  return screenElementController.pathStartsWith(path, prefix);
-}
-
-function findInstancePathByReference(screen, target) {
-  return screenElementController.findInstancePathByReference(screen, target);
-}
-
-async function moveAssetInstance(sourcePath, parentPath, slotId, requestedIndex = null) {
-  return screenElementController.move(sourcePath, parentPath, slotId, requestedIndex);
-}
-
-async function deleteAssetInstance(path) {
-  return screenElementController.delete(path);
-}
-
-function readDraggedInstance(dataTransfer) {
-  const payload = dataTransfer.getData(assetInstanceDragType);
-  if (!payload) return null;
-  let path;
-  try {
-    path = JSON.parse(payload);
-  } catch {
-    throw new Error("The dragged Element has an invalid position.");
-  }
-  if (!Array.isArray(path) || path.length === 0 || path.length % 2 !== 1 ||
-      path.some((part, index) => index % 2 === 0
-        ? !Number.isInteger(part) || part < 0
-        : typeof part !== "string" || !part)) {
-    throw new Error("The dragged Element has an invalid position.");
-  }
-  return path;
-}
-
-function clearDropIndicators() {
-  for (const host of findAssetInstances(byId("screen-preview"))) {
-    host.classList.remove("dragging", "drop-before", "drop-after");
-    host.querySelectorAll(".specux-drop-slot.drop-target")
-      .forEach((slot) => slot.classList.remove("drop-target"));
-    host.shadowRoot?.querySelectorAll(".specux-drop-slot.drop-target")
-      .forEach((slot) => slot.classList.remove("drop-target"));
-  }
-}
-
-function findAssetInstances(root, instances = []) {
-  for (const node of root.querySelectorAll(".asset-instance")) {
-    instances.push(node);
-    if (node.shadowRoot) findAssetInstances(node.shadowRoot, instances);
-  }
-  return instances;
 }
 
 function selectInstanceInPreview(path) {
@@ -1566,10 +1277,6 @@ function selectInstanceInPreview(path) {
     if (selected) selectedNode = node;
   }
   return selectedNode;
-}
-
-function showAddAssetError(error) {
-  showEditorMessage("Could not add asset", error.message || String(error));
 }
 
 async function renderScreen(index, options = {}) {
@@ -1599,6 +1306,79 @@ function renderThemeMaterial(filePath) {
   if (!material) throw new Error(`Material file "${filePath}" is not available.`);
   materialFileEditor.renderPreview(material);
   byId("screen-preview").classList.add("theme-material-preview");
+}
+
+async function showSpecReference(reference, filePath) {
+  workflowEditor.clearSpecReferencePreview();
+  if (!reference) {
+    const ownerScreenIndex = screens.findIndex((screen) =>
+      screen.file === activeSpecScreenFile
+    );
+    if (ownerScreenIndex < 0) return [];
+    reference = {
+      screenId: screens[ownerScreenIndex].id,
+      placementId: null,
+      stateId: "default"
+    };
+  }
+  const screenIndex = screens.findIndex((screen) => screen.id === reference.screenId);
+  const screen = screens[screenIndex];
+  if (!screen) {
+    throw new Error(`Spec Screen "${reference.screenId}" is not available.`);
+  }
+  if (!getScreenPreviewStates(screen.data).some((previewState) =>
+    previewState.id === reference.stateId
+  )) {
+    throw new Error(
+      `Preview State "${reference.stateId}" is not available on Screen "${screen.id}".`
+    );
+  }
+
+  let instancePath = [];
+  if (reference.placementId) {
+    instancePath = getScreenPlacementPathById(
+      screen.data.materials || [],
+      reference.placementId
+    ) || [];
+    if (instancePath.length === 0) {
+      throw new Error(
+        `Element "${reference.placementId}" is not available on Screen "${screen.id}".`
+      );
+    }
+  }
+
+  activePreviewStateIds.set(screen.id, reference.stateId);
+  activeScreenIndex = screenIndex;
+  activeInstancePath = instancePath;
+  activeInstancePaths = instancePath.length ? [[...instancePath]] : [];
+  await renderScreen(screenIndex, {
+    preserveSpec: true,
+    previewStateSelected: reference.stateId !== "default"
+  });
+  screenAnnotationController.setEnabled(false);
+  viewingSpec = true;
+  activeSpecPath = filePath;
+  activeProjectFilePath = filePath;
+  hidePreviewStateControls();
+  byId("screen-heading").textContent = `Spec: ${filePath}`;
+  byId("breadcrumb").textContent = "Behavior spec";
+  byId("screen-stage").setAttribute(
+    "aria-label",
+    `Screen preview linked from behavior spec "${filePath}"`
+  );
+  byId("spec-view-heading").textContent = "Screen preview";
+  updateNavigationSelection();
+  renderInspector();
+  if (instancePath.length) {
+    await scrollPreviewToPlacement(instancePath);
+  } else {
+    byId("screen-preview").scrollTo({
+      left: 0,
+      top: 0,
+      behavior: "smooth"
+    });
+  }
+  return instancePath;
 }
 
 async function showWorkflowNode(link, ownerScreenIndex, workflowPath) {
@@ -1638,7 +1418,6 @@ async function showWorkflowNode(link, ownerScreenIndex, workflowPath) {
   });
 
   screenAnnotationController.setEnabled(false);
-  activeAssetId = null;
   viewingWorkflow = true;
   activeWorkflowPath = workflowPath;
   workflowScreenIndex = ownerScreenIndex;
@@ -1671,14 +1450,6 @@ async function scrollPreviewToPlacement(instancePath) {
     : 1;
   const viewportLeft = previewRect.left + preview.clientLeft;
   const viewportTop = previewRect.top + preview.clientTop;
-  const viewportRight = viewportLeft + preview.clientWidth;
-  const viewportBottom = viewportTop + preview.clientHeight;
-  const isVisible = frameRect.left >= viewportLeft &&
-    frameRect.right <= viewportRight &&
-    frameRect.top >= viewportTop &&
-    frameRect.bottom <= viewportBottom;
-  if (isVisible) return;
-
   const horizontalOffset = (frameRect.left + frameRect.width / 2 -
     (viewportLeft + preview.clientWidth / 2)) / scaleX;
   const verticalOffset = (frameRect.top + frameRect.height / 2 -
@@ -1717,50 +1488,10 @@ function renderProjectOverview() {
   return workspaceViewRenderer.renderProjectOverview();
 }
 
-async function renderAssetTemplate(assetId, filePath = null) {
-  workflowEditor?.deactivate();
-  screenAnnotationController?.setEnabled(false);
-  return assetEditor.renderTemplate(assetId, filePath);
-}
-
 async function renderMaterialFile(filePath) {
   workflowEditor?.deactivate();
   screenAnnotationController?.setEnabled(false);
   return materialFileEditor.render(filePath);
-}
-
-function setAssetDocumentStatus(template, message, isError = false) {
-  return assetEditor.setDocumentStatus(template, message, isError);
-}
-
-async function renderInstance(instance, template, instancePath, screenId = "", screenName = "") {
-  return screenInstanceRenderer.render(instance, template, instancePath, screenId, screenName);
-}
-
-function getEventInstance(event) {
-  return event.composedPath().find((node) =>
-    node instanceof HTMLElement && node.classList.contains("asset-instance")
-  );
-}
-
-function openAssetContextMenu(event, host, instancePath, assetId) {
-  return assetEditor.openContextMenu(event, host, instancePath, assetId);
-}
-
-function closeAssetContextMenu(restoreFocus = false) {
-  return assetEditor.closeContextMenu(restoreFocus);
-}
-
-async function copyAssetDetails(target) {
-  return assetEditor.copyDetails(target);
-}
-
-function confirmDeleteAsset(target) {
-  return assetEditor.confirmDelete(target);
-}
-
-function closeAssetDeleteDialog(restoreFocus = false) {
-  return assetEditor.closeDeleteDialog(restoreFocus);
 }
 
 function sameInstancePath(left, right) {
@@ -1788,7 +1519,7 @@ function updateScreenDomContext(screen) {
   ].forEach((node) => setScreenDomContext(node, screen));
 }
 
-function selectInstance(path, assetId, options = {}) {
+function selectInstance(path, _materialSrc, options = {}) {
   if (viewingWorkflow) return;
   const selectedPath = Array.isArray(path) ? path : [];
   if (Array.isArray(options.paths)) {
@@ -1807,13 +1538,6 @@ function selectInstance(path, assetId, options = {}) {
     activeInstancePath = [...selectedPath];
     activeInstancePaths = selectedPath.length ? [[...selectedPath]] : [];
   }
-  const activeInstance = getInstanceAtPath(
-    screens[activeScreenIndex],
-    activeInstancePath
-  );
-  activeAssetId = activeInstancePath.length
-    ? activeInstance?.src || assetId || null
-    : null;
   if (viewingTheme) {
     selectInstanceInPreview(activeInstancePaths);
     renderInspector();
@@ -1823,12 +1547,12 @@ function selectInstance(path, assetId, options = {}) {
     selectInstanceInPreview(activeInstancePaths);
     return;
   }
-  viewingAssetTemplate = false;
   viewingTheme = false;
   viewingProject = false;
   viewingSpec = false;
   viewingPreviewState = false;
   activeSpecPath = null;
+  activeSpecScreenFile = null;
   activeSpecInstancePath = [];
   byId("main").classList.remove("spec-editing");
   byId("spec-editor-panel").hidden = true;
@@ -1910,7 +1634,6 @@ function updateNavigationSelection() {
     button.classList.toggle("selected", selected);
     if (selected) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
-    if (action?.kind === "asset") updateAssetTemplateTreeFile(button, action.asset);
   });
   syncBrowserHistory();
   publishSelection();
@@ -1950,13 +1673,6 @@ function appendDetail(parent, label, value) {
 function appendNote(parent, label, text) {
   parent.append(element("div", "detail-label", label));
   parent.append(element("div", "note-box", text));
-}
-
-function attributeInputOptions(definition) {
-  if (definition.type === "boolean") return { checkbox: true };
-  if (definition.type === "list") return { selectOptions: definition.options || [] };
-  if (definition.type === "number") return { numberFormat: definition.format || "decimal" };
-  return {};
 }
 
 function appendEditableField(parent, label, value, onChange, options = {}) {
@@ -2026,10 +1742,6 @@ function clearEdited(filePath) {
   projectPersistence.clearEdited(filePath);
 }
 
-function markAssetTemplateEdited(template) {
-  projectPersistence.markAssetTemplateEdited(template);
-}
-
 function updateSaveControls() {
   projectPersistence.updateSaveControls();
 }
@@ -2041,10 +1753,6 @@ async function refreshActiveView() {
   try {
     if (viewingMaterialFile) {
       await renderMaterialFile(activeMaterialFilePath);
-      return;
-    }
-    if (viewingAssetTemplate) {
-      await renderAssetTemplate(activeAssetId);
       return;
     }
     const screenIndex = activeScreenIndex;
@@ -2060,9 +1768,6 @@ async function refreshActiveView() {
 const editorEventController = new EditorEventController({
   state: {
     get hasEdits() { return hasEdits; },
-    get activeScreenIndex() { return activeScreenIndex; },
-    get assetContextMenuTarget() { return assetContextMenuTarget; },
-    get pendingAssetDeletion() { return pendingAssetDeletion; },
     get historyUpdateSuppressed() { return historyUpdateSuppressed; },
     set historyUpdateSuppressed(value) { historyUpdateSuppressed = value; }
   },
@@ -2078,15 +1783,8 @@ const editorEventController = new EditorEventController({
     setScreenSelectorOpen,
     renderScreenSelector,
     saveProjectChanges,
-    closeAssetContextMenu,
-    getTemplateByPath,
-    renderAssetTemplate,
     renderScreenRulers: () => screenRulerController.render(),
     showFatalError,
-    copyAssetDetails,
-    confirmDeleteAsset,
-    closeAssetDeleteDialog,
-    deleteAssetInstance,
     showEditorMessage,
     isRenderOnly,
     selectionFromLocation,
@@ -2152,7 +1850,7 @@ const resizablePanels = new ResizablePanels({
 });
 resizablePanels.bind();
 specViewLayout.bind();
-assetViewLayout.bind();
+materialViewLayout.bind();
 workflowViewLayout.bind();
 
 loadProject(selectionFromLocation());

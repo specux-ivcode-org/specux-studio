@@ -14,24 +14,22 @@ export class MaterialFileEditor {
     state.activeProjectFilePath = filePath;
     state.activeMaterialFilePath = filePath;
     state.viewingMaterialFile = true;
-    state.viewingAssetTemplate = false;
     state.viewingTheme = false;
     state.viewingProject = false;
     state.viewingSpec = false;
     state.viewingPreviewState = false;
-    state.activeAssetId = null;
     state.activeInstancePath = [];
     state.activeSpecPath = null;
+    state.activeSpecScreenFile = null;
     state.activeSpecInstancePath = [];
-    clearTimeout(state.assetPreviewTimer);
-    state.assetPreviewTimer = null;
-    state.assetPreviewVersion += 1;
+    clearTimeout(state.previewTimer);
+    state.previewTimer = null;
+    state.previewVersion += 1;
     services.hidePreviewStateControls();
-    services.closeAssetContextMenu();
     services.updateScreenDomContext(null);
     services.byId("main").classList.remove("spec-editing");
     services.byId("main").classList.remove("screen-editing");
-    services.byId("main").classList.add("asset-editing");
+    services.byId("main").classList.add("material-editing");
     services.byId("spec-editor-panel").hidden = true;
     services.byId("spec-source").oninput = null;
     services.hideEditorMessage();
@@ -42,11 +40,11 @@ export class MaterialFileEditor {
       `${material.data.name} Material preview`
     );
     services.byId("breadcrumb").textContent = "Materials";
-    services.byId("asset-document-editor-panel").hidden = false;
-    services.setAssetViewMode("split");
-    services.byId("asset-document-editor-heading").textContent =
+    services.byId("material-document-editor-panel").hidden = false;
+    services.setMaterialViewMode("split");
+    services.byId("material-document-editor-heading").textContent =
       `${material.data.name} — ${filePath.split("/").pop()}`;
-    const editor = services.byId("asset-document-source");
+    const editor = services.byId("material-document-source");
     editor.value = material.documentSource;
     editor.setAttribute("aria-label", `${material.data.name} Material source`);
     editor.oninput = () => this.handleSourceInput(material, editor.value);
@@ -87,7 +85,7 @@ export class MaterialFileEditor {
   async parseDocument(material, source, version) {
     const { state, services } = this;
     const filePath = material.file;
-    const { header, body } = services.validation.splitAssetDocument(source, filePath);
+    const { header, body } = services.validation.splitMaterialDocument(source, filePath);
     const data = await services.parseYamlSource(header, `${filePath} front matter`);
     if (version !== material.parseVersion) return;
     services.validation.validateMaterialDocumentHeader(data, filePath);
@@ -103,9 +101,9 @@ export class MaterialFileEditor {
     services.updateSaveControls();
     if (state.viewingMaterialFile && state.activeMaterialFilePath === filePath) {
       services.byId("screen-heading").textContent = `${data.name} Material`;
-      services.byId("asset-document-editor-heading").textContent =
+      services.byId("material-document-editor-heading").textContent =
         `${data.name} — ${filePath.split("/").pop()}`;
-      services.byId("asset-document-source").setAttribute(
+      services.byId("material-document-source").setAttribute(
         "aria-label",
         `${data.name} Material source`
       );
@@ -118,7 +116,7 @@ export class MaterialFileEditor {
     material.documentStatus = { message, isError };
     if (!this.state.viewingMaterialFile ||
         this.state.activeMaterialFilePath !== material.file) return;
-    const status = this.services.byId("asset-document-status");
+    const status = this.services.byId("material-document-status");
     status.textContent = message;
     status.classList.toggle("error", isError);
   }

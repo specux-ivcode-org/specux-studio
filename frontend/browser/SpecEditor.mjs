@@ -1,8 +1,34 @@
+import { parseWorkflowSpecReferences } from "./WorkflowEditor.mjs";
+
+function getReferenceKey(reference) {
+  return reference?.href ||
+    (reference?.workflowPath ? `${reference.workflowPath}?node=${reference.nodeId}` : null);
+}
+
 export class SpecEditor {
   constructor({ state, services }) {
     this.state = state;
     this.services = services;
     this.specValidationErrorFile = null;
+    this.previewReferences = [];
+    this.previewReferenceIndex = 0;
+    this.previewQueue = Promise.resolve();
+    this.previewVersion = 0;
+    const sourceEditor = services.byId("spec-source");
+    const sourceContainer = services.byId("spec-source-container");
+    const sourceHighlight = services.byId("spec-source-highlight");
+    if (sourceEditor && sourceContainer && sourceHighlight) {
+      sourceEditor.addEventListener("scroll", () => {
+        sourceHighlight.scrollTop = sourceEditor.scrollTop;
+        sourceHighlight.scrollLeft = sourceEditor.scrollLeft;
+      });
+    }
+    services.byId("spec-reference-previous").addEventListener("click", () =>
+      this.movePreviewReference(-1)
+    );
+    services.byId("spec-reference-next").addEventListener("click", () =>
+      this.movePreviewReference(1)
+    );
   }
 
   async render(filePath, instancePath = this.state.activeInstancePath, owner = "instance") {
@@ -18,7 +44,7 @@ export class SpecEditor {
     const instance = !isProjectSpec && !isScreenSpec && screen
       ? services.getInstanceAtPath(screen, instancePath)
       : null;
-    const assetSpecOwner = state.assetSpecOwners.get(filePath);
+    const elementSpecOwner = state.elementSpecOwners.get(filePath);
     if (isProjectSpec) {
       if (state.project.spec !== filePath && draft?.owner !== "project") {
         throw new Error(`Behavior spec "${filePath}" is not attached to the project.`);
@@ -29,8 +55,8 @@ export class SpecEditor {
       }
     } else if (!instance ||
         (draft?.owner !== "instance" &&
-         (assetSpecOwner?.screenFile !== screen?.file ||
-          !services.sameInstancePath(assetSpecOwner.instancePath, instancePath)))) {
+         (elementSpecOwner?.screenFile !== screen?.file ||
+          !services.sameInstancePath(elementSpecOwner.instancePath, instancePath)))) {
       throw new Error(`Behavior spec "${filePath}" is not attached to the selected Element.`);
     }
     if (!state.specSources.has(filePath)) {
@@ -41,13 +67,12 @@ export class SpecEditor {
     }
 
     const main = services.byId("main");
-    main.classList.remove("asset-editing");
+    main.classList.remove("material-editing");
     main.classList.add("spec-editing");
-    services.byId("asset-document-editor-panel").hidden = true;
-    services.byId("asset-document-source").oninput = null;
+    services.byId("material-document-editor-panel").hidden = true;
+    services.byId("material-document-source").oninput = null;
     services.byId("spec-editor-panel").hidden = false;
     services.setSpecViewMode("split");
-    state.viewingAssetTemplate = false;
     state.viewingMaterialFile = false;
     state.viewingTheme = false;
     state.viewingProject = false;
@@ -55,10 +80,11 @@ export class SpecEditor {
     state.viewingSpec = true;
     state.activeSpecPath = filePath;
     state.activeSpecOwner = owner;
+    state.activeSpecScreenFile = isProjectSpec ? null : screen?.file || null;
     state.activeSpecInstancePath = isProjectSpec || isScreenSpec ? [] : [...instancePath];
-    state.activeAssetId = instance?.src || null;
     state.activeInstancePath = isProjectSpec || isScreenSpec ? [] : [...instancePath];
-    this.updatePreviewFocus(instance ? instancePath : null);
+    this.updatePreviewFocus(null);
+    this.renderSourceHighlight(null);
     services.hideEditorMessage();
     this.specValidationErrorFile = null;
     services.updateNavigationSelection();
@@ -68,7 +94,7 @@ export class SpecEditor {
         ? "Project overview linked to its behavior spec"
         : isScreenSpec
           ? "Screen preview linked to its behavior spec"
-          : "Screen preview linked to the selected asset behavior spec"
+          : "Screen preview linked to the selected placement behavior spec"
     );
     services.byId("screen-heading").textContent = `Spec: ${filePath}`;
     services.byId("breadcrumb").textContent = "Behavior spec";
@@ -76,17 +102,163 @@ export class SpecEditor {
     const editor = services.byId("spec-source");
     editor.setAttribute("aria-label", `Markdown source for ${filePath}`);
     editor.value = state.specSources.get(filePath);
+    editor.scrollTop = 0;
+    editor.scrollLeft = 0;
+    const sourceHighlight = services.byId("spec-source-highlight");
+    if (sourceHighlight) {
+      sourceHighlight.scrollTop = 0;
+      sourceHighlight.scrollLeft = 0;
+    }
     editor.disabled = state.isSaving;
     editor.oninput = () => this.handleSourceInput(filePath, editor.value);
     services.renderInspector();
-    if (instance) {
-      requestAnimationFrame(() => {
-        if (state.viewingSpec && state.activeSpecPath === filePath &&
-            services.sameInstancePath(state.activeInstancePath, instancePath)) {
-          services.selectInstanceInPreview(instancePath);
-        }
-      });
+    await this.setPreviewReferences(filePath, editor.value, true);
+  }
+
+  setPreviewReferences(filePath, source, reset = false) {
+    const screenReferences = this.services.validation
+      .parseSpecScreenReferences(source, filePath)
+      .map((reference) => ({ ...reference, kind: "screen" }));
+    const workflowReferences = parseWorkflowSpecReferences(source)
+      .map((reference) => ({ ...reference, kind: "workflow" }));
+    const references = [...screenReferences, ...workflowReferences]
+      .sort((left, right) =>
+        left.lineIndex - right.lineIndex || left.columnIndex - right.columnIndex
+      );
+    const activeKey = getReferenceKey(this.previewReferences[this.previewReferenceIndex]);
+    this.previewReferences = references;
+    if (reset) {
+      this.previewReferenceIndex = 0;
+    } else {
+      const activeIndex = references.findIndex((reference) =>
+        getReferenceKey(reference) === activeKey
+      );
+      this.previewReferenceIndex = activeIndex >= 0
+        ? activeIndex
+        : Math.min(this.previewReferenceIndex, Math.max(0, references.length - 1));
     }
+    this.updateReferenceNavigation();
+    return this.previewCurrentReference(filePath);
+  }
+
+  updateReferenceNavigation() {
+    const { services } = this;
+    const count = this.previewReferences.length;
+    const active = this.state.viewingSpec && count > 0;
+    services.byId("spec-reference-navigation").hidden = !active;
+    services.byId("spec-reference-position").textContent = active
+      ? `${this.previewReferenceIndex + 1} of ${count}`
+      : "";
+    services.byId("spec-reference-previous").disabled = !active || count < 2;
+    services.byId("spec-reference-next").disabled = !active || count < 2;
+  }
+
+  movePreviewReference(offset) {
+    if (this.previewReferences.length < 2) return;
+    this.previewReferenceIndex =
+      (this.previewReferenceIndex + offset + this.previewReferences.length) %
+      this.previewReferences.length;
+    this.updateReferenceNavigation();
+    this.previewCurrentReference(this.state.activeSpecPath);
+  }
+
+  previewCurrentReference(filePath) {
+    const { state, services } = this;
+    const reference = this.previewReferences[this.previewReferenceIndex] || null;
+    const version = ++this.previewVersion;
+    this.previewQueue = this.previewQueue.then(async () => {
+      if (version !== this.previewVersion ||
+          !state.viewingSpec ||
+          state.activeSpecPath !== filePath) return;
+      this.renderSourceHighlight(reference);
+      if (reference?.kind === "workflow") {
+        this.updatePreviewFocus(null);
+        await services.showSpecWorkflowReference(reference, filePath);
+        return;
+      }
+      services.clearSpecWorkflowPreview();
+      const instancePath = await services.showSpecReference(reference, filePath);
+      if (version !== this.previewVersion ||
+          !state.viewingSpec ||
+          state.activeSpecPath !== filePath) return;
+      this.updatePreviewFocus(instancePath);
+      if (instancePath?.length) services.selectInstanceInPreview(instancePath);
+    }).catch((error) => {
+      if (version !== this.previewVersion || state.activeSpecPath !== filePath) return;
+      services.showEditorMessage("Invalid SpecUX preview link", error.message || String(error));
+      this.specValidationErrorFile = filePath;
+    });
+    return this.previewQueue;
+  }
+
+  renderSourceHighlight(reference) {
+    const { state, services } = this;
+    const highlight = services.byId("spec-source-highlight");
+    if (!highlight) return;
+    highlight.replaceChildren();
+    if (!reference) return;
+
+    const source = state.specSources.get(state.activeSpecPath) || "";
+    const lines = source.split(/\r?\n/);
+    const linkLine = lines[reference.lineIndex] || "";
+    const link = [...linkLine.matchAll(
+      /\[[^\]]*\]\(specux:\/\/[^)\s]+(?:\s+"[^"]*")?\)/g
+    )].find((match) => match.index === reference.columnIndex);
+    const sectionLine = reference.sectionLineIndex;
+    const sectionHeading = lines[sectionLine]?.match(/^\s*(#{1,6})\s+.+?\s*#*\s*$/);
+    let sectionStart = sectionHeading ? sectionLine : reference.lineIndex;
+    let sectionEnd = sectionStart;
+    if (sectionHeading) {
+      const sectionLevel = sectionHeading[1].length;
+      let codeFence = null;
+      sectionEnd = lines.length - 1;
+      for (let lineIndex = sectionLine + 1; lineIndex < lines.length; lineIndex += 1) {
+        const fence = lines[lineIndex].match(/^\s*(`{3,}|~{3,})/);
+        if (codeFence) {
+          if (fence &&
+              fence[1][0] === codeFence.character &&
+              fence[1].length >= codeFence.length &&
+              /^\s*$/.test(lines[lineIndex].slice(fence[0].length))) {
+            codeFence = null;
+          }
+          continue;
+        }
+        if (fence) {
+          codeFence = { character: fence[1][0], length: fence[1].length };
+          continue;
+        }
+        const heading = lines[lineIndex].match(/^\s*(#{1,6})\s+.+?\s*#*\s*$/);
+        if (heading && heading[1].length <= sectionLevel) {
+          sectionEnd = lineIndex - 1;
+          break;
+        }
+      }
+    }
+    const { ownerDocument } = highlight;
+
+    lines.forEach((text, lineIndex) => {
+      const line = ownerDocument.createElement("span");
+      line.className = "workflow-spec-line";
+      if (lineIndex >= sectionStart && lineIndex <= sectionEnd) {
+        line.classList.add("workflow-spec-section-target");
+      }
+
+      if (lineIndex === reference.lineIndex && link) {
+        const before = ownerDocument.createElement("span");
+        before.textContent = text.slice(0, link.index);
+        line.append(before);
+        const target = ownerDocument.createElement("span");
+        target.className = "workflow-spec-link-target";
+        target.textContent = link[0];
+        line.append(target);
+        const after = ownerDocument.createElement("span");
+        after.textContent = text.slice(link.index + link[0].length);
+        line.append(after);
+      } else {
+        line.textContent = text;
+      }
+      highlight.append(line);
+    });
   }
 
   updatePreviewFocus(instancePath) {
@@ -94,7 +266,8 @@ export class SpecEditor {
     const instances = [];
     const visit = (root, parentInstance = null) => {
       for (const element of root.children || []) {
-        const isInstance = element.classList?.contains("asset-instance") === true;
+        const isInstance = element.classList?.contains("material-instance") === true ||
+          element.classList?.contains("material-group") === true;
         if (isInstance) instances.push({ element, parentInstance });
         const nextParent = isInstance ? element : parentInstance;
         if (element.shadowRoot) visit(element.shadowRoot, nextParent);
@@ -148,13 +321,20 @@ export class SpecEditor {
   handleSourceInput(filePath, source) {
     const { state, services } = this;
     state.specSources.set(filePath, source);
-    let assetSpecError = "";
+    let elementSpecError = "";
+    let referenceError = "";
     if (state.screens.some((entry) => filePath.startsWith(`screens/${entry.id}/specs/element-`))) {
       try {
-        services.refreshAssetSpecOwner(filePath, source);
+        services.refreshElementSpecOwner(filePath, source);
       } catch (error) {
-        assetSpecError = error.message || String(error);
+        elementSpecError = error.message || String(error);
       }
+    }
+    try {
+      this.setPreviewReferences(filePath, source);
+    } catch (error) {
+      referenceError = error.message || String(error);
+      this.renderSourceHighlight(null);
     }
     const pendingDraft = state.createdSpecDrafts.get(filePath);
     if (pendingDraft) {
@@ -165,7 +345,7 @@ export class SpecEditor {
         } else if (pendingDraft.owner === "screen") {
           if (draftScreen?.data.spec === filePath) delete draftScreen.data.spec;
         } else {
-          state.assetSpecOwners.delete(filePath);
+          state.elementSpecOwners.delete(filePath);
         }
         state.createdSpecFiles.delete(filePath);
         services.clearEdited(filePath);
@@ -176,8 +356,11 @@ export class SpecEditor {
       state.createdSpecFiles.add(filePath);
     }
     services.markEdited(filePath);
-    if (assetSpecError) {
-      services.showEditorMessage("Invalid behavior spec", assetSpecError);
+    if (elementSpecError) {
+      services.showEditorMessage("Invalid behavior spec", elementSpecError);
+      this.specValidationErrorFile = filePath;
+    } else if (referenceError) {
+      services.showEditorMessage("Invalid SpecUX preview link", referenceError);
       this.specValidationErrorFile = filePath;
     } else if (this.specValidationErrorFile === filePath) {
       services.hideEditorMessage();
@@ -198,7 +381,7 @@ export class SpecEditor {
     state.createdSpecDrafts.delete(filePath);
     state.createdSpecFiles.delete(filePath);
     state.specSources.delete(filePath);
-    state.assetSpecOwners.delete(filePath);
+    state.elementSpecOwners.delete(filePath);
     if (draft.owner === "project" && state.project.spec === filePath) {
       delete state.project.spec;
     } else if (draft.owner === "screen") {
@@ -213,9 +396,8 @@ export class SpecEditor {
     const { state, services } = this;
     const screen = state.screens[state.activeScreenIndex];
     const instance = screen && services.getInstanceAtPath(screen, instancePath);
-    const template = instance?.type === "template" ? services.getTemplateByPath(instance.src) : null;
     if (!screen || !instance) throw new Error("The selected Element is no longer available.");
-    const linkedSpecPath = services.getAssetSpecPath(screen, instance);
+    const linkedSpecPath = services.getElementSpecPath(screen, instance);
     if (linkedSpecPath) {
       await this.render(linkedSpecPath, instancePath);
       return;
@@ -241,8 +423,8 @@ export class SpecEditor {
     }
     const heading = services.getElementLabel(instance)
       .replace(/\r?\n/g, " ")
-      .trim() || template.id;
-    const source = `---\nelement-id: ${instance.id}\n---\n\n# ${heading}\n\n## Purpose\n\nDescribe the behavior this Element is responsible for.\n\n## Requirements\n\n### Requirement: Perform the intended action\nThe system SHALL perform the intended behavior for this Element.\n\n#### Scenario: User interacts with this Element\n- **WHEN** the user interacts with this Element\n- **THEN** describe the expected observable outcome.\n`;
+      .trim() || instance.id;
+    const source = `# ${heading}\n\n[Referenced Element](specux://screen/${screen.id}/screen.yml?placement=${instance.id})\n\n## Purpose\n\nDescribe the behavior this Element is responsible for.\n\n## Requirements\n\n### Requirement: Perform the intended action\nThe system SHALL perform the intended behavior for this Element.\n\n#### Scenario: User interacts with this Element\n- **WHEN** the user interacts with this Element\n- **THEN** describe the expected observable outcome.\n`;
     state.specSources.set(filePath, source);
     state.createdSpecDrafts.set(filePath, {
       owner: "instance",
@@ -336,7 +518,13 @@ export class SpecEditor {
       "- **WHEN** the user navigates to this Screen",
       "- **THEN** the Screen is displayed."
     ].join("\n");
-    const source = `# ${heading} behavior\n\n## Purpose\n\nDescribe when this Screen's named visual states become active.\n\n## Requirements\n\n### Requirement: Show the matching preview state\nThe Screen SHALL show each named preview state when its activation condition is met.\n\n${scenarios}\n`;
+    const previewLinks = [
+      `[${heading} Screen](specux://screen/${screen.id}/screen.yml)`,
+      ...states.map((previewState) =>
+        `[${previewState.name}](specux://screen/${screen.id}/screen.yml?state=${previewState.id})`
+      )
+    ].join("\n");
+    const source = `# ${heading} behavior\n\n${previewLinks}\n\n## Purpose\n\nDescribe when this Screen's named visual states become active.\n\n## Requirements\n\n### Requirement: Show the matching preview state\nThe Screen SHALL show each named preview state when its activation condition is met.\n\n${scenarios}\n`;
     state.specSources.set(filePath, source);
     state.createdSpecDrafts.set(filePath, {
       owner: "screen",

@@ -10,9 +10,9 @@ export class TemplateMarkupRenderer {
     this.appRoot = appRoot;
   }
 
-  mount(root, markup, assetBase, instance, template) {
+  mount(root, markup, materialBase, instance, material) {
     const parsed = new DOMParser().parseFromString(markup, "text/html");
-    this.applyPlaceholders(parsed, instance, template);
+    this.applyPlaceholders(parsed, instance, material);
     parsed.querySelectorAll("script, iframe, object, embed, form, base, link").forEach((node) => node.remove());
     parsed.querySelectorAll("*").forEach((node) => {
       for (const attribute of [...node.attributes]) {
@@ -20,83 +20,18 @@ export class TemplateMarkupRenderer {
         if (name.startsWith("on")) {
           node.removeAttribute(attribute.name);
         } else if (name === "style") {
-          node.setAttribute(attribute.name, this.rewriteCss(attribute.value, assetBase));
+          node.setAttribute(attribute.name, this.rewriteCss(attribute.value, materialBase));
         } else if (name === "src" || name === "href") {
-          const safeUrl = this.safeResource(attribute.value, assetBase);
+          const safeUrl = this.safeResource(attribute.value, materialBase);
           if (safeUrl) node.setAttribute(attribute.name, safeUrl);
           else node.removeAttribute(attribute.name);
         }
       }
     });
 
-    if (template.data.slots) {
-      const editorStyle = document.createElement("style");
-      editorStyle.textContent = `
-        .specux-drop-slot {
-          display: flex;
-          flex-direction: column;
-          gap: 14px;
-          min-height: 48px;
-          border-radius: 8px;
-        }
-        .specux-drop-slot > .asset-instance,
-        .specux-render-slot > .asset-instance {
-          box-sizing: border-box;
-          width: 100%;
-          min-width: 0;
-        }
-        .specux-drop-slot.drop-target {
-          outline: 2px dashed var(--studio-primary);
-          outline-offset: 3px;
-          background: color-mix(in srgb, var(--studio-primary) 7%, transparent);
-        }
-        .specux-drop-slot:empty::before {
-          content: attr(data-placeholder);
-          padding: 12px;
-          border: 1px dashed var(--studio-border);
-          border-radius: 8px;
-          color: var(--studio-muted);
-          font: 12px Inter, "Segoe UI", Arial, sans-serif;
-          text-align: center;
-        }
-        .asset-instance {
-          position: relative;
-          margin: 0;
-          padding: 6px;
-          border: 1px solid transparent;
-          border-radius: 9px;
-          cursor: pointer;
-        }
-        .asset-instance:hover { border-color: var(--studio-border); }
-        .asset-instance.selected {
-          border-color: var(--studio-focus);
-          background: color-mix(in srgb, var(--studio-primary) 4%, transparent);
-        }
-        .asset-instance.dragging { opacity: .45; }
-        .asset-instance.drop-before::before, .asset-instance.drop-after::after {
-          position: absolute;
-          right: 0;
-          left: 0;
-          height: 3px;
-          border-radius: 3px;
-          background: var(--studio-primary);
-          content: "";
-          pointer-events: none;
-        }
-        .asset-instance.drop-before::before { top: -3px; }
-        .asset-instance.drop-after::after { bottom: -3px; }
-        .asset-instance:focus-visible {
-          outline: 2px solid var(--studio-focus);
-          outline-offset: 2px;
-        }
-      `;
-      editorStyle.textContent = this.scopeCss(root, editorStyle.textContent);
-      root.append(editorStyle);
-    }
-
     parsed.querySelectorAll("style").forEach((style) => {
       const scopedStyle = document.createElement("style");
-      scopedStyle.textContent = this.scopeCss(root, this.rewriteCss(style.textContent, assetBase));
+      scopedStyle.textContent = this.scopeCss(root, this.rewriteCss(style.textContent, materialBase));
       root.append(scopedStyle);
       style.remove();
     });
@@ -105,20 +40,20 @@ export class TemplateMarkupRenderer {
     }
   }
 
-  applyPlaceholders(parsed, instance, template) {
+  applyPlaceholders(parsed, instance, material) {
     for (const node of parsed.querySelectorAll("*")) {
       for (const attribute of [...node.attributes]) {
         if (!attribute.value.includes("${")) continue;
         const exactMatch = /^\$\{([a-zA-Z_][a-zA-Z0-9_.-]*)\}$/.exec(attribute.value);
         if (exactMatch && booleanHtmlAttributes.has(attribute.name.toLowerCase())) {
-          const value = this.getPlaceholderValue(instance, template, exactMatch[1]);
+          const value = this.getPlaceholderValue(instance, material, exactMatch[1]);
           if (value === true) node.setAttribute(attribute.name, "");
           else node.removeAttribute(attribute.name);
           continue;
         }
         node.setAttribute(
           attribute.name,
-          this.interpolatePlaceholders(attribute.value, instance, template)
+          this.interpolatePlaceholders(attribute.value, instance, material)
         );
       }
     }
@@ -127,49 +62,49 @@ export class TemplateMarkupRenderer {
     let textNode = walker.nextNode();
     while (textNode) {
       if (textNode.nodeValue.includes("${")) {
-        textNode.nodeValue = this.interpolatePlaceholders(textNode.nodeValue, instance, template);
+        textNode.nodeValue = this.interpolatePlaceholders(textNode.nodeValue, instance, material);
       }
       textNode = walker.nextNode();
     }
   }
 
-  interpolatePlaceholders(text, instance, template) {
+  interpolatePlaceholders(text, instance, material) {
     return text.replace(/\$\{([a-zA-Z_][a-zA-Z0-9_.-]*)\}/g, (_, path) =>
-      String(this.getPlaceholderValue(instance, template, path) ?? "")
+      String(this.getPlaceholderValue(instance, material, path) ?? "")
     );
   }
 
-  getPlaceholderValue(instance, template, path) {
-    const value = this.getInstanceValue(instance, template, path);
+  getPlaceholderValue(instance, material, path) {
+    const value = this.getInstanceValue(instance, material, path);
     const attributePath = path.startsWith("attributes.") ? path.slice("attributes.".length) : null;
-    if (value === undefined && attributePath && !template.data.attributes?.[attributePath]) {
-      throw new Error(`Template "${template.id}" references undefined attribute "${attributePath}".`);
+    if (value === undefined && attributePath && !material.data.attributes?.[attributePath]) {
+      throw new Error(`Material "${material.id}" references undefined attribute "${attributePath}".`);
     }
     return value;
   }
 
-  safeResource(path, assetBase) {
+  safeResource(path, materialBase) {
     if (!path || path.startsWith("#") || path.startsWith("data:image/")) return path;
     if (path.startsWith("/") || path.includes("\\") || path.split("/").includes("..")) return null;
-    const url = new URL(path, assetBase);
-    if (url.origin !== this.appRoot.origin || !url.pathname.startsWith(assetBase.pathname)) return null;
+    const url = new URL(path, materialBase);
+    if (url.origin !== this.appRoot.origin || !url.pathname.startsWith(materialBase.pathname)) return null;
     return url.href;
   }
 
-  rewriteCss(css, assetBase) {
+  rewriteCss(css, materialBase) {
     return css
       .replace(/@import[^;]+;/gi, "")
       .replace(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/gi, (match, doubleQuoted, singleQuoted, bare) => {
         const resource = doubleQuoted ?? singleQuoted ?? bare.trim();
-        const safeUrl = this.safeResource(resource, assetBase);
+        const safeUrl = this.safeResource(resource, materialBase);
         return safeUrl ? `url("${safeUrl}")` : "none";
       });
   }
 
-  getInstanceValue(instance, template, path) {
+  getInstanceValue(instance, material, path) {
     const normalized = path.startsWith("attributes.") ? path.slice("attributes.".length) : path;
     if (normalized.startsWith("attributes.")) return undefined;
-    const definition = template.data.attributes?.[normalized];
+    const definition = material.data.attributes?.[normalized];
     if (definition) {
       if (definition.overridable === true && Object.hasOwn(instance.attributes || {}, normalized)) {
         return instance.attributes[normalized];

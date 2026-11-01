@@ -2,7 +2,7 @@
 
 Save the manifest at `specux/project.yml`, relative to the working directory.
 
-The manifest and each entry are YAML mappings. Only the properties listed for each mapping are allowed; an unlisted property is invalid. Asset files are discovered from the filesystem and are not listed in the manifest.
+The manifest and each entry are YAML mappings. Only the properties listed for each mapping are allowed; an unlisted property is invalid.
 
 | Property | Type | Required | Definition |
 |---|---|---:|---|
@@ -20,9 +20,9 @@ Each Screen entry is a YAML mapping with these properties:
 | `id` | string | Yes | Screen identifier. Must start with a lowercase letter and contain only lowercase letters, numbers, or hyphens. |
 | `file` | string | Yes | Must be `screens/<screen-id>/screen.yml`. |
 
-All manifest paths are relative to the `specux/` directory containing `project.yml`. Screen files live in `screens/<screen-id>/screen.yml`; reusable Materials live in `materials/<material-id>.stml`. Screen behavior specs live in `screens/<screen-id>/specs/screen.md`, and project-wide specs remain in `specs/`. Optional Asset files may remain under `assets/` or `screens/<screen-id>/assets/`, but they are not Screen Materials. Use forward slashes. Do not use absolute paths, backslashes, empty path segments, `.` or `..` segments, or hidden path segments.
+All manifest paths are relative to the `specux/` directory containing `project.yml`. Screen files live in `screens/<screen-id>/screen.yml`; reusable Materials and their local resources live under `materials/`. Screen behavior specs live in `screens/<screen-id>/specs/screen.md`, and project-wide specs remain in `specs/`. Use forward slashes. Do not use absolute paths, backslashes, empty path segments, `.` or `..` segments, or hidden path segments.
 
-Screen IDs and paths must be unique. `screens` must be a YAML list. `theme` must be a non-empty string. There is no asset registry to keep synchronized: tools discover optional asset files by scanning the shared and Screen-owned Asset directories, and discover reusable Material STML files under `materials/`. See [`screen.md`](screen.md) and [`material.md`](material.md) for their schemas.
+Screen IDs and paths must be unique. `screens` must be a YAML list and `theme` must be a non-empty string. Reusable Material STML files are discovered under `materials/`. See [`screen.md`](screen.md) and [`material.md`](material.md) for their schemas.
 
 ```yaml
 name: Example application

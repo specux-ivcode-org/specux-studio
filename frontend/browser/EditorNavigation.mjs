@@ -32,27 +32,22 @@ export class EditorNavigation {
       };
     }
     if (state.viewingSpec) {
+      const ownerScreen = state.screens.find((entry) =>
+        entry.file === state.activeSpecScreenFile
+      ) || screen;
       return {
         view: "spec",
-        screen: state.activeSpecOwner === "project" ? null : screenContext,
+        screen: state.activeSpecOwner === "project" || !ownerScreen ? null : {
+          id: ownerScreen.id,
+          name: ownerScreen.data.name || ownerScreen.id,
+          file: ownerScreen.file
+        },
         spec: state.activeSpecPath ? {
           file: state.activeSpecPath,
           owner: state.activeSpecOwner,
           ...(state.activeSpecOwner === "instance"
             ? { instancePath: state.activeSpecInstancePath }
             : {})
-        } : null
-      };
-    }
-    if (state.viewingAssetTemplate) {
-      const template = state.assets.get(state.activeAssetId);
-      return {
-        view: "asset-template",
-        screen: screenContext,
-        asset: template ? {
-          id: template.id,
-          name: template.data.name || template.id,
-          file: state.activeProjectFilePath || template.templateFile
         } : null
       };
     }
@@ -71,22 +66,19 @@ export class EditorNavigation {
     const instance = screen && state.activeInstancePath.length
       ? services.getInstanceAtPath(screen, state.activeInstancePath)
       : null;
-    const template = instance?.type === "template"
-      ? services.getTemplateByPath(instance.src)
-      : null;
+    const material = instance ? state.materialFiles.get(instance.src) : null;
     return {
       view: "screen",
       screen: screenContext,
-      selectedAsset: instance ? {
+      selectedPlacement: instance ? {
         id: instance.id,
         name: services.getElementLabel(instance),
         instancePath: state.activeInstancePath,
         instance,
-        ...(template ? { template: {
-          name: template.data.name || template.id,
-          description: template.data.description || "",
-          attributes: template.data.attributes || {},
-          slots: template.data.slots || []
+        ...(material ? { material: {
+          name: material.data.name || material.id,
+          description: material.data.description || "",
+          attributes: material.data.attributes || {}
         } } : {})
       } : null
     };
@@ -98,9 +90,6 @@ export class EditorNavigation {
     if (selection.view === "workflow") return selection.workflow?.file || null;
     if (selection.view === "theme") return selection.file || state.project?.theme || null;
     if (selection.view === "spec") return selection.spec?.file || null;
-    if (selection.view === "asset-template") {
-      return selection.asset?.file || selection.asset?.templateFile || null;
-    }
     if (selection.view === "material-file") return selection.material?.file || null;
     return selection.screen?.file || state.screens[state.activeScreenIndex]?.file || null;
   }
@@ -172,10 +161,6 @@ export class EditorNavigation {
       services.renderThemeView(selection.file || state.project?.theme);
       return;
     }
-    if (selection.view === "asset-template" && state.assets.has(selection.asset?.id)) {
-      await services.renderAssetTemplate(selection.asset.id, selection.asset.file);
-      return;
-    }
     if (selection.view === "material-file" && state.materialFiles.has(selection.material?.file)) {
       await services.renderMaterialFile(selection.material.file);
       return;
@@ -221,13 +206,13 @@ export class EditorNavigation {
       const instance = Array.isArray(instancePath)
         ? services.getInstanceAtPath(screen, instancePath)
         : null;
-      const assetSpecOwner = typeof selection.spec?.file === "string"
-        ? state.assetSpecOwners.get(selection.spec.file)
+      const elementSpecOwner = typeof selection.spec?.file === "string"
+        ? state.elementSpecOwners.get(selection.spec.file)
         : null;
       const draft = state.createdSpecDrafts.get(selection.spec?.file);
       if (instance && typeof selection.spec?.file === "string" &&
-          ((assetSpecOwner?.screenFile === screen.file &&
-            services.sameInstancePath(assetSpecOwner.instancePath, instancePath)) ||
+          ((elementSpecOwner?.screenFile === screen.file &&
+            services.sameInstancePath(elementSpecOwner.instancePath, instancePath)) ||
            (draft?.owner === "instance" && draft.screenFile === screen.file &&
             services.sameInstancePath(draft.instancePath, instancePath)))) {
         await services.renderSpecEditor(selection.spec.file, instancePath);
@@ -238,7 +223,7 @@ export class EditorNavigation {
         return;
       }
     }
-    const instancePath = selection.selectedAsset?.instancePath;
+    const instancePath = selection.selectedPlacement?.instancePath;
     if (Array.isArray(instancePath)) {
       const screen = state.screens[state.activeScreenIndex];
       const instance = screen && services.getInstanceAtPath(screen, instancePath);

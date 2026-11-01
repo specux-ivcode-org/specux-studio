@@ -447,7 +447,7 @@ export class ScreenAnnotationController {
     }
     const hitNode = node;
     while (node) {
-      if (node.classList?.contains("material-instance") || node.classList?.contains("asset-instance")) {
+      if (node.classList?.contains("material-instance")) {
         let instancePath;
         try {
           instancePath = JSON.parse(node.dataset.specuxInstancePath || node.dataset.instancePath || "[]");
@@ -472,7 +472,6 @@ export class ScreenAnnotationController {
           ...(node.dataset.materialSrc ? { materialSrc: node.dataset.materialSrc } : {}),
           ...(node.dataset.specuxElementId ? { elementId: node.dataset.specuxElementId } : {}),
           ...(node.dataset.specuxInstanceName ? { name: node.dataset.specuxInstanceName } : {}),
-          ...(node.dataset.specuxAssetId ? { assetId: node.dataset.specuxAssetId } : {}),
           ...(contextText ? { text: contextText } : {})
         };
       }

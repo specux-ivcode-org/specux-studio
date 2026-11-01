@@ -6,12 +6,12 @@ const parseSpecuxYaml = require("../shared/yaml");
 
 test("parses empty flow mappings and sequences", () => {
   assert.deepEqual(parseSpecuxYaml([
-    "assets:",
+    "materials:",
     "  - attributes: {}",
-    "    slots: {}",
+    "    position: {}",
     "empty-list: []"
   ].join("\n")), {
-    assets: [{ attributes: {}, slots: {} }],
+    materials: [{ attributes: {}, position: {} }],
     "empty-list": []
   });
 });

@@ -37,7 +37,7 @@ const CONTENT_TYPES = new Map([
   [".yaml", "text/yaml; charset=utf-8"],
   [".md", "text/markdown; charset=utf-8"],
   [".mmd", "text/markdown; charset=utf-8"],
-  [validation.TEMPLATE_FILE_EXTENSION, "text/plain; charset=utf-8"]
+  [validation.MATERIAL_FILE_EXTENSION, "text/plain; charset=utf-8"]
 ]);
 
 function requestError(message, statusCode = 400) {
@@ -123,7 +123,6 @@ function validateAnnotationSet(body) {
         instancePath: target.instancePath,
         ...(typeof target.elementId === "string" ? { elementId: target.elementId } : {}),
         ...(typeof target.name === "string" ? { name: target.name } : {}),
-        ...(typeof target.assetId === "string" ? { assetId: target.assetId } : {}),
         ...(typeof target.materialId === "string" ? { materialId: target.materialId } : {}),
         ...(typeof target.materialSrc === "string" ? { materialSrc: target.materialSrc } : {}),
         ...(target.text !== undefined ? { text: target.text } : {})
@@ -203,16 +202,6 @@ function isScreenFilePath(relativePath) {
   return /^screens\/[a-z][a-z0-9-]*\/screen\.yml$/.test(relativePath);
 }
 
-function isAssetTemplateBaseDirectoryPath(relativePath) {
-  return relativePath === "assets" ||
-    /^screens\/[a-z][a-z0-9-]*\/assets$/.test(relativePath);
-}
-
-function isAssetTemplatePath(relativePath) {
-  return /^(?:assets|screens\/[a-z][a-z0-9-]*\/assets)\/[a-z][a-z0-9-]*\.stml$/
-    .test(relativePath);
-}
-
 function isMaterialFilePath(relativePath) {
   return /^materials\/[a-z][a-z0-9-]*\.stml$/.test(relativePath);
 }
@@ -254,7 +243,7 @@ function parseYamlMapping(source) {
   return data;
 }
 
-async function resolveProjectFile(projectRoot, relativePath, { create = false, stagedCopies = [] } = {}) {
+async function resolveProjectFile(projectRoot, relativePath, { create = false } = {}) {
   if (typeof relativePath !== "string" || !relativePath || relativePath.includes("\\") ||
       relativePath.startsWith("/") || relativePath.split("/").some((segment) =>
         !segment || segment === "." || segment === ".." || segment.startsWith(".")
@@ -264,14 +253,13 @@ async function resolveProjectFile(projectRoot, relativePath, { create = false, s
   const extension = path.extname(relativePath).toLowerCase();
   const specPath = isSpecPath(relativePath);
   const workflowPath = isWorkflowPath(relativePath);
-  if (![".yml", ".yaml", validation.TEMPLATE_FILE_EXTENSION].includes(extension) &&
+  if (![".yml", ".yaml", validation.MATERIAL_FILE_EXTENSION].includes(extension) &&
       !(extension === ".md" && specPath) && !(extension === ".mmd" && workflowPath)) {
     throw requestError("The editor can only save project YAML, STML, behavior spec Markdown, and Screen workflow Mermaid files.");
   }
 
-  if (extension === validation.TEMPLATE_FILE_EXTENSION &&
-      !isAssetTemplatePath(relativePath) && !isMaterialFilePath(relativePath)) {
-    throw requestError("STML saves are only allowed as named files inside assets/ or materials/.");
+  if (extension === validation.MATERIAL_FILE_EXTENSION && !isMaterialFilePath(relativePath)) {
+    throw requestError("STML saves are only allowed as named files inside materials/.");
   }
 
   const target = path.resolve(projectRoot, ...relativePath.split("/"));
@@ -297,30 +285,6 @@ async function resolveProjectFile(projectRoot, relativePath, { create = false, s
     return newTarget;
   }
 
-  const stagedCopy = stagedCopies.find((copy) => relativePath === copy.targetFile);
-  if (stagedCopy) {
-    const stagedTarget = stagedCopy.stagedFile;
-    if (!isWithin(stagedCopy.stagedDirectory, stagedTarget)) {
-      throw requestError("Save path resolves outside the copied Asset template.");
-    }
-    let realTarget;
-    try {
-      realTarget = await fs.realpath(stagedTarget);
-    } catch (error) {
-      if (error.code === "ENOENT") {
-        throw requestError(`Project file "${relativePath}" does not exist in the copied Asset template.`);
-      }
-      throw error;
-    }
-    if (!isWithin(stagedCopy.stagedDirectory, realTarget)) {
-      throw requestError("Save path resolves outside the copied Asset template.");
-    }
-    if (!(await fs.stat(realTarget)).isFile()) {
-      throw requestError(`Project path "${relativePath}" is not a file.`);
-    }
-    return realTarget;
-  }
-
   let realTarget;
   try {
     realTarget = await fs.realpath(target);
@@ -338,208 +302,7 @@ async function resolveProjectFile(projectRoot, relativePath, { create = false, s
   return realTarget;
 }
 
-function validateAssetTemplateBaseDirectoryPath(relativePath) {
-  if (typeof relativePath !== "string" || !isAssetTemplateBaseDirectoryPath(relativePath) ||
-      relativePath.includes("\\") || relativePath.includes("\0") ||
-      relativePath.split("/").some((segment) =>
-        !segment || segment === "." || segment === ".." || segment.startsWith(".")
-      )) {
-    throw requestError("Asset copies must use canonical assets directories.");
-  }
-}
-
-async function resolveAssetTemplateBaseDirectory(projectRoot, relativePath, options) {
-  validateAssetTemplateBaseDirectoryPath(relativePath);
-  const directoryPath = await resolveProjectDirectory(projectRoot, relativePath, options);
-  return directoryPath;
-}
-
-function getLocalAssetResourcePaths(source) {
-  const references = [];
-  const tags = /<([a-z][\w:-]*)\b([^>]*)>/gi;
-  const attributes = /(?:^|\s)(?:src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
-  for (const tag of source.matchAll(tags)) {
-    for (const attribute of tag[2].matchAll(attributes)) {
-      references.push(attribute[1] ?? attribute[2] ?? attribute[3]);
-    }
-  }
-  const cssUrls = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/gi;
-  for (const reference of source.matchAll(cssUrls)) {
-    references.push((reference[1] ?? reference[2] ?? reference[3]).trim());
-  }
-  return [...new Set(references)].flatMap((reference) => {
-    if (!reference || reference.startsWith("#") || reference.startsWith("data:") ||
-        reference.startsWith("//") || /^[a-z][a-z0-9+.-]*:/i.test(reference)) return [];
-    const encodedPath = reference.split(/[?#]/, 1)[0];
-    let resourcePath;
-    try {
-      resourcePath = decodeURIComponent(encodedPath);
-    } catch {
-      throw requestError(`Asset resource "${reference}" contains invalid URL escaping.`);
-    }
-    if (!resourcePath) return [];
-    if (resourcePath.startsWith("/") || resourcePath.includes("\\") ||
-        resourcePath.split("/").some((segment) =>
-          segment === ".." || segment.startsWith(".")
-        )) {
-      throw requestError(`Asset resource "${reference}" must stay inside the project.`);
-    }
-    return [resourcePath];
-  });
-}
-
-async function resolveAssetResourcePath(baseDirectory, resourcePath, { required = false } = {}) {
-  const segments = resourcePath.split("/");
-  let current = baseDirectory;
-  for (const [index, segment] of segments.entries()) {
-    current = path.join(current, segment);
-    let details;
-    try {
-      details = await fs.lstat(current);
-    } catch (error) {
-      if (error.code === "ENOENT" && !required) return null;
-      if (error.code === "ENOENT") {
-        throw requestError(`Asset resource "${resourcePath}" does not exist in the template folder.`);
-      }
-      throw error;
-    }
-    if (details.isSymbolicLink()) {
-      throw requestError(`Asset resource "${resourcePath}" cannot use symbolic links.`);
-    }
-    if (index < segments.length - 1 && !details.isDirectory()) {
-      throw requestError(`Asset resource "${resourcePath}" has a non-directory parent.`);
-    }
-    if (index === segments.length - 1 && !details.isFile()) {
-      throw requestError(`Asset resource "${resourcePath}" must be a regular file.`);
-    }
-  }
-  return current;
-}
-
-async function prepareAssetCopies(projectRoot, assetCopies, updates) {
-  if (assetCopies === undefined) return [];
-  if (!Array.isArray(assetCopies) || assetCopies.length > 20) {
-    throw requestError("Asset copy requests must contain no more than 20 copies.");
-  }
-  if (assetCopies.length === 0) return [];
-
-  let projectData;
-  const projectUpdate = updates.find((update) => update.path === "project.yml");
-  if (projectUpdate) {
-    projectData = parseYamlMapping(projectUpdate.content);
-  } else {
-    projectData = parseYamlMapping(await fs.readFile(path.join(projectRoot, "project.yml"), "utf8"));
-  }
-  if (!Array.isArray(projectData.screens)) {
-    throw requestError("Asset copies require project.yml to list Screens.");
-  }
-
-  const existingProject = parseYamlMapping(await fs.readFile(path.join(projectRoot, "project.yml"), "utf8"));
-  if (!Array.isArray(existingProject.screens)) {
-    throw requestError("Asset copies require the current project.yml to list Screens.");
-  }
-  const seenTargets = new Set();
-  const plans = [];
-  try {
-    for (const request of assetCopies) {
-      if (!request || Array.isArray(request) || typeof request !== "object" ||
-          !/^[a-z][a-z0-9-]*$/.test(request.sourceId || "") ||
-          !/^[a-z][a-z0-9-]*$/.test(request.targetId || "") ||
-          !/^[a-z][a-z0-9-]*$/.test(request.sourceScreen || "") ||
-          !/^[a-z][a-z0-9-]*$/.test(request.targetScreen || "") ||
-          typeof request.sourceFile !== "string" ||
-          request.sourceFile !== `screens/${request.sourceScreen}/assets/${request.sourceId}${validation.TEMPLATE_FILE_EXTENSION}` ||
-          request.targetFile !== `screens/${request.targetScreen}/assets/${request.targetId}${validation.TEMPLATE_FILE_EXTENSION}`) {
-        throw requestError("Each asset copy must identify valid source and target assets and a destination Screen.");
-      }
-      if (seenTargets.has(request.targetFile)) {
-        throw requestError(`Asset file "${request.targetFile}" is copied more than once in one save.`);
-      }
-      seenTargets.add(request.targetFile);
-      if (!existingProject.screens.some((entry) => entry.id === request.sourceScreen) ||
-          request.sourceScreen === request.targetScreen) {
-        throw requestError(`Asset "${request.sourceId}" is not a page-specific source for this copy.`);
-      }
-      if (!projectData.screens.some((entry) => entry.id === request.targetScreen)) {
-        throw requestError(`Destination Screen "${request.targetScreen}" does not exist.`);
-      }
-
-      const sourceParent = path.posix.dirname(request.sourceFile);
-      const targetParent = path.posix.dirname(request.targetFile);
-      const sourceParentPath = await resolveAssetTemplateBaseDirectory(projectRoot, sourceParent);
-      const targetParentPath = await resolveAssetTemplateBaseDirectory(projectRoot, targetParent, { create: true });
-      const sourcePath = path.join(sourceParentPath, path.posix.basename(request.sourceFile));
-      const targetPath = path.join(targetParentPath, path.posix.basename(request.targetFile));
-      await resolveAssetResourcePath(
-        sourceParentPath,
-        path.posix.basename(request.sourceFile),
-        { required: true }
-      );
-      try {
-        await fs.lstat(targetPath);
-        throw requestError(`Asset copy destination "${request.targetFile}" already exists.`, 409);
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
-      }
-      const stagedDirectory = path.join(targetParentPath, `.${request.targetId}.${randomUUID()}.tmp`);
-      const stagedFile = path.join(stagedDirectory, path.posix.basename(request.targetFile));
-      const plan = {
-        ...request,
-        sourcePath,
-        targetPath,
-        sourceParentPath,
-        targetParentPath,
-        stagedDirectory,
-        stagedFile
-      };
-      plans.push(plan);
-      await fs.mkdir(stagedDirectory);
-      const assetSource = await fs.readFile(sourcePath, "utf8");
-      const { header, body } = validation.splitAssetDocument(assetSource, "Source template asset");
-      const assetDocument = parseYamlMapping(header);
-      validation.validateAssetTemplateHeader(assetDocument, "Source template asset");
-      if (assetDocument.id !== request.sourceId) {
-        throw requestError(`Source asset "${request.sourceId}" has a mismatched ${path.posix.basename(request.sourceFile)} front matter id.`);
-      }
-      assetDocument.id = request.targetId;
-      const targetSource = validation.formatAssetDocument(YAML.stringify(assetDocument), body);
-      await fs.writeFile(stagedFile, targetSource, "utf8");
-      const targetUpdate = updates.find((update) => update.path === request.targetFile);
-      const resourceBody = targetUpdate
-        ? validation.splitAssetDocument(targetUpdate.content, request.targetFile).body
-        : body;
-      for (const resourcePath of getLocalAssetResourcePaths(resourceBody)) {
-        const sourceResource = path.resolve(sourceParentPath, ...resourcePath.split("/"));
-        if (!isWithin(sourceParentPath, sourceResource)) {
-          throw requestError(`Asset resource "${resourcePath}" resolves outside its template folder.`);
-        }
-        const targetResource = path.resolve(targetParentPath, ...resourcePath.split("/"));
-        if (!isWithin(targetParentPath, targetResource) || targetResource === targetPath) {
-          throw requestError(`Asset resource "${resourcePath}" conflicts with the copied template file.`);
-        }
-        await resolveAssetResourcePath(sourceParentPath, resourcePath, { required: true });
-        const existingResourcePath = await resolveAssetResourcePath(targetParentPath, resourcePath);
-        if (existingResourcePath) {
-          const existingResource = await fs.readFile(existingResourcePath);
-          const sourceContent = await fs.readFile(sourceResource);
-          if (!existingResource.equals(sourceContent)) {
-            throw requestError(`Asset resource "${resourcePath}" conflicts with a file in the destination template folder.`);
-          }
-        } else {
-          const stagedResource = path.resolve(stagedDirectory, ...resourcePath.split("/"));
-          await fs.mkdir(path.dirname(stagedResource), { recursive: true });
-          await fs.copyFile(sourceResource, stagedResource);
-        }
-      }
-    }
-  } catch (error) {
-    await Promise.all(plans.map(({ stagedDirectory }) => fs.rm(stagedDirectory, { recursive: true, force: true })));
-    throw error;
-  }
-  return plans;
-}
-
-async function saveProjectFiles(projectRoot, files, assetCopies) {
+async function saveProjectFiles(projectRoot, files) {
   if (!Array.isArray(files) || files.length === 0 || files.length > MAX_FILES_PER_SAVE) {
     throw requestError(`Save requests must contain between 1 and ${MAX_FILES_PER_SAVE} files.`);
   }
@@ -562,9 +325,19 @@ async function saveProjectFiles(projectRoot, files, assetCopies) {
       }
       try {
         validation.validateSpecContent(file.content);
+        const references = validation.parseSpecScreenReferences(file.content, file.path);
         if (/^screens\/[^/]+\/specs\/element-/.test(file.path)) {
-          const elementId = validation.validateElementSpecHeader(file.content, file.path);
-          validation.validateElementSpecPath(file.path, elementId);
+          const identity = validation.getElementSpecIdentity(file.path);
+          if (!identity) throw new Error("Element behavior spec path is invalid.");
+          validation.validateElementSpecPath(file.path, identity.elementId);
+          if (!references.some((reference) =>
+            reference.screenId === identity.screenId &&
+            reference.placementId === identity.elementId
+          )) {
+            throw new Error(
+              `Element behavior specs must include a SpecUX Screen link to Element "${identity.elementId}".`
+            );
+          }
         }
       } catch (error) {
         throw requestError(`${file.path}: ${error.message || String(error)}`);
@@ -576,46 +349,20 @@ async function saveProjectFiles(projectRoot, files, assetCopies) {
         throw requestError("Screen workflow Mermaid save entries must contain text content at a valid Screen workflow path.");
       }
       updates.push({ path: file.path, content: file.content, create });
-    } else if (extension === validation.TEMPLATE_FILE_EXTENSION && isMaterialFilePath(file.path)) {
+    } else if (extension === validation.MATERIAL_FILE_EXTENSION && isMaterialFilePath(file.path)) {
       if (typeof file.content !== "string" || Object.hasOwn(file, "data")) {
         throw requestError("Material STML save entries must contain text content.");
       }
       try {
-        const { header, body } = validation.splitAssetDocument(file.content, file.path);
+        const { header, body } = validation.splitMaterialDocument(file.content, file.path);
         const materialDocument = parseYamlMapping(header);
         validation.validateMaterialDocumentHeader(materialDocument, file.path);
-        const expectedId = path.posix.basename(file.path, validation.TEMPLATE_FILE_EXTENSION);
+        const expectedId = path.posix.basename(file.path, validation.MATERIAL_FILE_EXTENSION);
         if (materialDocument.id !== expectedId) {
-          throw new Error(`front matter id must match Material file name "${expectedId}${validation.TEMPLATE_FILE_EXTENSION}".`);
+          throw new Error(`front matter id must match Material file name "${expectedId}${validation.MATERIAL_FILE_EXTENSION}".`);
         }
         validation.validateMaterialMarkup(body, file.path);
         validation.validateMaterialAttributeMarkup(materialDocument, body, file.path);
-      } catch (error) {
-        throw requestError(`${file.path}: ${error.message || String(error)}`);
-      }
-      updates.push({ path: file.path, content: file.content, create });
-    } else if (extension === validation.TEMPLATE_FILE_EXTENSION) {
-      if (typeof file.content !== "string" || Object.hasOwn(file, "data")) {
-        throw requestError("Asset document save entries must contain text content.");
-      }
-      try {
-        const { header, body } = validation.splitAssetDocument(file.content, file.path);
-        const assetDocument = parseYamlMapping(header);
-        validation.validateAssetTemplateHeader(assetDocument, file.path);
-        validation.assetCategoryPath(assetDocument, `${file.path} front matter`);
-        validation.validateAssetAttributes(assetDocument, `${file.path} front matter`);
-        validation.validateAssetSlots(assetDocument, `${file.path} front matter`);
-        const expectedId = path.posix.basename(file.path, validation.TEMPLATE_FILE_EXTENSION);
-        if (assetDocument.id !== expectedId) {
-          throw new Error(`front matter id must match template file name "${expectedId}${validation.TEMPLATE_FILE_EXTENSION}".`);
-        }
-        validation.validateAssetSlotMarkup(assetDocument, body, file.path);
-        const attributeNames = new Set(Object.keys(assetDocument.attributes || {}));
-        for (const match of body.matchAll(/\$\{attributes\.([^}]+)\}/g)) {
-          if (!attributeNames.has(match[1])) {
-            throw new Error(`references undeclared attribute "${match[1]}".`);
-          }
-        }
       } catch (error) {
         throw requestError(`${file.path}: ${error.message || String(error)}`);
       }
@@ -633,18 +380,12 @@ async function saveProjectFiles(projectRoot, files, assetCopies) {
     }
   }
 
-  const stagedCopies = await prepareAssetCopies(projectRoot, assetCopies, updates);
   const staged = [];
-  const committedCopyFiles = [];
   try {
     for (const update of updates) {
       update.target = await resolveProjectFile(projectRoot, update.path, {
-        create: update.create,
-        stagedCopies
+        create: update.create
       });
-      update.copyStage = stagedCopies.some((copy) =>
-        isWithin(copy.stagedDirectory, update.target)
-      );
     }
     for (const update of updates) {
       const temporaryPath = path.join(
@@ -654,36 +395,7 @@ async function saveProjectFiles(projectRoot, files, assetCopies) {
       await fs.writeFile(temporaryPath, update.content, { encoding: "utf8", flag: "wx" });
       staged.push({ ...update, temporaryPath });
     }
-    for (const update of staged.filter((entry) => entry.copyStage)) {
-      if (update.create) {
-        throw requestError("Copied asset files cannot be created during the same save.");
-      }
-      await fs.rename(update.temporaryPath, update.target);
-    }
-    for (const copy of stagedCopies) {
-      async function commitStagedFiles(directory, relativeDirectory = "") {
-        for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
-          const stagedPath = path.join(directory, entry.name);
-          const relativePath = relativeDirectory
-            ? path.join(relativeDirectory, entry.name)
-            : entry.name;
-          const targetPath = path.join(copy.targetParentPath, relativePath);
-          if (entry.isDirectory()) {
-            await fs.mkdir(targetPath, { recursive: true });
-            await commitStagedFiles(stagedPath, relativePath);
-          } else if (entry.isFile()) {
-            await fs.link(stagedPath, targetPath);
-            await fs.rm(stagedPath);
-            committedCopyFiles.push(targetPath);
-          } else {
-            throw requestError("Copied Asset resources must be regular files or directories.");
-          }
-        }
-      }
-      await commitStagedFiles(copy.stagedDirectory);
-      await fs.rm(copy.stagedDirectory, { recursive: true, force: true });
-    }
-    for (const update of staged.filter((entry) => !entry.copyStage)) {
+    for (const update of staged) {
       if (update.create) {
         try {
           await fs.link(update.temporaryPath, update.target);
@@ -700,18 +412,9 @@ async function saveProjectFiles(projectRoot, files, assetCopies) {
     }
   } catch (error) {
     await Promise.all(staged.map(({ temporaryPath }) => fs.rm(temporaryPath, { force: true })));
-    await Promise.all(stagedCopies.map(({ stagedDirectory }) =>
-      fs.rm(stagedDirectory, { recursive: true, force: true })
-    ));
-    await Promise.all(committedCopyFiles.map((targetPath) =>
-      fs.rm(targetPath, { force: true })
-    ));
     throw error;
   }
-  return {
-    saved: updates.map(({ path: filePath }) => filePath),
-    copied: stagedCopies.map(({ targetId }) => targetId)
-  };
+  return { saved: updates.map(({ path: filePath }) => filePath) };
 }
 
 async function serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, response) {
@@ -733,7 +436,6 @@ async function serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, res
     "/index.html",
     "/app.mjs",
     "/icons/spec-icon.svg",
-    "/browser/AssetEditor.mjs",
     "/browser/EditorEventController.mjs",
     "/styles.css",
     "/browser/BrowserHistory.mjs",
@@ -748,12 +450,11 @@ async function serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, res
     "/browser/PreviewStateController.mjs",
     "/browser/ResponsiveToolbarController.mjs",
     "/browser/ScreenAnnotationController.mjs",
+    "/browser/ScreenController.mjs",
     "/browser/ScreenSelectionController.mjs",
     "/browser/ScreenRulerController.mjs",
     "/browser/ScreenYamlEditor.mjs",
-    "/browser/ScreenInstanceRenderer.mjs",
     "/browser/MaterialCanvas.mjs",
-    "/browser/ScreenElementController.mjs",
     "/browser/ScreenMaterialController.mjs",
     "/browser/ScreenMaterialRenderer.mjs",
     "/browser/MaterialDefaults.mjs",
@@ -1014,8 +715,8 @@ function createServer(options = {}) {
         if (!body || Array.isArray(body) || typeof body !== "object") {
           throw requestError("Save request must be a JSON object.");
         }
-        const result = await saveProjectFiles(projectRoot, body.files, body.assetCopies);
-        sendJson(response, 200, result.copied.length ? result : { saved: result.saved });
+        const result = await saveProjectFiles(projectRoot, body.files);
+        sendJson(response, 200, result);
         return;
       }
       if (request.method === "POST" && pathname === "/api/yaml/parse") {

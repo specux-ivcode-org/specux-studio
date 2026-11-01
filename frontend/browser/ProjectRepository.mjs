@@ -6,12 +6,12 @@ import {
 } from "../../shared/ScreenGroups.mjs";
 
 export class ProjectRepository {
-  constructor({ appRoot, fetcher, parseYaml, validation, templateFileExtension }) {
+  constructor({ appRoot, fetcher, parseYaml, validation, materialFileExtension }) {
     this.appRoot = appRoot;
     this.fetcher = fetcher;
     this.parseYaml = parseYaml;
     this.validation = validation;
-    this.templateFileExtension = templateFileExtension;
+    this.materialFileExtension = materialFileExtension;
     this.materialFiles = new Map();
   }
 
@@ -345,32 +345,39 @@ export class ProjectRepository {
         );
         if (childPath) return childPath;
       }
-      for (const [slotId, children] of Object.entries(instance.slots || {})) {
-        if (!Array.isArray(children)) continue;
-        const childPath = this.findInstancePathById(children, elementId, [...instancePath, slotId]);
-        if (childPath) return childPath;
-      }
     }
     return null;
   }
 
-  refreshAssetSpecOwner(filePath, source, screens, assetSpecOwners) {
-    assetSpecOwners.delete(filePath);
-    const screen = screens.find((entry) =>
-      filePath.startsWith(`screens/${entry.id}/specs/element-`)
-    );
-    if (!screen) return null;
-    const elementId = this.validation.validateElementSpecHeader(source, filePath);
+  refreshElementSpecOwner(filePath, source, screens, elementSpecOwners) {
+    elementSpecOwners.delete(filePath);
+    const identity = this.validation.getElementSpecIdentity(filePath);
+    if (!identity) return null;
+    const screen = screens.find((entry) => entry.id === identity.screenId);
+    if (!screen) {
+      throw new Error(`${filePath}: Screen "${identity.screenId}" is not available.`);
+    }
+    const { elementId } = identity;
     this.validation.validateElementSpecPath(filePath, elementId);
+    const references = this.validation.validateSpecScreenReferences(source, screens, filePath);
+    if (!references.some((reference) =>
+      reference.screenId === screen.id && reference.placementId === elementId
+    )) {
+      throw new Error(
+        `${filePath} must include a SpecUX Screen link to its Element "${elementId}".`
+      );
+    }
     const instancePath = this.findInstancePathById(screen.data.materials || [], elementId);
-    if (!instancePath) return null;
-    for (const [otherPath, owner] of assetSpecOwners) {
+    if (!instancePath) {
+      throw new Error(`${filePath} links to unavailable Element "${elementId}".`);
+    }
+    for (const [otherPath, owner] of elementSpecOwners) {
       if (otherPath !== filePath && owner.screenFile === screen.file && owner.elementId === elementId) {
         throw new Error(`${filePath}: Element "${elementId}" already has behavior spec "${otherPath}".`);
       }
     }
     const owner = { screenFile: screen.file, elementId, instancePath };
-    assetSpecOwners.set(filePath, owner);
+    elementSpecOwners.set(filePath, owner);
     return owner;
   }
 
@@ -383,8 +390,7 @@ export class ProjectRepository {
       throw new Error("project.yml description must be a string.");
     }
     const supportedProjectProperties = new Set([
-      "name", "description", "specux", "screens", "theme", "spec",
-      "assets", "asset-templates", "workflows"
+      "name", "description", "specux", "screens", "theme", "spec", "workflows"
     ]);
     for (const property of Object.keys(project)) {
       if (!supportedProjectProperties.has(property)) {
@@ -423,35 +429,20 @@ export class ProjectRepository {
       screenIds.add(entry.id);
       screenFiles.add(entry.file);
     }
-    if (Object.hasOwn(project, "assets") || Object.hasOwn(project, "asset-templates")) {
-      throw new Error("project.yml asset registries are no longer supported; place files under assets/ or screens/<screen-id>/assets/.");
-    }
     if (Object.hasOwn(project, "workflows")) {
       throw new Error("project.yml workflows are no longer supported; use project.spec or a Screen spec.");
     }
 
     const projectFilePaths = await this.loadProjectFilePaths();
     const materialPaths = projectFilePaths.filter((filePath) =>
-      filePath.startsWith("materials/") && filePath.endsWith(this.templateFileExtension)
+      filePath.startsWith("materials/") && filePath.endsWith(this.materialFileExtension)
     );
     for (const filePath of materialPaths) {
       if (!/^materials\/[a-z][a-z0-9-]*\.stml$/.test(filePath)) {
         throw new Error(`${filePath}: Material STML files must be directly inside materials/.`);
       }
     }
-    const assetFiles = new Map(projectFilePaths
-      .filter((filePath) => /^(?:assets|screens\/[a-z][a-z0-9-]*\/assets)\//.test(filePath))
-      .map((filePath) => {
-        const extension = filePath.slice(filePath.lastIndexOf(".")).toLowerCase();
-        const type = extension === this.templateFileExtension
-          ? "template"
-          : [".avif", ".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".webp"].includes(extension)
-            ? "image"
-            : "resource";
-        return [filePath, type];
-      }));
-
-    const [screens, loadedAssets, loadedMaterials, loadedTheme] = await Promise.all([
+    const [screens, loadedMaterials, loadedTheme] = await Promise.all([
       Promise.all(project.screens.map(async (entry) => {
         const yamlSource = await this.loadText(entry.file);
         return {
@@ -465,48 +456,14 @@ export class ProjectRepository {
           yamlTimer: null
         };
       })),
-      Promise.all([...assetFiles]
-        .filter(([, type]) => type === "template")
-        .map(async ([templateFile]) => {
-          const directory = templateFile.slice(0, templateFile.lastIndexOf("/"));
-          const base = this.safeProjectUrl(`${directory}/`);
-          const documentSource = await this.loadText(templateFile);
-          const { header, body } = this.validation.splitAssetDocument(documentSource, templateFile);
-          const data = await this.parseYamlSource(header, `${templateFile} front matter`);
-          this.validation.validateAssetTemplateHeader(data, templateFile);
-          const fileId = templateFile.slice(
-            templateFile.lastIndexOf("/") + 1,
-            -this.templateFileExtension.length
-          );
-          if (data.id !== fileId) {
-            throw new Error(`Asset id must match the filename in ${templateFile}.`);
-          }
-          this.validation.assetCategoryPath(data, `${templateFile} front matter`);
-          this.validation.validateAssetAttributes(data, `${templateFile} front matter`);
-          this.validation.validateAssetSlots(data, `${templateFile} front matter`);
-          this.validation.validateAssetSlotMarkup(data, body, templateFile);
-          return {
-            id: data.id,
-            screen: templateFile.match(/^screens\/([^/]+)\/assets\//)?.[1] || null,
-            base,
-            data,
-            templateFile,
-            documentSource,
-            yamlSource: header,
-            yamlSourceMode: "source",
-            yamlParseVersion: 0,
-            yamlSerializeVersion: 0,
-            html: body
-          };
-        })),
       Promise.all(materialPaths.map(async (filePath) => {
         const documentSource = await this.loadText(filePath);
-        const { header, body } = this.validation.splitAssetDocument(documentSource, filePath);
+        const { header, body } = this.validation.splitMaterialDocument(documentSource, filePath);
         const data = await this.parseYamlSource(header, `${filePath} front matter`);
         this.validation.validateMaterialDocumentHeader(data, `${filePath} front matter`);
         const fileId = filePath.slice(
           filePath.lastIndexOf("/") + 1,
-          -this.templateFileExtension.length
+          -this.materialFileExtension.length
         );
         if (data.id !== fileId) {
           throw new Error(`Material id must match the filename in ${filePath}.`);
@@ -561,6 +518,9 @@ export class ProjectRepository {
     const specSources = new Map(await Promise.all([...specPaths].map(async (filePath) =>
       [filePath, await this.loadText(filePath)]
     )));
+    for (const [filePath, source] of specSources) {
+      this.validation.validateSpecScreenReferences(source, screens, filePath);
+    }
     const workflowPaths = [];
     for (const screen of screens) {
       const prefix = `screens/${screen.id}/workflows/`;
@@ -573,23 +533,19 @@ export class ProjectRepository {
     const workflowSources = new Map(await Promise.all(workflowPaths.map(async (filePath) =>
       [filePath, await this.loadText(filePath)]
     )));
-    const assetSpecOwners = new Map();
+    const elementSpecOwners = new Map();
     for (const filePath of elementSpecPaths) {
-      this.refreshAssetSpecOwner(filePath, specSources.get(filePath), screens, assetSpecOwners);
+      this.refreshElementSpecOwner(filePath, specSources.get(filePath), screens, elementSpecOwners);
     }
-    const assets = new Map(loadedAssets.map((asset) => [asset.id, asset]));
-    if (assets.size !== loadedAssets.length) throw new Error("Discovered template ids must be unique.");
 
     return {
       project,
       projectFilePaths,
-      assetFiles,
       materialFiles,
       screens,
-      assets,
       specSources,
       workflowSources,
-      assetSpecOwners,
+      elementSpecOwners,
       theme: loadedTheme
     };
   }

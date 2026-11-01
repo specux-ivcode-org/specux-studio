@@ -77,4 +77,4 @@ adherence:
   behavior: strict
   layout: strict
   theme: none
-  asset: loose
+  material: loose

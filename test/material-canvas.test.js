@@ -625,12 +625,13 @@ test("keeps grouped Material placements from being transformed independently", a
   assert.equal(Boolean(nestedGroupFrame.querySelector(".material-rotate-control")), false);
 });
 
-test("keeps legacy slot compositions full-width on the canvas", async () => {
+test("gives unsized groups the full canvas width", async () => {
   const { MaterialCanvas } = await import("../frontend/browser/MaterialCanvas.mjs");
   const host = createElement("div");
   const instance = {
     id: "layout",
-    slots: { content: [{ id: "child" }] }
+    type: "group",
+    children: [{ id: "child" }]
   };
   const content = createElement("div");
   content.offsetWidth = 1000;
@@ -787,7 +788,6 @@ test("adds Label instances from one reusable template with independent variables
   const { ProjectPersistence } = await import("../frontend/browser/ProjectPersistence.mjs");
   const persistence = new ProjectPersistence({
     state: {
-      assets: new Map(),
       materialFiles,
       createdMaterialFiles
     },

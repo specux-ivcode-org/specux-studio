@@ -39,8 +39,7 @@ export class BrowserHistory {
       requestedView: parameters.get("view"),
       screen: parameters.get("screen") ? { id: parameters.get("screen") } : null,
       owner: parameters.get("owner"),
-      instancePath,
-      assetId: parameters.get("assetId")
+      instancePath
     };
   }
 
@@ -60,18 +59,12 @@ export class BrowserHistory {
     } else {
       url.searchParams.delete("owner");
     }
-    const instancePath = selection.spec?.instancePath || selection.selectedAsset?.instancePath;
+    const instancePath = selection.spec?.instancePath || selection.selectedPlacement?.instancePath;
     if (Array.isArray(instancePath)) {
       url.searchParams.set("instancePath", JSON.stringify(instancePath));
     } else {
       url.searchParams.delete("instancePath");
     }
-    if (selection.view === "asset-template" && selection.asset?.id) {
-      url.searchParams.set("assetId", selection.asset.id);
-    } else {
-      url.searchParams.delete("assetId");
-    }
-
     const state = this.window.history.state && typeof this.window.history.state === "object"
       ? { ...this.window.history.state }
       : {};
@@ -104,14 +97,10 @@ export class BrowserHistory {
           : {})
       };
     }
-    if (selection.view === "asset-template" && selection.asset) {
-      snapshot.asset = {
-        id: selection.asset.id,
-        file: selection.asset.file
+    if (selection.selectedPlacement?.instancePath) {
+      snapshot.selectedPlacement = {
+        instancePath: [...selection.selectedPlacement.instancePath]
       };
-    }
-    if (selection.selectedAsset?.instancePath) {
-      snapshot.selectedAsset = { instancePath: [...selection.selectedAsset.instancePath] };
     }
     return snapshot;
   }

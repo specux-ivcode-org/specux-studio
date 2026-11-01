@@ -80,7 +80,7 @@ Children use coordinates relative to their containing group's top-left corner. G
 
 The Studio can create a group from a Ctrl multi-selection only when the selected placements are consecutive siblings in stacking order and belong to the same layer. Choose **X/Y** in the Screen toolbar to resize dimensions, or **Transform** to scale the rendered placement without changing its base dimensions. The toolbar choice is temporary; the resulting size or transform is saved in Screen YAML. Right-click a group and choose **Ungroup** to restore its children at that stack position while preserving composed transforms, including shear.
 
-IDs must begin with a lowercase letter, contain only lowercase letters, numbers, and hyphens, and be unique across all placements and groups in the Screen. Each Material placement `src` must reference a discovered Material file. Do not use the former `elements` property or asset templates for Screen composition.
+IDs must begin with a lowercase letter, contain only lowercase letters, numbers, and hyphens, and be unique across all placements and groups in the Screen. Each Material placement `src` must reference a discovered Material file. Do not use the former `elements` property; all visual content is represented as Material placements.
 
 ## Layers
 

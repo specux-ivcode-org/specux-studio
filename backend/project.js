@@ -42,18 +42,12 @@ async function validateProject(projectRoot) {
   const { isScreenGroup, isValidAffineMatrix, isValidScale } =
     await import("../shared/ScreenGroups.mjs");
   const errors = [];
-  const assets = new Map();
   const materialFiles = new Map();
   const screens = [];
-  const usedAssetFiles = new Set();
   const referencedSpecPaths = new Set();
   const specContents = new Map();
-  const templateIds = new Map();
   let project;
   let theme;
-  const imageExtensions = new Set([
-    ".avif", ".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".webp"
-  ]);
 
   async function readYaml(relativePath) {
     try {
@@ -129,16 +123,13 @@ async function validateProject(projectRoot) {
       }
       if (!resourcePath) continue;
       const relativePath = path.posix.join(baseDirectory, resourcePath);
-      if (await checkFile(relativePath, `${sourceFile} resource "${reference}"`) &&
-          /^(?:assets|screens\/[a-z][a-z0-9-]*\/assets)\//.test(relativePath)) {
-        usedAssetFiles.add(relativePath);
-      }
+      await checkFile(relativePath, `${sourceFile} resource "${reference}"`);
     }
   }
 
   project = await readYaml("project.yml");
   if (!project) {
-    return { errors, project: null, assets, materialFiles, screens, usedAssetFiles, referencedSpecPaths };
+    return { errors, project: null, materialFiles, screens, referencedSpecPaths };
   }
 
   if (typeof project.specux !== "string" || !project.specux) {
@@ -153,8 +144,7 @@ async function validateProject(projectRoot) {
     errors.push("project.yml: description must be a string.");
   }
   const projectProperties = new Set([
-    "name", "description", "specux", "screens", "theme", "spec",
-    "assets", "asset-templates", "workflows"
+    "name", "description", "specux", "screens", "theme", "spec", "workflows"
   ]);
   for (const property of Object.keys(project)) {
     if (!projectProperties.has(property)) {
@@ -162,11 +152,8 @@ async function validateProject(projectRoot) {
     }
   }
   if (!Array.isArray(project.screens)) errors.push("project.yml: screens must be a list.");
-  if (Object.hasOwn(project, "assets") || Object.hasOwn(project, "asset-templates")) {
-    errors.push("project.yml: asset registries are no longer supported; place files under assets/ or screens/<screen-id>/assets/.");
-  }
   if (Object.hasOwn(project, "workflows")) {
-    errors.push("project.yml: workflows are no longer supported; use project.spec, a Screen spec, or an Element's spec.");
+    errors.push("project.yml: workflows are no longer supported; use project.spec or a Screen behavior spec.");
   }
   if (project.spec !== undefined) {
     try {
@@ -229,80 +216,6 @@ async function validateProject(projectRoot) {
     if (data) screens.push({ id: entry.id, file: entry.file, data });
   }
 
-  async function discoverAssetDirectory(relativeDirectory, ownerScreen, baseDirectory = relativeDirectory) {
-    let directory;
-    try {
-      directory = await resolveProjectPath(projectRoot, relativeDirectory, "directory");
-    } catch (error) {
-      if (error.code === "ENOENT") return;
-      pushError(errors, relativeDirectory, error);
-      return;
-    }
-    const entries = await fs.readdir(directory, { withFileTypes: true });
-    for (const entry of entries) {
-      const relativePath = `${relativeDirectory}/${entry.name}`;
-      try {
-        const absolutePath = path.join(directory, entry.name);
-        const details = await fs.lstat(absolutePath);
-        if (details.isSymbolicLink()) {
-          throw new Error("asset directories cannot contain symbolic links.");
-        }
-        if (details.isDirectory()) {
-          await discoverAssetDirectory(relativePath, ownerScreen, baseDirectory);
-          continue;
-        }
-        if (!details.isFile()) throw new Error("asset paths must be regular files.");
-        const extension = path.posix.extname(entry.name).toLowerCase();
-        const fileType = extension === validation.TEMPLATE_FILE_EXTENSION
-          ? "template"
-          : imageExtensions.has(extension) ? "image" : "resource";
-        if (fileType === "template" &&
-            path.posix.dirname(relativePath) !== baseDirectory) {
-          throw new Error("STML template files must be directly inside an assets directory.");
-        }
-        const asset = { file: relativePath, type: fileType, screen: ownerScreen };
-        if (fileType === "template") {
-          const source = await fs.readFile(absolutePath, "utf8");
-          const { header, body } = validation.splitAssetDocument(source, relativePath);
-          const document = YAML.parseDocument(header);
-          if (document.errors.length) {
-            throw new Error(document.errors.map((issue) => issue.message).join("; "));
-          }
-          const data = document.toJS();
-          validation.validateAssetTemplateHeader(data, relativePath);
-          if (data.id !== path.posix.basename(relativePath, validation.TEMPLATE_FILE_EXTENSION)) {
-            throw new Error(`front matter id must match filename "${path.posix.basename(relativePath, validation.TEMPLATE_FILE_EXTENSION)}".`);
-          }
-          if (templateIds.has(data.id)) {
-            throw new Error(`template id "${data.id}" is already defined by "${templateIds.get(data.id)}".`);
-          }
-          templateIds.set(data.id, relativePath);
-          validation.assetCategoryPath(data, `${relativePath} front matter`);
-          validation.validateAssetAttributes(data, `${relativePath} front matter`);
-          validation.validateAssetSlots(data, `${relativePath} front matter`);
-          validation.validateAssetSlotMarkup(data, body, relativePath);
-          await validateResources(body, relativePath, path.posix.dirname(relativePath));
-          const attributeNames = new Set(Object.keys(data.attributes || {}));
-          for (const match of body.matchAll(/\$\{attributes\.([^}]+)\}/g)) {
-            if (!attributeNames.has(match[1])) {
-              throw new Error(`references undeclared attribute "${match[1]}".`);
-            }
-          }
-          asset.data = data;
-          asset.html = body;
-        }
-        assets.set(relativePath, asset);
-      } catch (error) {
-        pushError(errors, relativePath, error);
-      }
-    }
-  }
-
-  await discoverAssetDirectory("assets", null);
-  for (const screen of screens) {
-    await discoverAssetDirectory(`screens/${screen.id}/assets`, screen.id);
-  }
-
   async function discoverMaterials() {
     let directory;
     try {
@@ -322,15 +235,15 @@ async function validateProject(projectRoot) {
           if (details.isDirectory()) continue;
           throw new Error("Material paths must be regular files.");
         }
-        if (path.posix.extname(entry.name).toLowerCase() !== validation.TEMPLATE_FILE_EXTENSION) {
+        if (path.posix.extname(entry.name).toLowerCase() !== validation.MATERIAL_FILE_EXTENSION) {
           continue;
         }
-        const expectedId = path.posix.basename(entry.name, validation.TEMPLATE_FILE_EXTENSION);
+        const expectedId = path.posix.basename(entry.name, validation.MATERIAL_FILE_EXTENSION);
         if (!/^[a-z][a-z0-9-]*$/.test(expectedId)) {
           throw new Error("Material filenames must use lowercase letters, numbers, and hyphens.");
         }
         const source = await fs.readFile(absolutePath, "utf8");
-        const { header, body } = validation.splitAssetDocument(source, relativePath);
+        const { header, body } = validation.splitMaterialDocument(source, relativePath);
         const document = YAML.parseDocument(header);
         if (document.errors.length) {
           throw new Error(document.errors.map((issue) => issue.message).join("; "));
@@ -668,9 +581,20 @@ async function validateProject(projectRoot) {
         const content = await fs.readFile(target, "utf8");
         specContents.set(specPath, content);
         validation.validateSpecContent(content);
-        const elementId = validation.validateElementSpecHeader(content, specPath);
+        const identity = validation.getElementSpecIdentity(specPath);
+        if (!identity || identity.screenId !== screen.id) {
+          throw new Error(`${specPath} is not a valid Element spec path for Screen "${screen.id}".`);
+        }
+        const { elementId } = identity;
         validation.validateElementSpecPath(specPath, elementId);
-        if (!materialIds.has(elementId)) continue;
+        const references = validation.parseSpecScreenReferences(content, specPath);
+        if (!references.some((reference) =>
+          reference.screenId === screen.id && reference.placementId === elementId
+        )) {
+          throw new Error(
+            `${specPath} must include a SpecUX Screen link to its Element "${elementId}".`
+          );
+        }
         if (elementSpecIds.has(elementId)) {
           throw new Error(`Element "${elementId}" has more than one behavior spec.`);
         }
@@ -690,6 +614,13 @@ async function validateProject(projectRoot) {
       const content = await fs.readFile(target, "utf8");
       validation.validateSpecContent(content);
       specContents.set(specPath, content);
+    } catch (error) {
+      pushError(errors, `Behavior spec "${specPath}"`, error);
+    }
+  }
+  for (const [specPath, content] of specContents) {
+    try {
+      validation.validateSpecScreenReferences(content, screens, specPath);
     } catch (error) {
       pushError(errors, `Behavior spec "${specPath}"`, error);
     }
@@ -723,10 +654,8 @@ async function validateProject(projectRoot) {
   return {
     errors,
     project,
-    assets,
     materialFiles,
     screens,
-    usedAssetFiles,
     referencedSpecPaths
   };
 }

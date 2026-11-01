@@ -7,7 +7,7 @@
     root.SpecuxValidation = validation;
   }
 })(globalThis, () => {
-  const TEMPLATE_FILE_EXTENSION = ".stml";
+  const MATERIAL_FILE_EXTENSION = ".stml";
   const attributeTypes = ["string", "boolean", "list", "number"];
   const numberFormats = ["integer", "decimal", "currency", "percentage"];
   const themeModeNames = ["light", "dark"];
@@ -105,7 +105,7 @@
     return id;
   }
 
-  function splitAssetDocument(source, context = "Asset template") {
+  function splitMaterialDocument(source, context = "Material") {
     if (typeof source !== "string") {
       throw new Error(`${context} must be text.`);
     }
@@ -116,7 +116,7 @@
     return { header: match[1], body: source.slice(match[0].length) };
   }
 
-  function formatAssetDocument(header, body) {
+  function formatMaterialDocument(header, body) {
     const normalizedHeader = header.replace(/\r\n?/g, "\n").replace(/\n+$/, "");
     return `---\n${normalizedHeader}\n---\n${body}`;
   }
@@ -139,7 +139,7 @@
     if (!materialTypes.includes(data.type)) {
       throw new Error(`${source} front matter type must be one of: ${materialTypes.join(", ")}.`);
     }
-    validateAssetAttributes(data, `${source} front matter`);
+    validateAttributeDefinitions(data, `${source} front matter`);
   }
 
   function validateMaterialMarkup(markup, source) {
@@ -199,63 +199,11 @@
     }
   }
 
-  function validateAssetTemplateHeader(data, source) {
-    if (!isMapping(data)) throw new Error(`${source} front matter must contain a YAML mapping.`);
-    const supportedProperties = new Set([
-      "id", "name", "description", "category", "attributes", "slots", "render"
-    ]);
-    for (const property of Object.keys(data)) {
-      if (property === "spec") {
-        throw new Error(`${source}: behavior specs cannot be attached to asset templates; attach the spec to an Element in a Screen file.`);
-      }
-      if (!supportedProperties.has(property)) {
-        throw new Error(`${source} front matter has unsupported property "${property}".`);
-      }
-    }
-    validateElementId(data.id, `${source} front matter Asset template`);
-    if (typeof data.name !== "string" || !data.name.trim()) {
-      throw new Error(`${source} front matter name must be a non-empty string.`);
-    }
-    if (typeof data.description !== "string") {
-      throw new Error(`${source} front matter description must be a string.`);
-    }
-    if (data.render !== undefined) {
-      if (!isMapping(data.render)) {
-        throw new Error(`${source} front matter render must be a mapping.`);
-      }
-      if (Object.keys(data.render).some((property) => property !== "interactive")) {
-        throw new Error(`${source} front matter render only supports the "interactive" property.`);
-      }
-      if (data.render.interactive !== undefined && typeof data.render.interactive !== "boolean") {
-        throw new Error(`${source} front matter render interactive must be a boolean.`);
-      }
-    }
-  }
-
-  function validateElementSpecHeader(source, context = "Element behavior spec") {
-    if (typeof source !== "string") {
-      throw new Error(`${context} must be Markdown text.`);
-    }
-    const frontMatter = source.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
-    if (!frontMatter) {
-      throw new Error(`${context} must begin with YAML front matter containing "element-id".`);
-    }
-    let elementId;
-    for (const line of frontMatter[1].split(/\r?\n/)) {
-      if (!line.trim()) continue;
-      const match = line.match(/^element-id:\s*([a-z][a-z0-9-]*)\s*$/);
-      if (!match) {
-        throw new Error(`${context} front matter must contain only an "element-id" using lowercase letters, numbers, and hyphens.`);
-      }
-      if (elementId !== undefined) {
-        throw new Error(`${context} front matter must contain "element-id" only once.`);
-      }
-      elementId = match[1];
-    }
-    if (!elementId) {
-      throw new Error(`${context} front matter must contain an "element-id".`);
-    }
-    return elementId;
+  function getElementSpecIdentity(filePath) {
+    const match = typeof filePath === "string"
+      ? filePath.match(/^screens\/([a-z][a-z0-9-]*)\/specs\/element-([a-z][a-z0-9-]*)\.md$/)
+      : null;
+    return match ? { screenId: match[1], elementId: match[2] } : null;
   }
 
   function validateElementSpecPath(filePath, elementId) {
@@ -265,6 +213,125 @@
     if (filePath !== expectedPath) {
       throw new Error(`Element behavior spec "${filePath}" must be named "element-${elementId}.md".`);
     }
+  }
+
+  function parseSpecScreenReferences(source, context = "Behavior spec") {
+    if (typeof source !== "string") {
+      throw new Error(`${context} must be Markdown text.`);
+    }
+
+    const references = [];
+    const headings = [];
+    const lines = source.split(/\r?\n/);
+    let codeFence = null;
+    for (const [lineIndex, line] of lines.entries()) {
+      const fence = line.match(/^\s*(`{3,}|~{3,})/);
+      if (codeFence) {
+        if (fence &&
+            fence[1][0] === codeFence.character &&
+            fence[1].length >= codeFence.length &&
+            /^\s*$/.test(line.slice(fence[0].length))) {
+          codeFence = null;
+        }
+        continue;
+      }
+      if (fence) {
+        codeFence = { character: fence[1][0], length: fence[1].length };
+        continue;
+      }
+
+      const heading = line.match(/^\s*(#{1,6})\s+.+?\s*#*\s*$/);
+      if (heading) {
+        const level = heading[1].length;
+        while (headings.length && headings[headings.length - 1].level >= level) {
+          headings.pop();
+        }
+        headings.push({ level, lineIndex });
+      }
+
+      const markdownLink = /\[[^\]]*\]\((specux:\/\/[^)\s]+)(?:\s+"[^"]*")?\)/g;
+      for (const match of line.matchAll(markdownLink)) {
+        let url;
+        try {
+          url = new URL(match[1]);
+        } catch {
+          if (match[1].startsWith("specux://screen/")) {
+            throw new Error(`${context}: invalid Screen link "${match[1]}".`);
+          }
+          continue;
+        }
+        if (url.protocol !== "specux:" || url.hostname !== "screen") continue;
+
+        let pathSegments;
+        try {
+          pathSegments = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+        } catch {
+          throw new Error(`${context}: invalid Screen link path "${match[1]}".`);
+        }
+        if (pathSegments[1] !== "screen.yml") continue;
+        if (url.username || url.password || url.port || url.hash ||
+            pathSegments.length !== 2 ||
+            !/^[a-z][a-z0-9-]*$/.test(pathSegments[0])) {
+          throw new Error(`${context}: invalid Screen link "${match[1]}".`);
+        }
+
+        const queryEntries = [...url.searchParams.entries()];
+        if (queryEntries.some(([key]) => !["placement", "state"].includes(key)) ||
+            url.searchParams.getAll("placement").length > 1 ||
+            url.searchParams.getAll("state").length > 1) {
+          throw new Error(
+            `${context}: Screen links support one placement and one state parameter: "${match[1]}".`
+          );
+        }
+        const placementId = url.searchParams.get("placement");
+        const stateId = url.searchParams.get("state") ?? "default";
+        if ((placementId !== null && !/^[a-z][a-z0-9-]*$/.test(placementId)) ||
+            !/^[a-z][a-z0-9-]*$/.test(stateId)) {
+          throw new Error(`${context}: invalid placement or state in Screen link "${match[1]}".`);
+        }
+        references.push({
+          href: match[1],
+          screenId: pathSegments[0],
+          placementId,
+          stateId,
+          lineIndex,
+          columnIndex: match.index,
+          sectionLineIndex: headings.at(-1)?.lineIndex ?? lineIndex
+        });
+      }
+    }
+    return references;
+  }
+
+  function validateSpecScreenReferences(source, screens, context = "Behavior spec") {
+    const references = parseSpecScreenReferences(source, context);
+    for (const reference of references) {
+      const screen = screens.find((entry) => entry.id === reference.screenId);
+      if (!screen) {
+        throw new Error(`${context}: Screen "${reference.screenId}" is not available.`);
+      }
+      const data = screen.data || screen;
+      if (!getPreviewStates(data).some((previewState) =>
+        previewState.id === reference.stateId
+      )) {
+        throw new Error(
+          `${context}: preview state "${reference.stateId}" is not available on Screen "${screen.id}".`
+        );
+      }
+      if (reference.placementId) {
+        const containsPlacement = (placements) => Array.isArray(placements) &&
+          placements.some((placement) =>
+            placement.id === reference.placementId ||
+            containsPlacement(placement.children, reference.placementId)
+          );
+        if (!containsPlacement(data.materials)) {
+          throw new Error(
+            `${context}: placement "${reference.placementId}" is not available on Screen "${screen.id}".`
+          );
+        }
+      }
+    }
+    return references;
   }
 
   function validateSpecContent(source) {
@@ -398,19 +465,7 @@
     return false;
   }
 
-  function assetCategoryPath(template, source) {
-    if (template.category === undefined) return ["Uncategorized"];
-    if (typeof template.category !== "string" || !template.category.trim()) {
-      throw new Error(`${source} category must be a non-empty slash-delimited path.`);
-    }
-    const segments = template.category.split("/").map((segment) => segment.trim());
-    if (segments.some((segment) => !segment)) {
-      throw new Error(`${source} category cannot contain empty path segments.`);
-    }
-    return segments;
-  }
-
-  function validateAssetAttributes(template, source) {
+  function validateAttributeDefinitions(template, source) {
     const attributes = template.attributes || {};
     if (!isMapping(attributes)) {
       throw new Error(`${source} attributes must be a mapping.`);
@@ -481,49 +536,6 @@
     }
   }
 
-  function validateAssetSlots(template, source) {
-    if (template.slots === undefined) return;
-    if (!Array.isArray(template.slots) || template.slots.length === 0) {
-      throw new Error(`${source} slots must be a non-empty list.`);
-    }
-    const ids = new Set();
-    for (const slot of template.slots) {
-      if (!isMapping(slot) || typeof slot.id !== "string" || !/^[a-z][a-z0-9-]*$/.test(slot.id)) {
-        throw new Error(`${source} slots must have an id using lowercase letters, numbers, and hyphens.`);
-      }
-      if (ids.has(slot.id)) throw new Error(`${source} defines slot "${slot.id}" more than once.`);
-      if (slot.name !== undefined && typeof slot.name !== "string") {
-        throw new Error(`${source} slot "${slot.id}" name must be a string.`);
-      }
-      ids.add(slot.id);
-    }
-  }
-
-  function validateAssetSlotMarkup(template, markup, source) {
-    if (!template.slots) return;
-    const markupSlots = [];
-    const tagPattern = /<([a-z][\w:-]*)\b([^>]*)>/gi;
-    const attributePattern = /(?:^|\s)data-specux-slot\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i;
-    for (const match of markup.matchAll(tagPattern)) {
-      if (match[0].startsWith("<!--")) continue;
-      const attribute = attributePattern.exec(match[2]);
-      if (attribute) markupSlots.push(attribute[1] ?? attribute[2] ?? attribute[3]);
-    }
-
-    const declaredSlots = new Set(template.slots.map((slot) => slot.id));
-    for (const slot of template.slots) {
-      const matching = markupSlots.filter((id) => id === slot.id);
-      if (matching.length !== 1) {
-        throw new Error(`${source} must contain exactly one element with data-specux-slot="${slot.id}".`);
-      }
-    }
-    for (const id of markupSlots) {
-      if (!declaredSlots.has(id)) {
-        throw new Error(`${source} contains undeclared layout slot "${id}".`);
-      }
-    }
-  }
-
   function validateTheme(data, source) {
     const validateProperties = (value, allowedProperties, location) => {
       for (const property of Object.keys(value)) {
@@ -563,28 +575,25 @@
   }
 
   return {
-    assetCategoryPath,
     attributeTypes,
-    TEMPLATE_FILE_EXTENSION,
+    MATERIAL_FILE_EXTENSION,
     getPreviewStates,
     isMapping,
     isValidAttributeValue,
     numberFormats,
     themeModeNames,
-    validateAssetAttributes,
-    validateAssetSlotMarkup,
-    validateAssetSlots,
+    validateAttributeDefinitions,
     validateMaterialDocumentHeader,
     validateMaterialMarkup,
     validateMaterialAttributeMarkup,
     validateMaterialInstanceAttributes,
-    splitAssetDocument,
-    formatAssetDocument,
+    splitMaterialDocument,
+    formatMaterialDocument,
     validateElementId,
-    validateAssetInstanceId: validateElementId,
-    validateAssetTemplateHeader,
-    validateElementSpecHeader,
     validateElementSpecPath,
+    getElementSpecIdentity,
+    parseSpecScreenReferences,
+    validateSpecScreenReferences,
     validatePreviewStates,
     validateSpecContent,
     validateSpecPath,

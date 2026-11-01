@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-const { randomUUID } = require("node:crypto");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
@@ -15,7 +14,6 @@ const frontendRoot = path.join(repositoryRoot, "frontend");
 const schemaFiles = new Map([
   ["project", "project.md"],
   ["screen", "screen.md"],
-  ["asset", "asset.md"],
   ["material", "material.md"],
   ["theme", "theme.md"],
   ["spec", "spec.md"],
@@ -36,9 +34,8 @@ function usage() {
     "  specux init [--project <directory>]",
     "  specux validate [--project <directory>]",
     "  specux version",
-    "  specux schema [project|screen|asset|material|theme|spec|workflow|reference]",
-    "  specux render <screen> --format <html|image> [--state <id>] [--output <file>] [--annotations] [--project <directory>]",
-    "  specux prune [--apply] [--project <directory>]"
+    "  specux schema [project|screen|material|theme|spec|workflow|reference]",
+    "  specux render <screen> --format <html|image> [--state <id>] [--output <file>] [--annotations] [--project <directory>]"
   ].join("\n");
 }
 
@@ -237,11 +234,11 @@ async function runServerCommand(command, args) {
 }
 
 async function runSchemaCommand(args) {
-  if (args.length > 1) throw new Error("Usage: specux schema [project|screen|asset|material|theme|spec|workflow|reference]");
+  if (args.length > 1) throw new Error("Usage: specux schema [project|screen|material|theme|spec|workflow|reference]");
   const type = args[0];
   const docs = type ? [schemaFiles.get(type)] : [...schemaFiles.values()];
   if (type && !docs[0]) {
-    throw new Error(`Unknown schema type "${type}". Use project, screen, asset, material, theme, spec, workflow, or reference.`);
+    throw new Error(`Unknown schema type "${type}". Use project, screen, material, theme, spec, workflow, or reference.`);
   }
   const content = await Promise.all(docs.map((file) =>
     fs.readFile(path.join(repositoryRoot, "schema", file), "utf8")
@@ -704,89 +701,6 @@ async function runRenderCommand(args) {
   }
 }
 
-function pruneCandidates(result) {
-  return [...result.assets.values()]
-    .filter((asset) => !result.usedAssetFiles.has(asset.file))
-    .map((asset) => ({
-      type: asset.type,
-      id: asset.data?.id || path.posix.basename(asset.file),
-      path: asset.file,
-      reason: "No Screen Element or local template resource references this file."
-    }));
-}
-
-async function applyPrune(projectRoot, candidates) {
-  if (!candidates.length) return;
-  const quarantine = path.join(projectRoot, `.specux-prune-${randomUUID()}`);
-  const moved = [];
-  await fs.mkdir(quarantine);
-  try {
-    const stagedCandidates = [];
-    for (const candidate of candidates) {
-      const target = await resolveProjectPath(
-        projectRoot,
-        candidate.path,
-        "file"
-      );
-      if (target === path.resolve(projectRoot)) {
-        throw new Error(`Refusing to remove the project root for ${candidate.type} "${candidate.id}".`);
-      }
-      stagedCandidates.push({ candidate, target });
-    }
-    stagedCandidates.sort((left, right) => right.target.length - left.target.length);
-    for (const [index, entry] of stagedCandidates.entries()) {
-      const stagedPath = path.join(quarantine, String(index));
-      await fs.rename(entry.target, stagedPath);
-      moved.push({ originalPath: entry.target, stagedPath });
-    }
-  } catch (error) {
-    const rollbackErrors = [];
-    for (const entry of moved.reverse()) {
-      try {
-        await fs.rename(entry.stagedPath, entry.originalPath);
-      } catch (rollbackError) {
-        rollbackErrors.push(rollbackError.message);
-      }
-    }
-    if (rollbackErrors.length) {
-      throw new Error(
-        `Prune failed: ${error.message}. Rollback was incomplete: ${rollbackErrors.join("; ")}. ` +
-        `Staged resources were retained in "${quarantine}".`
-      );
-    }
-    await fs.rm(quarantine, { recursive: true, force: true });
-    throw error;
-  }
-
-  await fs.rm(quarantine, { recursive: true, force: true });
-}
-
-async function runPruneCommand(args) {
-  const { positional, options } = parseOptions(args, new Set(["--apply", "--project"]));
-  if (positional.length) throw new Error(`Unexpected argument "${positional[0]}".`);
-  const projectRoot = await locateProjectRoot(process.cwd(), options.project);
-  const result = await validateProject(projectRoot);
-  if (result.errors.length) {
-    printValidationResult(result);
-    return 1;
-  }
-  const candidates = pruneCandidates(result);
-  if (!candidates.length) {
-    console.log("No unused Assets found.");
-    return;
-  }
-  for (const candidate of candidates) {
-    console.log(`${candidate.type} ${candidate.id} (${candidate.path})`);
-    console.log(`  ${candidate.reason}`);
-  }
-  if (!options.apply) {
-    console.log('\nNo files were removed. Re-run with "--apply" to prune these resources.');
-    return;
-  }
-  await applyPrune(projectRoot, candidates);
-  console.log(`\nRemoved ${candidates.length} unused resource${candidates.length === 1 ? "" : "s"}.`);
-}
-
 async function main(args = process.argv.slice(2)) {
   if (!args.length || args[0] === "--help" || args[0] === "-h") {
     console.log(usage());
@@ -804,7 +718,6 @@ async function main(args = process.argv.slice(2)) {
   if (command === "schema") return runSchemaCommand(rest);
   if (command === "validate") return runValidateCommand(rest);
   if (command === "render") return runRenderCommand(rest);
-  if (command === "prune") return runPruneCommand(rest);
   throw new Error(`Unknown command "${command}".\n\n${usage()}`);
 }
 
@@ -821,7 +734,5 @@ module.exports = {
   main,
   inlineProjectResources,
   locateProjectRoot,
-  pruneCandidates,
-  runInitCommand,
-  runPruneCommand
+  runInitCommand
 };

@@ -15,46 +15,54 @@ export class WorkspaceViewRenderer {
     const selected = state.screens[index];
     if (!selected) return;
     const preserveTheme = options.preserveTheme === true;
-    services.discardUneditedActiveSpecDraft();
-    state.activeProjectFilePath = preserveTheme ? state.project?.theme : selected.file;
-    services.closeAssetContextMenu();
-    clearTimeout(state.assetPreviewTimer);
-    state.assetPreviewTimer = null;
-    state.assetPreviewVersion += 1;
-    services.byId("main").classList.remove("asset-editing");
-    services.byId("main").classList.remove("spec-editing");
+    const preserveSpec = options.preserveSpec === true;
+    if (!preserveSpec) services.discardUneditedActiveSpecDraft();
+    state.activeProjectFilePath = preserveTheme
+      ? state.project?.theme
+      : preserveSpec ? state.activeSpecPath : selected.file;
+    services.closeScreenPlacementContextMenu();
+    clearTimeout(state.previewTimer);
+    state.previewTimer = null;
+    state.previewVersion += 1;
+    services.byId("main").classList.remove("material-editing");
+    if (!preserveSpec) services.byId("main").classList.remove("spec-editing");
     if (!options.preserveWorkflow) {
       services.byId("main").classList.remove("workflow-editing");
       services.byId("workflow-editor-panel").hidden = true;
       services.byId("workflow-source").oninput = null;
     }
     services.byId("main").classList.add("screen-editing");
-    services.byId("asset-document-editor-panel").hidden = true;
-    services.byId("asset-document-source").oninput = null;
-    services.byId("spec-editor-panel").hidden = true;
-    services.byId("spec-source").oninput = null;
+    services.byId("material-document-editor-panel").hidden = true;
+    services.byId("material-document-source").oninput = null;
+    if (!preserveSpec) {
+      services.byId("spec-editor-panel").hidden = true;
+      services.byId("spec-source").oninput = null;
+    }
     state.activeScreenIndex = index;
     services.renderScreenSelector();
     services.projectFileTree.reveal(selected.file);
-    state.viewingAssetTemplate = false;
     state.viewingMaterialFile = false;
     state.viewingTheme = preserveTheme;
     state.viewingProject = false;
-    state.viewingSpec = false;
+    state.viewingSpec = preserveSpec;
     state.viewingPreviewState = options.previewStateSelected === true;
     state.viewingWorkflow = options.preserveWorkflow === true;
     if (!options.preserveWorkflow) state.activeWorkflowPath = null;
-    state.activeSpecPath = null;
-    state.activeSpecInstancePath = [];
-    state.activeAssetId = null;
-    if (!options.preserveWorkflow) state.activeInstancePath = [];
+    if (!preserveSpec) {
+      state.activeSpecPath = null;
+      state.activeSpecScreenFile = null;
+      state.activeSpecInstancePath = [];
+    }
+    if (!options.preserveWorkflow && !preserveSpec) state.activeInstancePath = [];
     services.hideEditorMessage();
     services.updateNavigationSelection();
     services.updateScreenDomContext(selected);
     services.byId("screen-heading").textContent = preserveTheme
       ? "Theme"
-      : selected.data.name || selected.id;
-    services.byId("breadcrumb").textContent = preserveTheme ? "Project theme" : "Screens";
+      : preserveSpec ? `Spec: ${state.activeSpecPath}` : selected.data.name || selected.id;
+    services.byId("breadcrumb").textContent = preserveTheme
+      ? "Project theme"
+      : preserveSpec ? "Behavior spec" : "Screens";
     services.renderPreviewStateControls(selected.data);
     services.configureScreenYamlEditor(selected);
     services.syncScreenViewMode();
@@ -151,20 +159,19 @@ export class WorkspaceViewRenderer {
     services.discardUneditedActiveSpecDraft();
     state.activeProjectFilePath = "project.yml";
     services.hidePreviewStateControls();
-    services.closeAssetContextMenu();
-    clearTimeout(state.assetPreviewTimer);
-    state.assetPreviewTimer = null;
-    state.assetPreviewVersion += 1;
-    services.byId("main").classList.remove("asset-editing");
+    services.closeScreenPlacementContextMenu();
+    clearTimeout(state.previewTimer);
+    state.previewTimer = null;
+    state.previewVersion += 1;
+    services.byId("main").classList.remove("material-editing");
     services.byId("main").classList.remove("spec-editing");
     services.byId("main").classList.remove("workflow-editing");
     services.byId("workflow-editor-panel").hidden = true;
     services.byId("workflow-source").oninput = null;
-    services.byId("asset-document-editor-panel").hidden = true;
-    services.byId("asset-document-source").oninput = null;
+    services.byId("material-document-editor-panel").hidden = true;
+    services.byId("material-document-source").oninput = null;
     services.byId("spec-editor-panel").hidden = true;
     services.byId("spec-source").oninput = null;
-    state.viewingAssetTemplate = false;
     state.viewingMaterialFile = false;
     state.viewingTheme = false;
     state.viewingProject = true;
@@ -173,8 +180,8 @@ export class WorkspaceViewRenderer {
     state.viewingWorkflow = false;
     state.activeWorkflowPath = null;
     state.activeSpecPath = null;
+    state.activeSpecScreenFile = null;
     state.activeSpecInstancePath = [];
-    state.activeAssetId = null;
     state.activeInstancePath = [];
     services.hideEditorMessage();
     services.updateNavigationSelection();

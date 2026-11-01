@@ -44,7 +44,7 @@ An operation performed in response to an event or specified behavior. An action 
 
 ### Requirement
 
-A statement describing a condition, capability, or behavior that the software is expected to satisfy. Requirements may be linked to screens, assets, behavior specs, and verification scenarios.
+A statement describing a condition, capability, or behavior that the software is expected to satisfy. Requirements may be linked to Screens, Materials, behavior specs, and verification scenarios.
 
 ## Specification and Change Management
 

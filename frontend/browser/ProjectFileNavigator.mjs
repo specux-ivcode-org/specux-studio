@@ -7,7 +7,7 @@ export class ProjectFileNavigator {
 
   renderNavigation() {
     const { state, services } = this;
-    if (!state.viewingAssetTemplate && !state.viewingMaterialFile &&
+    if (!state.viewingMaterialFile &&
         !state.viewingTheme && !state.viewingProject && !state.viewingSpec &&
         !state.viewingWorkflow) {
       services.byId("breadcrumb").textContent = "Screens";
@@ -18,9 +18,7 @@ export class ProjectFileNavigator {
         ? state.project?.theme
         : state.viewingProject
           ? "project.yml"
-          : state.viewingAssetTemplate
-            ? state.assets.get(state.activeAssetId)?.templateFile
-            : state.viewingMaterialFile
+          : state.viewingMaterialFile
               ? state.activeMaterialFilePath
             : state.screens[state.activeScreenIndex]?.file);
     if (activeFilePath) this.projectFileTree.expandPath(activeFilePath);
@@ -84,20 +82,14 @@ export class ProjectFileNavigator {
     filePaths.add("project.yml");
     if (state.project?.theme) filePaths.add(state.project.theme);
     for (const screen of state.screens) filePaths.add(screen.file);
-    for (const asset of state.assets.values()) filePaths.add(asset.templateFile);
     for (const filePath of state.specSources.keys()) filePaths.add(filePath);
     for (const filePath of state.workflowSources.keys()) filePaths.add(filePath);
     for (const filePath of state.createdSpecDrafts.keys()) filePaths.add(filePath);
     for (const filePath of state.createdScreenFiles) filePaths.add(filePath);
     for (const filePath of state.createdSpecFiles) filePaths.add(filePath);
-    for (const copy of state.pendingAssetCopies) {
-      const template = state.assets.get(copy.targetId);
-      if (template) filePaths.add(template.templateFile);
-    }
     return [...filePaths].filter((filePath) =>
       typeof filePath === "string" && filePath && !filePath.startsWith("/") &&
-      !filePath.includes("\\") &&
-      !/^(?:assets|screens\/[a-z][a-z0-9-]*\/assets)\//.test(filePath)
+      !filePath.includes("\\")
     ).sort((left, right) => left.localeCompare(right));
   }
 
@@ -123,16 +115,6 @@ export class ProjectFileNavigator {
         `Open Screen ${screen.data.name || screen.id} (${file.path})`
       );
     }
-    if (action?.kind === "asset") {
-      button.dataset.assetId = action.asset.id;
-      if (file.path === action.asset.templateFile) {
-        this.configureAssetTemplateDrag(button, action.asset);
-      } else {
-        this.updateAssetTemplateTreeFile(button, action.asset);
-      }
-    } else if (action?.kind === "image") {
-      this.configureAssetFileDrag(button, file.path);
-    }
     if (action) {
       button.addEventListener("click", () =>
         this.openProjectFile(file.path).catch((error) =>
@@ -149,13 +131,9 @@ export class ProjectFileNavigator {
     const screenIndex = state.screens.findIndex((screen) => screen.file === filePath);
     if (screenIndex >= 0) return { kind: "screen", screenIndex };
     if (filePath === state.project?.theme) return { kind: "theme" };
-    for (const asset of state.assets.values()) {
-      if (filePath === asset.templateFile) return { kind: "asset", asset };
-    }
     if (state.materialFiles?.has(filePath)) {
       return { kind: "material", material: state.materialFiles.get(filePath) };
     }
-    if (state.assetFiles.get(filePath) === "image") return { kind: "image", file: filePath };
     const specAction = this.getSpecFileAction(filePath);
     if (specAction) return { kind: "spec", ...specAction };
     const workflowScreenIndex = state.screens.findIndex((screen) =>
@@ -180,9 +158,9 @@ export class ProjectFileNavigator {
       if (draft?.owner === "screen" && draft.screenFile === screen.file) {
         return { owner: "screen", screenIndex, instancePath: [] };
       }
-      const assetSpecOwner = state.assetSpecOwners.get(filePath);
-      if (assetSpecOwner?.screenFile === screen.file) {
-        return { owner: "instance", screenIndex, instancePath: assetSpecOwner.instancePath };
+      const elementSpecOwner = state.elementSpecOwners.get(filePath);
+      if (elementSpecOwner?.screenFile === screen.file) {
+        return { owner: "instance", screenIndex, instancePath: elementSpecOwner.instancePath };
       }
       if (draft?.owner === "instance" && draft.screenFile === screen.file) {
         return { owner: "instance", screenIndex, instancePath: draft.instancePath };
@@ -204,8 +182,6 @@ export class ProjectFileNavigator {
         await services.renderScreen(action.screenIndex);
       } else if (action.kind === "theme") {
         services.renderThemeView(filePath);
-      } else if (action.kind === "asset") {
-        await services.renderAssetTemplate(action.asset.id, filePath);
       } else if (action.kind === "material") {
         await services.renderMaterialFile(filePath);
       } else if (action.kind === "spec") {
@@ -228,62 +204,4 @@ export class ProjectFileNavigator {
     if (!wasHistoryUpdateSuppressed) services.syncBrowserHistory();
   }
 
-  configureAssetTemplateDrag(button, asset) {
-    this.updateAssetTemplateTreeFile(button, asset);
-    button.addEventListener("dragstart", (event) => {
-      event.dataTransfer.setData(this.state.assetDragType, asset.templateFile);
-      event.dataTransfer.setData("text/plain", asset.data.name || asset.id);
-      event.dataTransfer.effectAllowed = "copy";
-      this.state.assetEditorRestoreId = this.state.viewingAssetTemplate
-        ? this.state.activeAssetId
-        : null;
-      this.state.paletteAssetDropHandled = false;
-      if (this.state.assetEditorRestoreId !== null) {
-        this.services.renderScreen(this.state.activeScreenIndex)
-          .catch(this.services.showFatalError);
-      }
-    });
-    button.addEventListener("dragend", () => {
-      const restoreAssetId = this.state.assetEditorRestoreId;
-      const shouldRestoreEditor = restoreAssetId !== null && !this.state.paletteAssetDropHandled;
-      this.state.assetEditorRestoreId = null;
-      this.state.paletteAssetDropHandled = false;
-      this.services.clearDropIndicators();
-      if (shouldRestoreEditor) {
-        this.services.renderAssetTemplate(restoreAssetId).catch(this.services.showFatalError);
-      }
-    });
-  }
-
-  configureAssetFileDrag(button, filePath) {
-    const { state } = this;
-    const ownerScreen = filePath.match(/^screens\/([^/]+)\/assets\//)?.[1] || null;
-    const targetScreen = state.screens[state.activeScreenIndex];
-    const canDrag = Boolean(targetScreen) && (!ownerScreen || ownerScreen === targetScreen.id);
-    button.draggable = canDrag;
-    button.setAttribute(
-      "aria-label",
-      canDrag
-        ? `${filePath.split("/").pop()} image; drag to add to ${targetScreen.data.name || "current Screen"}`
-        : `Image ${filePath} belongs to another Screen`
-    );
-    button.addEventListener("dragstart", (event) => {
-      event.dataTransfer.setData(state.assetDragType, filePath);
-      event.dataTransfer.setData("text/plain", filePath.split("/").pop());
-      event.dataTransfer.effectAllowed = "copy";
-    });
-  }
-
-  updateAssetTemplateTreeFile(button, asset) {
-    const targetScreen = this.state.screens[this.state.activeScreenIndex];
-    const canDrag = button.dataset.projectFile === asset.templateFile &&
-      Boolean(targetScreen) && (!asset.screen || asset.screen === targetScreen.id);
-    button.draggable = canDrag;
-    button.setAttribute(
-      "aria-label",
-      canDrag
-        ? `${asset.data.name || asset.id} template; drag to add to ${targetScreen?.data.name || "current Screen"}`
-        : `Open ${asset.data.name || asset.id} template file ${button.dataset.projectFile.split("/").pop()}`
-    );
-  }
 }

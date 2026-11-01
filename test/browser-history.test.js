@@ -44,7 +44,6 @@ test("reads editor selections and nested Element paths from the URL", async () =
     screen: { id: "home" },
     owner: null,
     instancePath: ["layout", "content", 0],
-    assetId: null
   });
 });
 
@@ -54,7 +53,7 @@ test("writes browser history while retaining unrelated history state", async () 
     selection: {
       view: "screen",
       screen: { id: "home", file: "screens/home/screen.yml" },
-      selectedAsset: { instancePath: ["layout", "content", 0] }
+      selectedPlacement: { instancePath: ["layout", "content", 0] }
     }
   };
   const controller = await createController(windowObject, options);
@@ -65,7 +64,7 @@ test("writes browser history while retaining unrelated history state", async () 
     JSON.stringify(["layout", "content", 0])
   );
   assert.equal(windowObject.history.calls[0].state.retained, true);
-  assert.deepEqual(windowObject.history.calls[0].state.specuxEditor.selection.selectedAsset, {
+  assert.deepEqual(windowObject.history.calls[0].state.specuxEditor.selection.selectedPlacement, {
     instancePath: ["layout", "content", 0]
   });
 

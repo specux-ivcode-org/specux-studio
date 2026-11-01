@@ -95,6 +95,12 @@ test("parses explicit SpecUX workflow links", async () => {
     ),
     { nodeId: "saveItem" }
   );
+  assert.deepEqual(
+    parseWorkflowSpecReference(
+      "specux://screen/home/workflows/add-item.mmd?node=saveItem"
+    ),
+    { workflowPath, nodeId: "saveItem" }
+  );
   assert.equal(
     parseWorkflowSpecReference(
       "specux://screen/home/screen.yml?placement=dialog-save",
@@ -128,8 +134,8 @@ test("parses explicit SpecUX workflow links", async () => {
     "[Retry flow](specux://screen/home/workflows/add-item.mmd?node=saveItem)"
   ].join("\n");
   assert.deepEqual(parseWorkflowSpecReferences(specSource, workflowPath), [
-    { nodeId: "saveItem", lineIndex: 7, sectionLineIndex: 6 },
-    { nodeId: "saveItem", lineIndex: 10, sectionLineIndex: 9 }
+    { nodeId: "saveItem", lineIndex: 7, columnIndex: 0, sectionLineIndex: 6 },
+    { nodeId: "saveItem", lineIndex: 10, columnIndex: 0, sectionLineIndex: 9 }
   ]);
   assert.deepEqual(
     parseWorkflowSpecReferences([
@@ -139,7 +145,19 @@ test("parses explicit SpecUX workflow links", async () => {
       "```",
       "[Actual link](specux://screen/home/workflows/add-item.mmd?node=saveItem)"
     ].join("\n"), workflowPath),
-    [{ nodeId: "saveItem", lineIndex: 4, sectionLineIndex: 0 }]
+    [{ nodeId: "saveItem", lineIndex: 4, columnIndex: 0, sectionLineIndex: 0 }]
+  );
+  assert.deepEqual(
+    parseWorkflowSpecReferences(
+      "[Save item](specux://screen/home/workflows/add-item.mmd?node=saveItem)"
+    ),
+    [{
+      workflowPath,
+      nodeId: "saveItem",
+      lineIndex: 0,
+      columnIndex: 0,
+      sectionLineIndex: 0
+    }]
   );
   const specLinks = collectWorkflowSpecLinks([{
     filePath: "screens/home/specs/screen.md",
@@ -170,6 +188,128 @@ test("parses explicit SpecUX workflow links", async () => {
   const editor = new WorkflowEditor({
     state: {},
     services: { byId: () => noopElement }
+  });
+
+  test("renders a workflow node referenced from a behavior spec", async () => {
+    const { WorkflowEditor } = await import("../frontend/browser/WorkflowEditor.mjs");
+    const classes = new Set();
+    const main = {
+      classList: {
+        add: (name) => classes.add(name),
+        remove: (name) => classes.delete(name)
+      }
+    };
+    const heading = { textContent: "Preview" };
+    const attributes = new Map();
+    const nodeClasses = new Set();
+    const insetShapes = [];
+    let nodeBounds = {
+      left: 180, right: 220, top: 220, bottom: 240, width: 40, height: 20
+    };
+    const basicShape = {
+      getBBox: () => ({ x: -76, y: -22.5, width: 152, height: 45 }),
+      getAttribute: () => null,
+      cloneNode: () => ({
+        attributes: new Map(),
+        setAttribute(name, value) { this.attributes.set(name, value); },
+        removeAttribute(name) { this.attributes.delete(name); },
+        remove() { this.removed = true; }
+      })
+    };
+    const node = {
+      id: "",
+      getAttribute: () => null,
+      classList: { add: (name) => nodeClasses.add(name) },
+      querySelector: (selector) => selector === ".basic" ? basicShape : null,
+      querySelectorAll: (selector) =>
+        selector === ".workflow-node-focus-inset" ? insetShapes : [],
+      appendChild(shape) { insetShapes.push(shape); },
+      getBoundingClientRect: () => nodeBounds
+    };
+    const preview = {
+      hidden: true,
+      innerHTML: "",
+      clientWidth: 100,
+      clientHeight: 100,
+      clientLeft: 0,
+      clientTop: 0,
+      scrollLeft: 0,
+      scrollTop: 0,
+      getBoundingClientRect: () => ({
+        left: 0, right: 100, top: 0, bottom: 100, width: 100, height: 100
+      }),
+      scrollTo(options) { this.scrollOptions = options; },
+      setAttribute: (name, value) => attributes.set(name, value),
+      querySelectorAll: () => [node],
+      replaceChildren() { this.innerHTML = ""; }
+    };
+    const noopControl = { addEventListener() {} };
+    const elements = new Map([
+      ["main", main],
+      ["spec-view-heading", heading],
+      ["spec-workflow-preview", preview],
+      ["workflow-panel-diagram", noopControl],
+      ["workflow-panel-source", noopControl],
+      ["workflow-view-split", noopControl],
+      ["workflow-view-diagram", noopControl],
+      ["workflow-spec-section-previous", noopControl],
+      ["workflow-spec-section-next", noopControl],
+      ["workflow-spec-file-select", noopControl]
+    ]);
+    const workflowPath = "screens/home/workflows/add-item.mmd";
+    const editor = new WorkflowEditor({
+      state: {
+        viewingSpec: true,
+        workflowSources: new Map([[workflowPath, "flowchart TD\nsaveItem[Save item]\n"]])
+      },
+      services: { byId: (id) => elements.get(id) }
+    });
+    editor.mermaidPromise = Promise.resolve({
+      parse: async () => {},
+      render: async (id) => {
+        node.id = `${id}-flowchart-saveItem-0`;
+        return { svg: "<svg></svg>" };
+      }
+    });
+
+    await editor.showSpecReferencePreview({
+      workflowPath,
+      nodeId: "saveItem"
+    }, "screens/home/specs/screen.md");
+
+    assert.equal(preview.hidden, false);
+    assert.equal(nodeClasses.has("selected"), true);
+    assert.equal(insetShapes.length, 1);
+    assert.equal(
+      insetShapes[0].attributes.get("class"),
+      "workflow-node-focus-inset"
+    );
+    assert.match(insetShapes[0].attributes.get("transform"), /scale\(0\./);
+    assert.equal(insetShapes[0].attributes.get("pointer-events"), "none");
+    assert.equal(classes.has("spec-workflow-preview-active"), true);
+    assert.equal(heading.textContent, `Workflow: ${workflowPath}`);
+    assert.match(attributes.get("aria-label"), /focused on node "saveItem"/);
+    assert.deepEqual(preview.scrollOptions, {
+      left: 150,
+      top: 180,
+      behavior: "smooth"
+    });
+    preview.scrollOptions = null;
+    nodeBounds = { left: 10, right: 50, top: 10, bottom: 30, width: 40, height: 20 };
+    editor.scrollSpecPreviewNodeIntoView(preview, node);
+    assert.deepEqual(preview.scrollOptions, {
+      left: -20,
+      top: -30,
+      behavior: "smooth"
+    });
+
+    editor.setNodeSelectionHighlight(node, false);
+    assert.equal(insetShapes.every((shape) => shape.removed), true);
+    editor.clearSpecReferencePreview();
+    assert.equal(preview.hidden, true);
+    assert.equal(preview.innerHTML, "");
+    assert.equal(classes.has("spec-workflow-preview-active"), false);
+    assert.equal(heading.textContent, "Preview");
   });
   editor.diagramId = 3;
   assert.equal(editor.getNodeId({
@@ -412,7 +552,6 @@ test("keeps the workflow owner Screen in the editor selection while previewing a
       viewingProject: false,
       viewingTheme: false,
       viewingSpec: false,
-      viewingAssetTemplate: false,
       viewingMaterialFile: false,
       activeInstancePath: []
     },
@@ -451,8 +590,8 @@ test("keeps the workflow layout active while rerendering a linked Screen preview
     ["main", main],
     ["workflow-editor-panel", createElement()],
     ["workflow-source", createElement()],
-    ["asset-document-editor-panel", createElement()],
-    ["asset-document-source", createElement()],
+    ["material-document-editor-panel", createElement()],
+    ["material-document-source", createElement()],
     ["spec-editor-panel", createElement()],
     ["spec-source", createElement()],
     ["screen-heading", createElement()],
@@ -463,7 +602,7 @@ test("keeps the workflow layout active while rerendering a linked Screen preview
   const services = {
     byId: (id) => elements.get(id),
     discardUneditedActiveSpecDraft() {},
-    closeAssetContextMenu() {},
+    closeScreenPlacementContextMenu() {},
     renderScreenSelector() {},
     projectFileTree: { reveal() {} },
     renderPreviewStateControls() {},

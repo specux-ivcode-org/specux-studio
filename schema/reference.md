@@ -1,6 +1,6 @@
 # SpecUX Authoring Reference
 
-This reference is versioned with the SpecUX CLI. Read the target project's `specux` version from `project.yml` and use a CLI with the same value. Use `specux schema project`, `screen`, `asset`, `material`, `theme`, `spec`, and `workflow` for the complete artifact schemas.
+This reference is versioned with the SpecUX CLI. Read the target project's `specux` version from `project.yml` and use a CLI with the same value. Use `specux schema project`, `screen`, `material`, `theme`, `spec`, and `workflow` for the complete artifact schemas.
 
 ## Project discovery
 
@@ -11,7 +11,7 @@ This reference is versioned with the SpecUX CLI. Read the target project's `spec
 
 ## Create or revise a Screen
 
-1. Read the relevant `specux schema` guidance before authoring or changing an artifact. This includes `project`, `screen`, `asset`, `material`, `theme`, `spec`, and `workflow`.
+1. Read the relevant `specux schema` guidance before authoring or changing an artifact. This includes `project`, `screen`, `material`, `theme`, `spec`, and `workflow`.
 2. A Screen ID belongs in `project.yml`, not the Screen YAML file. A Screen can be empty while it is being built. Create or reuse an STML Material template, then add an instance referencing it to the Screen's `materials` list.
 3. Define shared visual markup and YAML attribute mappings in the Material's STML file. Reference declared values as `${attributes.<name>}` in the HTML. Set instance-specific values in its `attributes` mapping and each Screen instance's absolute `position`, `size`, and optional `rotation`; instance data and transforms belong to the placement, not the shared Material.
 4. Materials are visual only: do not model inputs, actions, layout groups, or slots.
@@ -22,6 +22,7 @@ This reference is versioned with the SpecUX CLI. Read the target project's `spec
 Materials do not accept input or trigger actions. Do not invent behavior specs for Label or Button Materials.
 
 - Use a project-level spec for behavior shared across Screens and a Screen-level spec for that Screen's behavior and preview-state activation.
+- Add Markdown links such as `[Home](specux://screen/home/screen.yml)`, `[Dialog state](specux://screen/home/screen.yml?state=dialog-open)`, or `[Save button](specux://screen/home/screen.yml?placement=save-button)` to control the behavior spec editor's preview. Element specs in `screens/<screen-id>/specs/element-<placement-id>.md` must link to their owning placement; do not use `element-id` YAML front matter.
 - Keep shared Material markup and variable definitions in its STML file and instance-specific attribute values and transforms in Screen YAML; do not add individual Material behavior specs.
 - Write each spec in OpenSpec format with `## Purpose`, `## Requirements`, named `### Requirement:` headings, immediate normative statements, and named `#### Scenario:` sections. Scenario steps use bold `GIVEN` (optional), `WHEN`, `THEN`, and `AND` bullet keywords. Screen specs use `SHOW <state-id>` after `THEN` and reference every non-default preview state. Keep requirements observable and testable; do not include implementation plans or repeat visual details already shown by the mockup.
 - Replace example draft content with behavior derived from the user's intent and project context. Do not save an unchanged example draft.
@@ -42,7 +43,7 @@ Before finishing, inspect the complete Screen and verify every Material referenc
 4. After direct project-file edits, run `specux server update` to notify connected browser tabs. Tabs with unsaved edits are left untouched and prompted to save or reset before refreshing.
 5. Do not report completion until validation succeeds and the rendered Screen has been checked when rendering is available. Clearly state any check that could not be run.
 
-Use `specux server selected` when the user asks about the browser editor's current selection or has drawn temporary Screen annotations; its JSON includes the marks, Material paths, and nearby target text when available. Use `specux render <screen> --format image --annotations --output <file>` to capture a full Screen image with the marks overlaid. Use `specux server annotations clear` to remove marks from the selected Screen when requested. Annotations are temporary server memory, not project files. Edit project files directly; the CLI provides schema guidance, validation, rendering, and editor coordination. `specux prune` only deletes files when explicitly run with `--apply`. Preserve unrelated user changes and avoid committing generated renders unless requested.
+Use `specux server selected` when the user asks about the browser editor's current selection or has drawn temporary Screen annotations; its JSON includes the marks, Material paths, and nearby target text when available. Use `specux render <screen> --format image --annotations --output <file>` to capture a full Screen image with the marks overlaid. Use `specux server annotations clear` to remove marks from the selected Screen when requested. Annotations are temporary server memory, not project files. Edit project files directly; the CLI provides schema guidance, validation, rendering, and editor coordination. Preserve unrelated user changes and avoid committing generated renders unless requested.
 
 ## Final validation checklist
 

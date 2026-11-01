@@ -107,29 +107,29 @@
           >Markdown</button>
         </div>
       </div>
-      <div class="asset-view-toolbar" aria-label="Reusable file preview layout">
-        <h2 class="asset-view-heading" id="asset-view-heading">Preview</h2>
-        <div class="screen-view-selector asset-view-selector" role="group" aria-label="Reusable file view">
+      <div class="material-view-toolbar" aria-label="Material preview layout">
+        <h2 class="material-view-heading" id="material-view-heading">Preview</h2>
+        <div class="screen-view-selector material-view-selector" role="group" aria-label="Material view">
           <button
             class="screen-view-button"
-            id="asset-view-split"
+            id="material-view-split"
             type="button"
             aria-pressed="true"
-            aria-controls="screen-stage asset-document-editor-panel"
+            aria-controls="screen-stage material-document-editor-panel"
           >Split</button>
           <button
             class="screen-view-button"
-            id="asset-view-preview"
+            id="material-view-preview"
             type="button"
             aria-pressed="false"
-            aria-controls="screen-stage asset-document-editor-panel"
+            aria-controls="screen-stage material-document-editor-panel"
           >Preview</button>
           <button
             class="screen-view-button"
-            id="asset-view-source"
+            id="material-view-source"
             type="button"
             aria-pressed="false"
-            aria-controls="screen-stage asset-document-editor-panel"
+            aria-controls="screen-stage material-document-editor-panel"
           >Source</button>
         </div>
       </div>
@@ -369,6 +369,12 @@
           </article>
         </div>
         <article
+          class="spec-workflow-preview workflow-diagram"
+          id="spec-workflow-preview"
+          aria-label="Workflow diagram preview"
+          hidden
+        ></article>
+        <article
           class="workflow-spec-preview"
           id="workflow-spec-preview"
           aria-label="Behavior spec preview"
@@ -377,7 +383,7 @@
         <section class="screen-yaml-editor-panel" id="screen-yaml-editor-panel" aria-label="Screen YAML editor" hidden>
           <h2 class="screen-yaml-editor-heading">Screen YAML</h2>
           <textarea
-            class="asset-yaml-source screen-yaml-source"
+            class="material-yaml-source screen-yaml-source"
             id="screen-yaml-source"
             aria-label="Screen YAML source"
             spellcheck="false"
@@ -485,16 +491,16 @@
       ></div>
 
       <div
-        class="spec-split-resizer asset-split-resizer"
-        id="asset-split-resizer"
+        class="spec-split-resizer material-split-resizer"
+        id="material-split-resizer"
         role="separator"
-        aria-label="Resize preview and Asset source editor"
+        aria-label="Resize preview and Material source editor"
         aria-orientation="horizontal"
-        aria-controls="screen-stage asset-document-editor-panel"
+        aria-controls="screen-stage material-document-editor-panel"
         aria-valuemin="27"
         aria-valuemax="73"
         aria-valuenow="40"
-        title="Drag or use the arrow keys to resize the preview and Asset source editor"
+        title="Drag or use the arrow keys to resize the preview and Material source editor"
         tabindex="0"
         hidden
       ></div>
@@ -528,14 +534,48 @@
       </section>
 
       <section class="spec-editor-panel" id="spec-editor-panel" aria-label="Behavior spec Markdown editor" hidden>
-        <h2 class="spec-editor-heading" id="spec-editor-heading">Behavior spec</h2>
-        <textarea class="spec-source" id="spec-source" aria-label="Behavior spec Markdown source" spellcheck="false"></textarea>
+        <div class="spec-editor-toolbar">
+          <h2 class="spec-editor-heading" id="spec-editor-heading">Behavior spec</h2>
+          <div
+            class="workflow-spec-reference-navigation spec-reference-navigation"
+            id="spec-reference-navigation"
+            role="group"
+            aria-label="Linked preview references"
+            hidden
+          >
+            <button
+              class="screen-view-button workflow-spec-section-button"
+              id="spec-reference-previous"
+              type="button"
+              aria-label="Previous linked reference"
+              title="Previous linked reference"
+              aria-controls="screen-stage spec-editor-panel"
+            >↑</button>
+            <span
+              class="workflow-spec-section-position"
+              id="spec-reference-position"
+              aria-live="polite"
+            ></span>
+            <button
+              class="screen-view-button workflow-spec-section-button"
+              id="spec-reference-next"
+              type="button"
+              aria-label="Next linked reference"
+              title="Next linked reference"
+              aria-controls="screen-stage spec-editor-panel"
+            >↓</button>
+          </div>
+        </div>
+        <div class="spec-source-container" id="spec-source-container">
+          <pre class="spec-source-highlight" id="spec-source-highlight" aria-hidden="true"></pre>
+          <textarea class="spec-source" id="spec-source" aria-label="Behavior spec Markdown source" spellcheck="false"></textarea>
+        </div>
       </section>
 
-      <section class="asset-document-editor-panel" id="asset-document-editor-panel" aria-label="Reusable file source editor" hidden>
-        <h2 class="asset-document-editor-heading" id="asset-document-editor-heading">Reusable file source</h2>
-        <textarea class="asset-document-source" id="asset-document-source" aria-label="Reusable file source" spellcheck="false"></textarea>
-        <div class="asset-document-status" id="asset-document-status" role="status" aria-live="polite"></div>
+      <section class="material-document-editor-panel" id="material-document-editor-panel" aria-label="Material source editor" hidden>
+        <h2 class="material-document-editor-heading" id="material-document-editor-heading">Material source</h2>
+        <textarea class="material-document-source" id="material-document-source" aria-label="Material source" spellcheck="false"></textarea>
+        <div class="material-document-status" id="material-document-status" role="status" aria-live="polite"></div>
       </section>
 
       <div class="editor-message" id="editor-message" role="status" aria-live="polite"></div>
@@ -561,24 +601,10 @@
       </div>
     </aside>
   </div>
-  <div class="asset-context-menu" id="asset-context-menu" role="menu" aria-label="Asset actions" hidden>
-    <button id="asset-context-edit-template" type="button" role="menuitem" tabindex="-1">Edit Template</button>
-    <button id="asset-context-copy-details" type="button" role="menuitem" tabindex="-1">Copy Details</button>
-    <div role="separator"></div>
-    <button id="asset-context-delete" class="danger" type="button" role="menuitem" tabindex="-1">Delete Material</button>
-  </div>
-  <div class="asset-context-menu screen-placement-context-menu" id="screen-placement-context-menu" role="menu" aria-label="Placement actions" hidden>
+  <div class="context-menu screen-placement-context-menu" id="screen-placement-context-menu" role="menu" aria-label="Placement actions" hidden>
     <button id="screen-placement-context-group" type="button" role="menuitem" tabindex="-1">Group</button>
     <button id="screen-placement-context-ungroup" type="button" role="menuitem" tabindex="-1">Ungroup</button>
   </div>
-  <dialog class="asset-delete-dialog" id="asset-delete-dialog" aria-labelledby="asset-delete-title" aria-describedby="asset-delete-message">
-    <h2 id="asset-delete-title">Delete asset?</h2>
-    <p id="asset-delete-message"></p>
-    <div class="asset-delete-dialog-actions">
-      <button id="asset-delete-cancel" type="button">Cancel</button>
-      <button id="asset-delete-confirm" class="danger" type="button">Delete Asset</button>
-    </div>
-  </dialog>
   <script type="module" src="./app.mjs"></script>
 </body>
 </html>

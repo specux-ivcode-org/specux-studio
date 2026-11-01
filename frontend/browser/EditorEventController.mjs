@@ -85,7 +85,6 @@ export class EditorEventController {
       }
     });
     services.byId("save-project").addEventListener("click", () => services.saveProjectChanges());
-    this.bindAssetContextMenu();
     this.bindBrowserHistory();
   }
 
@@ -120,74 +119,6 @@ export class EditorEventController {
       this.services.byId(zoomOutId).disabled = this.canvasZoom <= minimum;
       this.services.byId(zoomInId).disabled = this.canvasZoom >= maximum;
     }
-  }
-
-  bindAssetContextMenu() {
-    const { state, services } = this;
-    services.byId("asset-context-edit-template").addEventListener("click", () => {
-      const target = state.assetContextMenuTarget;
-      services.closeAssetContextMenu();
-      if (!target || target.screenIndex !== state.activeScreenIndex) return;
-      const template = services.getTemplateByPath(target.assetId);
-      if (template) services.renderAssetTemplate(template.id).catch(services.showFatalError);
-    });
-    services.byId("asset-context-copy-details").addEventListener("click", () => {
-      const target = state.assetContextMenuTarget;
-      services.closeAssetContextMenu();
-      if (target) services.copyAssetDetails(target);
-    });
-    services.byId("asset-context-delete").addEventListener("click", () => {
-      const target = state.assetContextMenuTarget;
-      services.closeAssetContextMenu(true);
-      if (target) services.confirmDeleteAsset(target);
-    });
-    services.byId("asset-delete-cancel").addEventListener(
-      "click",
-      () => services.closeAssetDeleteDialog(true)
-    );
-    services.byId("asset-delete-dialog").addEventListener("cancel", (event) => {
-      event.preventDefault();
-      services.closeAssetDeleteDialog(true);
-    });
-    services.byId("asset-delete-confirm").addEventListener("click", () => {
-      const target = state.pendingAssetDeletion;
-      services.closeAssetDeleteDialog(false);
-      if (!target) return;
-      services.deleteAssetInstance([...target.instancePath]).catch((error) =>
-        services.showEditorMessage("Could not delete asset", error.message || String(error))
-      );
-    });
-
-    const menu = services.byId("asset-context-menu");
-    services.document.addEventListener("pointerdown", (event) => {
-      if (!menu.hidden && !menu.contains(event.target)) services.closeAssetContextMenu();
-    }, true);
-    services.document.addEventListener("keydown", (event) => {
-      if (menu.hidden) return;
-      if (event.key === "Escape") {
-        event.preventDefault();
-        services.closeAssetContextMenu(true);
-        return;
-      }
-      if (event.key === "Tab") {
-        services.closeAssetContextMenu(true);
-        return;
-      }
-      const items = [...menu.querySelectorAll("button:not(:disabled)")];
-      if (!items.length) return;
-      const currentIndex = items.indexOf(services.document.activeElement);
-      let nextIndex = null;
-      if (event.key === "ArrowDown") nextIndex = (currentIndex + 1) % items.length;
-      else if (event.key === "ArrowUp") nextIndex = (currentIndex - 1 + items.length) % items.length;
-      else if (event.key === "Home") nextIndex = 0;
-      else if (event.key === "End") nextIndex = items.length - 1;
-      if (nextIndex !== null) {
-        event.preventDefault();
-        items[nextIndex].focus();
-      }
-    });
-    services.window.addEventListener("resize", () => services.closeAssetContextMenu());
-    services.window.addEventListener("scroll", () => services.closeAssetContextMenu(), true);
   }
 
   bindBrowserHistory() {

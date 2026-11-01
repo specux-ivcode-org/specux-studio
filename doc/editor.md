@@ -8,7 +8,7 @@ Screen-editor-specific behavior is maintained separately in the [Screen Editor R
 
 | ID | Target requirement |
 |---|---|
-| ED-001 | Open a SpecUX project and resolve its Screens, reusable Material STML files, Theme, optional project- and Screen-level Markdown behavior specs, and supporting resources. Screen composition uses Material references with placement-specific transforms, not an Asset registry or layout template library. |
+| ED-001 | Open a SpecUX project and resolve its Screens, reusable Material STML files, Theme, optional project- and Screen-level Markdown behavior specs, and Material resources. Screen composition uses Material references with placement-specific transforms. |
 | ED-002 | Validate project structure and references on load, and make missing or invalid artifacts clear to the user. |
 | ED-003 | Provide a selectable Project Overview with summaries of its Screens, reusable Materials, Theme, and attached behavior specs. Show a collapsible file tree for project configuration, Materials, and Screen files. Open supported files in their corresponding Studio views and keep selection consistent. Allow existing Material templates to be edited and placed again from the project tree or selected placement. |
 | ED-004 | Keep the details inspector focused on the current selection: Project, project-level behavior spec, Theme, Screen, or selected Material. Do not mix unrelated entity details. |
@@ -17,7 +17,7 @@ Screen-editor-specific behavior is maintained separately in the [Screen Editor R
 | ED-007 | Validate Material front matter, single-root HTML markup, local resources, and numeric placement transforms; report invalid values instead of silently substituting content or dimensions. |
 | ED-008 | Edit Screen metadata, reusable Material files, placement transforms, and Theme values. Materials are visual only and do not accept input or execute actions. |
 | ED-009 | Apply project Theme tokens as CSS custom properties to rendered project previews. Keep Theme configuration limited to token values so it cannot change Material structure or editor styles. |
-| ED-010 | Support project- and Screen-level Markdown behavior specs. Materials are visual only and do not have individual behavior specs. Require OpenSpec's structured Purpose, Requirements, and scenario format; treat specs as declarative behavior contracts, not executable actions or implementation plans. |
+| ED-010 | Support project- and Screen-level Markdown behavior specs. Materials are visual only and do not have individual behavior specs. Require OpenSpec's structured Purpose, Requirements, and scenario format; treat specs as declarative behavior contracts, not executable actions or implementation plans. Use explicit `specux://screen/.../screen.yml` links to drive Screen, state, and placement previews; attach Element specs through their matching placement link rather than YAML front matter. |
 | ED-011 | Let a human inspect rendered results and record a review outcome for the relevant Screen, Material, or Theme. |
 | ED-012 | Provide an explicit save action. The editor frontend sends changes to a Node.js server, which validates and writes them back to project files; the frontend does not write to the filesystem directly. Confine writes to the opened project root and report save failures. |
 | ED-013 | Preserve project information when reading and writing files, including unknown fields or content the editor does not support. Never silently discard data or break compatibility. |

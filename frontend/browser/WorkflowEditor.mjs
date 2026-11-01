@@ -45,7 +45,7 @@ export function parseWorkflowLink(href) {
   };
 }
 
-export function parseWorkflowSpecReference(href, workflowPath) {
+export function parseWorkflowSpecReference(href, workflowPath = null) {
   let url;
   try {
     url = new URL(href);
@@ -69,7 +69,7 @@ export function parseWorkflowSpecReference(href, workflowPath) {
   }
   const targetWorkflowPath =
     `screens/${pathSegments[0]}/workflows/${pathSegments[2]}`;
-  if (targetWorkflowPath !== workflowPath) return null;
+  if (workflowPath && targetWorkflowPath !== workflowPath) return null;
 
   const queryEntries = [...url.searchParams.entries()];
   if (queryEntries.length !== 1 ||
@@ -80,10 +80,11 @@ export function parseWorkflowSpecReference(href, workflowPath) {
       `Workflow links in behavior specs must include one valid node parameter: "${href}".`
     );
   }
-  return { nodeId: url.searchParams.get("node") };
+  const nodeId = url.searchParams.get("node");
+  return workflowPath ? { nodeId } : { workflowPath: targetWorkflowPath, nodeId };
 }
 
-export function parseWorkflowSpecReferences(source, workflowPath) {
+export function parseWorkflowSpecReferences(source, workflowPath = null) {
   const references = [];
   const headings = [];
   const lines = source.split(/\r?\n/);
@@ -118,8 +119,10 @@ export function parseWorkflowSpecReferences(source, workflowPath) {
       const reference = parseWorkflowSpecReference(match[1], workflowPath);
       if (!reference) continue;
       references.push({
+        ...("workflowPath" in reference ? { workflowPath: reference.workflowPath } : {}),
         nodeId: reference.nodeId,
         lineIndex,
+        columnIndex: match.index,
         sectionLineIndex: headings.at(-1)?.lineIndex ?? lineIndex
       });
     }
@@ -183,6 +186,7 @@ export class WorkflowEditor {
     this.validationTimer = null;
     this.selectionQueue = Promise.resolve();
     this.selectionVersion = 0;
+    this.specPreviewVersion = 0;
     this.activeSpecPreview = null;
     services.byId("workflow-panel-diagram").addEventListener("click", () =>
       this.setPanelMode("diagram")
@@ -278,6 +282,104 @@ export class WorkflowEditor {
     this.services.byId("workflow-source").oninput = null;
   }
 
+  async showSpecReferencePreview(reference, specPath) {
+    const { state, services } = this;
+    this.clearSpecReferencePreview();
+    const source = state.workflowSources.get(reference.workflowPath);
+    if (source === undefined) {
+      throw new Error(`Workflow "${reference.workflowPath}" is not available.`);
+    }
+
+    const version = ++this.specPreviewVersion;
+    const { diagramSource } = parseWorkflowClickDirectives(source);
+    const mermaid = await this.getMermaid();
+    await mermaid.parse(source);
+    if (version !== this.specPreviewVersion || !state.viewingSpec) return;
+
+    const preview = services.byId("spec-workflow-preview");
+    const rendered = await mermaid.render(
+      `specux-workflow-${++this.diagramId}`,
+      diagramSource
+    );
+    if (version !== this.specPreviewVersion || !state.viewingSpec) return;
+    preview.innerHTML = rendered.svg;
+    rendered.bindFunctions?.(preview);
+    const nodes = [...preview.querySelectorAll("g.node")];
+    const node = nodes.find((entry) => this.getNodeId(entry) === reference.nodeId);
+    if (!node) {
+      throw new Error(
+        `Workflow link refers to unknown Mermaid node "${reference.nodeId}" in "${reference.workflowPath}".`
+      );
+    }
+    node.classList.add("selected");
+    this.setNodeSelectionHighlight(node, true);
+    preview.hidden = false;
+    preview.setAttribute(
+      "aria-label",
+      `Workflow preview for "${specPath}", focused on node "${reference.nodeId}"`
+    );
+    services.byId("main").classList.add("spec-workflow-preview-active");
+    services.byId("spec-view-heading").textContent = `Workflow: ${reference.workflowPath}`;
+    this.scrollSpecPreviewNodeIntoView(preview, node);
+  }
+
+  scrollSpecPreviewNodeIntoView(preview, node) {
+    const previewRect = preview.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    if (!preview.clientWidth || !preview.clientHeight) return;
+
+    const viewportLeft = previewRect.left + preview.clientLeft;
+    const viewportTop = previewRect.top + preview.clientTop;
+    preview.scrollTo({
+      left: preview.scrollLeft +
+        nodeRect.left + nodeRect.width / 2 -
+        (viewportLeft + preview.clientWidth / 2),
+      top: preview.scrollTop +
+        nodeRect.top + nodeRect.height / 2 -
+        (viewportTop + preview.clientHeight / 2),
+      behavior: "smooth"
+    });
+  }
+
+  clearSpecReferencePreview() {
+    this.specPreviewVersion += 1;
+    const { services } = this;
+    services.byId("main").classList.remove("spec-workflow-preview-active");
+    const preview = services.byId("spec-workflow-preview");
+    preview.hidden = true;
+    preview.replaceChildren();
+    services.byId("spec-view-heading").textContent = "Preview";
+  }
+
+  setNodeSelectionHighlight(node, selected) {
+    const insetShapes = node.querySelectorAll?.(".workflow-node-focus-inset") || [];
+    insetShapes.forEach((shape) => shape.remove());
+    if (!selected) return;
+
+    const shape = node.querySelector?.(".basic");
+    if (!shape?.getBBox || !shape.cloneNode) return;
+    const bounds = shape.getBBox();
+    const inset = 2;
+    if (bounds.width <= inset * 2 || bounds.height <= inset * 2) return;
+    const centerX = bounds.x + bounds.width / 2;
+    const centerY = bounds.y + bounds.height / 2;
+    const scaleX = (bounds.width - inset * 2) / bounds.width;
+    const scaleY = (bounds.height - inset * 2) / bounds.height;
+    const insetShape = shape.cloneNode(false);
+    const transform = [
+      shape.getAttribute("transform"),
+      `translate(${centerX} ${centerY}) scale(${scaleX} ${scaleY}) translate(${-centerX} ${-centerY})`
+    ].filter(Boolean).join(" ");
+    insetShape.setAttribute("class", "workflow-node-focus-inset");
+    insetShape.removeAttribute("id");
+    insetShape.removeAttribute("style");
+    insetShape.removeAttribute("filter");
+    insetShape.setAttribute("fill", "none");
+    insetShape.setAttribute("pointer-events", "none");
+    insetShape.setAttribute("transform", transform);
+    node.appendChild(insetShape);
+  }
+
   setViewMode(mode) {
     this.state.workflowViewMode = mode;
     this.services.setWorkflowViewMode(mode);
@@ -358,7 +460,9 @@ export class WorkflowEditor {
         const id = this.getNodeId(node);
         const link = links.get(id);
         const linkedSpecs = specLinks.get(id) || [];
-        node.classList.toggle("selected", id === state.selectedWorkflowNodeId);
+        const selected = id === state.selectedWorkflowNodeId;
+        node.classList.toggle("selected", selected);
+        if (selected) this.setNodeSelectionHighlight(node, true);
         if (link) {
           node.classList.add("workflow-linked-node");
           node.setAttribute("role", linkedSpecs.length ? "group" : "button");
@@ -621,10 +725,14 @@ export class WorkflowEditor {
   selectNode(nodeId, link) {
     this.services.byId("workflow-diagram")
       .querySelectorAll("g.node.selected")
-      .forEach((node) => node.classList.remove("selected"));
+      .forEach((node) => {
+        node.classList.remove("selected");
+        this.setNodeSelectionHighlight(node, false);
+      });
     const selected = [...this.services.byId("workflow-diagram").querySelectorAll("g.node")]
       .find((node) => this.getNodeId(node) === nodeId);
     selected?.classList.add("selected");
+    if (selected) this.setNodeSelectionHighlight(selected, true);
     this.state.selectedWorkflowNodeId = nodeId;
     const selectionVersion = ++this.selectionVersion;
     const workflowScreenIndex = this.state.workflowScreenIndex;

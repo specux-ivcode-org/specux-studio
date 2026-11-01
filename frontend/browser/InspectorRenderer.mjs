@@ -31,8 +31,6 @@ export class InspectorRenderer {
       services.themeEditor.renderDetails(panel);
     } else if (state.viewingSpec) {
       this.renderSpecDetails(panel);
-    } else if (state.viewingAssetTemplate) {
-      this.renderTemplateDetails(panel, state.assets.get(state.activeAssetId));
     } else if (state.viewingMaterialFile) {
       this.renderMaterialFileDetails(
         panel,
@@ -50,14 +48,12 @@ export class InspectorRenderer {
       const instance = baseInstance
         ? services.resolvePlacementForState(baseInstance, stateId, screen)
         : null;
-      const template = instance?.type === "template"
-        ? services.getTemplateByPath(instance.src)
-        : null;
+      const material = instance ? state.materialFiles.get(instance.src) : null;
       this.renderScreenEditorDetails(
         panel,
         screen,
         instance,
-        template,
+        material,
         state.viewingPreviewState
       );
     }
@@ -83,7 +79,7 @@ export class InspectorRenderer {
     }
   }
 
-  renderScreenEditorDetails(panel, screen, instance, template, viewingPreviewState) {
+  renderScreenEditorDetails(panel, screen, instance, material, viewingPreviewState) {
     const { services } = this;
     const tabList = services.element("div", "inspector-tabs");
     tabList.setAttribute("role", "tablist");
@@ -135,7 +131,7 @@ export class InspectorRenderer {
     } else if (viewingPreviewState) {
       this.renderPreviewStateDetails(content);
     } else if (instance) {
-      this.renderInstanceDetails(content, instance, template);
+      this.renderInstanceDetails(content, instance, material);
     } else {
       this.renderScreenDetails(content, screen);
       this.renderReviewControls(content);
@@ -764,7 +760,9 @@ export class InspectorRenderer {
       this.appendDetail(panel, "Format", "OpenSpec behavior contract; not executable.");
       return;
     }
-    const screen = state.screens[state.activeScreenIndex];
+    const screen = state.screens.find((entry) =>
+      entry.file === state.activeSpecScreenFile
+    ) || state.screens[state.activeScreenIndex];
     if (state.activeSpecOwner === "screen") {
       this.appendSection(panel, "Screen behavior spec");
       this.appendDetail(panel, "File", state.activeSpecPath || "Unavailable");
@@ -876,7 +874,7 @@ export class InspectorRenderer {
     panel.append(review);
   }
 
-  renderInstanceDetails(panel, instance, _template) {
+  renderInstanceDetails(panel, instance, _material) {
     const { state, services } = this;
     if (isScreenGroup(instance)) {
       this.renderGroupPlacementDetails(panel, instance);
@@ -1186,88 +1184,6 @@ export class InspectorRenderer {
         { numberFormat: "decimal" }
       );
     }
-  }
-
-  renderTemplateDetails(panel, template) {
-    const { services } = this;
-    if (!template) return;
-    this.appendSection(panel, "Asset template");
-    services.appendEditableField(panel, "Name", template.data.name, (value) => {
-      template.data.name = value;
-      services.renderNavigation();
-      services.markAssetTemplateEdited(template);
-      services.refreshActiveView();
-    });
-    services.appendEditableField(panel, "Description", template.data.description, (value) => {
-      template.data.description = value;
-      services.markAssetTemplateEdited(template);
-      services.refreshActiveView();
-    }, { multiline: true });
-    if (template.data.slots) {
-      this.appendSection(panel, "Drop zones");
-      for (const slot of template.data.slots) {
-        this.appendDetail(panel, slot.name || slot.id, `Named slot: ${slot.id}`);
-      }
-    }
-    for (const [name, definition] of Object.entries(template.data.attributes || {})) {
-      services.appendEditableField(panel, `${name} type`, definition.type, (value) => {
-        definition.type = value;
-        delete definition.format;
-        delete definition.options;
-        if (value === "string") {
-          if (definition.default !== undefined) definition.default = String(definition.default);
-        } else if (value === "boolean") {
-          if (typeof definition.default !== "boolean") definition.default = false;
-        } else if (value === "number") {
-          definition.format = "decimal";
-          if (definition.default !== undefined) {
-            const parsed = Number(definition.default);
-            if (String(definition.default).trim() && Number.isFinite(parsed)) definition.default = parsed;
-            else delete definition.default;
-          }
-        } else if (value === "list") {
-          definition.options = [];
-          if (definition.default !== undefined) delete definition.default;
-        }
-        services.markAssetTemplateEdited(template);
-        services.refreshActiveView();
-      }, { selectOptions: services.attributeTypes });
-      services.appendEditableField(panel, `${name} default`, definition.default, (value) => {
-        if (value === undefined) delete definition.default;
-        else definition.default = value;
-        services.markAssetTemplateEdited(template);
-        services.refreshActiveView();
-      }, this.attributeInputOptions(definition));
-      if (definition.type === "number") {
-        services.appendEditableField(panel, `${name} number format`, definition.format || "decimal", (value) => {
-          definition.format = value;
-          services.markAssetTemplateEdited(template);
-          services.refreshActiveView();
-        }, { selectOptions: services.numberFormats });
-      }
-      if (definition.type === "list") {
-        services.appendEditableField(
-          panel,
-          `${name} options (one per line)`,
-          (definition.options || []).join("\n"),
-          (value) => {
-            definition.options = [...new Set(value.split(/\r?\n/).map((option) => option.trim()).filter(Boolean))];
-            if (definition.default !== undefined && !definition.options.includes(definition.default)) {
-              delete definition.default;
-            }
-            services.markAssetTemplateEdited(template);
-            services.refreshActiveView();
-          },
-          { multiline: true }
-        );
-      }
-      services.appendEditableField(panel, `${name} overridable`, definition.overridable === true, (value) => {
-        definition.overridable = value;
-        services.markAssetTemplateEdited(template);
-        services.refreshActiveView();
-      }, { checkbox: true });
-    }
-    if (template.data.note) this.appendNote(panel, "Template note", template.data.note);
   }
 
   renderMaterialFileDetails(panel, material) {

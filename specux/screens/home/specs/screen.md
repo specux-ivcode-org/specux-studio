@@ -4,6 +4,9 @@
 
 Describe Home Screen behaviors, including when named visual states activate and how Add item submission is saved.
 
+[Home Screen](specux://screen/home/screen.yml)
+[Add item dialog state](specux://screen/home/screen.yml?state=add-item-open)
+
 ## Requirements
 
 ### Requirement: Show the Add item dialog state

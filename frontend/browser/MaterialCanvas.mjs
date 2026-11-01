@@ -69,10 +69,7 @@ export class MaterialCanvas {
     frame.append(host);
 
     const fallbackPosition = defaultMaterialPosition(index);
-    const hasNestedChildren = isScreenGroup(instance) ||
-      Object.values(instance.slots || {}).some(
-        (children) => Array.isArray(children) && children.length > 0
-      );
+    const hasNestedChildren = isScreenGroup(instance);
     if (instance.position !== undefined && !this.validPosition(instance.position)) {
       throw new Error(`Material "${instance.id || index}" position must contain numeric x and y values.`);
     }

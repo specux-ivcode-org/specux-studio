@@ -31,61 +31,14 @@ export class ProjectPersistence {
     this.updateSaveControls();
   }
 
-  markAssetTemplateEdited(template) {
-    const { state, services } = this;
-    const filePath = template.templateFile;
-    template.yamlParseVersion += 1;
-    clearTimeout(template.yamlTimer);
-    state.invalidYamlFiles.delete(filePath);
-    template.yamlSourceMode = "data";
-    state.pendingAssetSerializations.add(template.id);
-    services.setAssetDocumentStatus(template, "Updating YAML front matter...");
-    this.markEdited(filePath);
-    this.updateSaveControls();
-    const version = ++template.yamlSerializeVersion;
-    services.fetcher("/api/yaml/stringify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data: template.data })
-    }).then(async (response) => {
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || `YAML serialization failed (HTTP ${response.status}).`);
-      }
-      if (version !== template.yamlSerializeVersion || template.yamlSourceMode !== "data") return;
-      template.yamlSource = result.source;
-      template.documentSource = services.validation.formatAssetDocument(result.source, template.html);
-      template.yamlSourceMode = "source";
-      state.invalidYamlFiles.delete(filePath);
-      services.setAssetDocumentStatus(template, "YAML front matter updated.");
-      if (state.viewingAssetTemplate && state.activeAssetId === template.id) {
-        services.byId("asset-document-source").value = template.documentSource;
-      }
-    }).catch((error) => {
-      if (version !== template.yamlSerializeVersion) return;
-      state.invalidYamlFiles.set(filePath, error.message || String(error));
-      services.setAssetDocumentStatus(
-        template,
-        `Could not update YAML front matter: ${error.message || String(error)}`,
-        true
-      );
-    }).finally(() => {
-      if (version !== template.yamlSerializeVersion) return;
-      state.pendingAssetSerializations.delete(template.id);
-      this.updateSaveControls();
-    });
-  }
-
   updateSaveControls() {
     const saveButton = this.services.byId("save-project");
     if (!saveButton) return;
     const { state } = this;
     const invalidYamlMessage = state.invalidYamlFiles.values().next().value;
     const invalidWorkflowMessage = state.invalidWorkflowFiles.values().next().value;
-    const assetSerializationPending = state.pendingAssetSerializations.size > 0;
     saveButton.disabled = state.isSaving || state.dirtyFiles.size === 0 ||
-      state.invalidYamlFiles.size > 0 || state.invalidWorkflowFiles.size > 0 ||
-      assetSerializationPending;
+      state.invalidYamlFiles.size > 0 || state.invalidWorkflowFiles.size > 0;
     saveButton.textContent = state.isSaving
       ? "Saving..."
       : state.dirtyFiles.size > 0
@@ -95,18 +48,14 @@ export class ProjectPersistence {
       ? `Fix invalid YAML before saving: ${invalidYamlMessage}`
       : invalidWorkflowMessage
         ? `Fix invalid Mermaid before saving: ${invalidWorkflowMessage}`
-      : assetSerializationPending
-        ? "Wait for Asset front matter to finish updating."
         : "";
   }
 
   getProjectFileData(filePath) {
-    const { project, screens, assets, materialFiles, theme } = this.state;
+    const { project, screens, materialFiles, theme } = this.state;
     if (filePath === "project.yml") return project;
     const screen = screens.find((entry) => entry.file === filePath);
     if (screen) return screen.data;
-    const asset = [...assets.values()].find((entry) => entry.templateFile === filePath);
-    if (asset) return asset.data;
     const material = materialFiles?.get(filePath);
     if (material) return material.data;
     if (project.theme === filePath) return theme;
@@ -115,8 +64,6 @@ export class ProjectPersistence {
 
   getProjectFileSaveEntry(filePath) {
     const { state } = this;
-    const asset = [...state.assets.values()].find((entry) => entry.templateFile === filePath);
-    if (asset) return { path: filePath, content: asset.documentSource };
     const material = state.materialFiles?.get(filePath);
     if (material) {
       return {
@@ -162,8 +109,7 @@ export class ProjectPersistence {
   async save() {
     const { state, services } = this;
     if (state.isSaving || state.dirtyFiles.size === 0) return;
-    if (state.invalidYamlFiles.size > 0 || state.invalidWorkflowFiles.size > 0 ||
-        state.pendingAssetSerializations.size > 0) {
+    if (state.invalidYamlFiles.size > 0 || state.invalidWorkflowFiles.size > 0) {
       this.updateSaveControls();
       return;
     }
@@ -185,11 +131,19 @@ export class ProjectPersistence {
         state.createdSpecDrafts.delete(filePath);
         state.createdSpecFiles.delete(filePath);
         state.specSources.delete(filePath);
-        state.assetSpecOwners.delete(filePath);
+        state.elementSpecOwners.delete(filePath);
         this.clearEdited(filePath);
         continue;
       }
       state.createdSpecFiles.add(filePath);
+    }
+    for (const [specPath, content] of state.specSources) {
+      try {
+        services.validation.validateSpecScreenReferences(content, state.screens, specPath);
+      } catch (error) {
+        services.showEditorMessage("Could not save changes", error.message || String(error));
+        return;
+      }
     }
     for (const screen of state.screens) {
       try {
@@ -204,18 +158,29 @@ export class ProjectPersistence {
         const linkedElementIds = new Set();
         for (const [specPath, content] of state.specSources) {
           if (!specPath.startsWith(elementSpecPrefix)) continue;
-          const elementId = services.validation.validateElementSpecHeader(content, specPath);
+          const identity = services.validation.getElementSpecIdentity(specPath);
+          if (!identity || identity.screenId !== screen.id) {
+            throw new Error(`${specPath} is not a valid Element spec path for Screen "${screen.id}".`);
+          }
+          const { elementId } = identity;
           services.validation.validateElementSpecPath(specPath, elementId);
+          const references = services.validation.parseSpecScreenReferences(content, specPath);
+          if (!references.some((reference) =>
+            reference.screenId === screen.id && reference.placementId === elementId
+          )) {
+            throw new Error(
+              `${specPath} must include a SpecUX Screen link to its Element "${elementId}".`
+            );
+          }
           const instancePath = services.findInstancePathById(screen.data.materials || [], elementId);
           if (!instancePath) {
-            state.assetSpecOwners.delete(specPath);
-            continue;
+            throw new Error(`${specPath} links to unavailable Element "${elementId}".`);
           }
           if (linkedElementIds.has(elementId)) {
             throw new Error(`${specPath}: Element "${elementId}" has more than one behavior spec.`);
           }
           linkedElementIds.add(elementId);
-          state.assetSpecOwners.set(specPath, { screenFile: screen.file, elementId, instancePath });
+          state.elementSpecOwners.set(specPath, { screenFile: screen.file, elementId, instancePath });
           linkedSpecPaths.add(specPath);
         }
         const linkedSpecs = [];
@@ -255,7 +220,6 @@ export class ProjectPersistence {
     const snapshot = [...saveEntries.values()].sort((left, right) =>
       savePriority(left) - savePriority(right)
     );
-    const copySnapshot = state.pendingAssetCopies.slice();
     state.isSaving = true;
     services.byId("spec-source").disabled = true;
     services.byId("reset-project").disabled = true;
@@ -265,8 +229,7 @@ export class ProjectPersistence {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          files: snapshot.map(({ version, ...file }) => file),
-          ...(copySnapshot.length ? { assetCopies: copySnapshot } : {})
+          files: snapshot.map(({ version, ...file }) => file)
         })
       });
       const result = await response.json();
@@ -292,19 +255,9 @@ export class ProjectPersistence {
           services.setScreenYamlStatus(savedScreen, "Saved.");
         }
       }
-      const savedCopyIds = new Set(copySnapshot.map((copy) => copy.targetId));
       const updatedFilePaths = new Set(state.projectFilePaths);
       for (const file of snapshot) updatedFilePaths.add(file.path);
-      for (const copy of copySnapshot) {
-        const template = state.assets.get(copy.targetId);
-        if (template) updatedFilePaths.add(template.templateFile);
-      }
       state.projectFilePaths = [...updatedFilePaths];
-      for (let index = state.pendingAssetCopies.length - 1; index >= 0; index -= 1) {
-        if (savedCopyIds.has(state.pendingAssetCopies[index].targetId)) {
-          state.pendingAssetCopies.splice(index, 1);
-        }
-      }
       state.hasEdits = state.dirtyFiles.size > 0;
       services.renderNavigation();
       this.updateSaveControls();
