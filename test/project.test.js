@@ -205,6 +205,40 @@ test("discovers project files and validates native visual materials", async () =
   }
 });
 
+test("validates project manifest fields and required Screen metadata", async () => {
+  const root = await createProject();
+  try {
+    const manifestPath = path.join(root, "project.yml");
+    const manifest = YAML.parse(await fs.readFile(manifestPath, "utf8"));
+    manifest.name = 42;
+    manifest.extra = true;
+    manifest.screens[0].label = "Home";
+    await fs.writeFile(manifestPath, YAML.stringify(manifest));
+
+    const screenPath = path.join(root, "screens", "home", "screen.yml");
+    const screen = YAML.parse(await fs.readFile(screenPath, "utf8"));
+    delete screen.description;
+    await fs.writeFile(screenPath, YAML.stringify(screen));
+
+    const result = await validateProject(root);
+    assert.ok(result.errors.some((error) => error.includes("project.yml: name must be a string.")));
+    assert.ok(result.errors.some((error) => error.includes('project.yml: unsupported property "extra".')));
+    assert.ok(result.errors.some((error) => error.includes('screens[0] has unsupported property "label".')));
+    assert.ok(result.errors.some((error) => error.includes("screens/home/screen.yml: description must be a string.")));
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("prints the Screen workflow schema from the CLI", () => {
+  const result = spawnSync(process.execPath, [cliPath, "schema", "workflow"], {
+    encoding: "utf8"
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Screen Workflow File/);
+  assert.match(result.stdout, /up\/down selector/);
+});
+
 test("rejects manifest Asset registries and invalid Screen material transforms", async () => {
   const root = await createProject();
   try {
@@ -357,6 +391,15 @@ test("validates recursive Screen placement groups and inherited layers", async (
 });
 
 test("validates reusable Material front matter and single-root markup", async () => {
+  assert.throws(
+    () => validation.validateMaterialMarkup('<div style="color:red;z-index:2"></div>', "brand.stml"),
+    /cannot set the CSS "z-index" property/
+  );
+  assert.throws(
+    () => validation.validateMaterialMarkup("<style>.brand { Z-INDEX: 2; }</style><div></div>", "brand.stml"),
+    /cannot set the CSS "z-index" property/
+  );
+
   const root = await createProject();
   try {
     const materialPath = path.join(root, "materials", "brand.stml");

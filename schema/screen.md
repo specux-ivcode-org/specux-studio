@@ -24,7 +24,7 @@ Each item in `preview-states` is a mapping with these properties:
 
 | Property | Type | Required | Definition |
 |---|---|---:|---|
-| `id` | string | Yes | Unique state identifier using lowercase letters, numbers, and hyphens. The `default` state is required. |
+| `id` | string | Yes | Unique state identifier beginning with a lowercase letter and containing only lowercase letters, numbers, and hyphens. The `default` state is required. |
 | `name` | string | Yes | Non-empty label shown in the Studio state selector. |
 | `description` | string | Yes, except for `default` | Non-empty description of the visual state. |
 | `layers` | mapping | No | Sparse layer visibility overrides keyed by layer ID, with each value shaped as `{visible: boolean}`. |
@@ -80,7 +80,7 @@ Children use coordinates relative to their containing group's top-left corner. G
 
 The Studio can create a group from a Ctrl multi-selection only when the selected placements are consecutive siblings in stacking order and belong to the same layer. Choose **X/Y** in the Screen toolbar to resize dimensions, or **Transform** to scale the rendered placement without changing its base dimensions. The toolbar choice is temporary; the resulting size or transform is saved in Screen YAML. Right-click a group and choose **Ungroup** to restore its children at that stack position while preserving composed transforms, including shear.
 
-IDs must use lowercase letters, numbers, and hyphens and be unique across all placements and groups in the Screen. Each Material placement `src` must reference a discovered Material file. Do not use the former `elements` property or asset templates for Screen composition.
+IDs must begin with a lowercase letter, contain only lowercase letters, numbers, and hyphens, and be unique across all placements and groups in the Screen. Each Material placement `src` must reference a discovered Material file. Do not use the former `elements` property or asset templates for Screen composition.
 
 ## Layers
 
@@ -88,7 +88,7 @@ Each item in `layers` is a mapping with these properties:
 
 | Property | Type | Required | Definition |
 |---|---|---:|---|
-| `id` | string | Yes | Unique layer identifier using lowercase letters, numbers, and hyphens. |
+| `id` | string | Yes | Unique layer identifier beginning with a lowercase letter and containing only lowercase letters, numbers, and hyphens. |
 | `name` | string | Yes | Non-empty layer name shown in the Studio. |
 | `visible` | boolean | No | Whether the layer's placements are rendered. Defaults to `true`. |
 

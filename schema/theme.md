@@ -2,7 +2,7 @@
 
 A project has one Theme YAML file named by the `theme` property in `specux/project.yml`, typically `specux/theme.yml`. Theme files contain token values only; Material STML owns component markup and CSS.
 
-Every YAML mapping accepts only the properties listed in this schema. Token names must use lowercase letters, numbers, and hyphens; each token value is a string containing a CSS custom-property value.
+Every YAML mapping accepts only the properties listed in this schema. Token names must begin with a lowercase letter and contain only lowercase letters, numbers, and hyphens; each token value is a string containing a CSS custom-property value.
 
 The Theme YAML file may define one shared token map or separate Light and Dark token maps:
 

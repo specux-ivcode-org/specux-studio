@@ -82,6 +82,15 @@ export class ProjectRepository {
 
   validateScreenMaterials(screen, materialFiles = this.materialFiles) {
     normalizeScreenLayers(screen.data);
+    if (typeof screen.data.name !== "string") {
+      throw new Error(`${screen.file}: name must be a string.`);
+    }
+    if (typeof screen.data.description !== "string") {
+      throw new Error(`${screen.file}: description must be a string.`);
+    }
+    if (screen.data.note !== undefined && typeof screen.data.note !== "string") {
+      throw new Error(`${screen.file}: note must be a string.`);
+    }
     const ids = new Set();
     const placementsById = new Map();
     if (Object.hasOwn(screen.data, "elements")) {
@@ -367,11 +376,55 @@ export class ProjectRepository {
 
   async load() {
     const project = await this.loadYaml("project.yml");
+    if (project.name !== undefined && typeof project.name !== "string") {
+      throw new Error("project.yml name must be a string.");
+    }
+    if (project.description !== undefined && typeof project.description !== "string") {
+      throw new Error("project.yml description must be a string.");
+    }
+    const supportedProjectProperties = new Set([
+      "name", "description", "specux", "screens", "theme", "spec",
+      "assets", "asset-templates", "workflows"
+    ]);
+    for (const property of Object.keys(project)) {
+      if (!supportedProjectProperties.has(property)) {
+        throw new Error(`project.yml has unsupported property "${property}".`);
+      }
+    }
     if (typeof project.specux !== "string" || !project.specux) {
       throw new Error("project.yml must specify the SpecUX version in specux.");
     }
     if (!Array.isArray(project.screens)) {
       throw new Error("project.yml must list screens.");
+    }
+    const screenIds = new Set();
+    const screenFiles = new Set();
+    for (const [index, entry] of project.screens.entries()) {
+      if (!this.validation.isMapping(entry)) {
+        throw new Error(`project.yml screens[${index}] must be a mapping.`);
+      }
+      for (const property of Object.keys(entry)) {
+        if (!["id", "file"].includes(property)) {
+          throw new Error(`project.yml screens[${index}] has unsupported property "${property}".`);
+        }
+      }
+      if (typeof entry.id !== "string" || !/^[a-z][a-z0-9-]*$/.test(entry.id)) {
+        throw new Error(`project.yml screens[${index}] id must use lowercase letters, numbers, and hyphens.`);
+      }
+      if (screenIds.has(entry.id)) {
+        throw new Error(`project.yml screens defines id "${entry.id}" more than once.`);
+      }
+      if (entry.file !== `screens/${entry.id}/screen.yml`) {
+        throw new Error(`project.yml Screen "${entry.id}" file must be "screens/${entry.id}/screen.yml".`);
+      }
+      if (screenFiles.has(entry.file)) {
+        throw new Error(`project.yml screens references "${entry.file}" more than once.`);
+      }
+      screenIds.add(entry.id);
+      screenFiles.add(entry.file);
+    }
+    if (Object.hasOwn(project, "assets") || Object.hasOwn(project, "asset-templates")) {
+      throw new Error("project.yml asset registries are no longer supported; place files under assets/ or screens/<screen-id>/assets/.");
     }
     if (Object.hasOwn(project, "workflows")) {
       throw new Error("project.yml workflows are no longer supported; use project.spec or a Screen spec.");

@@ -18,7 +18,7 @@ Run the commands as `specux ...` when the package's `bin` entry is available, or
 | `specux init [--project <directory>]` | Create a starter project under `<directory>/specux` (defaults to the current directory). Refuses to overwrite any generated file that already exists. |
 | `specux validate [--project <directory>]` | Validate reusable Material STML files, Screen placements, discovered project files, local file references, and references between resources. |
 | `specux version` | Print the SpecUX format version supported by this CLI. `specux --version` is an alias. |
-| `specux schema [project\|screen\|asset\|material\|theme\|spec\|reference]` | Print Markdown authoring guidance. Use `reference` for the version-matched authoring workflow; without a type, print all guidance. |
+| `specux schema [project\|screen\|asset\|material\|theme\|spec\|workflow\|reference]` | Print Markdown authoring guidance. Use `reference` for the version-matched authoring workflow; without a type, print all guidance. |
 | `specux render <screen> --format <html\|image> [--state <id>] [--output <file>] [--annotations] [--project <directory>]` | Render a Screen by ID, optionally using a named preview state, as HTML or a PNG image. Image output can include temporary editor annotations. |
 | `specux prune [--apply] [--project <directory>]` | Report unreferenced files in discovered asset directories. No files are removed unless `--apply` is supplied. |
 

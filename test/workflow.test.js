@@ -144,8 +144,13 @@ test("parses explicit SpecUX workflow links", async () => {
   const specLinks = collectWorkflowSpecLinks([{
     filePath: "screens/home/specs/screen.md",
     source: specSource
+  }, {
+    filePath: "screens/home/specs/add-item.md",
+    source: "[Save item details](specux://screen/home/workflows/add-item.mmd?node=saveItem)"
   }], workflowPath);
   assert.equal(specLinks.get("saveItem")[0].references.length, 2);
+  assert.equal(specLinks.get("saveItem").length, 2);
+  assert.equal(specLinks.get("saveItem")[1].filePath, "screens/home/specs/add-item.md");
   assert.throws(
     () => parseWorkflowLink("specux://screen/Home/screen.yml"),
     /Workflow link path must be/
@@ -175,6 +180,65 @@ test("parses explicit SpecUX workflow links", async () => {
     getAttribute: () => null,
     id: "specux-workflow-3-flowchart-node-flowchart-inner-0"
   }), "node-flowchart-inner");
+
+  const specLinkElements = [];
+  const specLinkDocument = {
+    createElementNS(namespace, tagName) {
+      const element = {
+        namespace,
+        tagName,
+        attributes: new Map(),
+        classNames: new Set(),
+        classList: {
+          add(name) { element.classNames.add(name); },
+          toggle(name, enabled) {
+            if (enabled) element.classNames.add(name);
+            else element.classNames.delete(name);
+          }
+        },
+        dataset: {},
+        children: [],
+        setAttribute(name, value) { this.attributes.set(name, value); },
+        append(...children) { this.children.push(...children); },
+        addEventListener() {}
+      };
+      return element;
+    }
+  };
+  const node = {
+    ownerDocument: specLinkDocument,
+    getAttribute: () => "saveItem",
+    getBBox: () => ({ x: 10, y: 20, width: 100, height: 40 }),
+    append(control) { specLinkElements.push(control); }
+  };
+  editor.services = { byId: () => ({ textContent: "", classList: { add() {} } }) };
+  editor.addSpecLinkControl(node, [
+    { filePath: "screens/home/specs/screen.md", references: [] },
+    { filePath: "screens/home/specs/element-save.md", references: [] }
+  ]);
+  const specLinkControl = specLinkElements[0];
+  const specIcon = specLinkControl.children.find((child) => child.tagName === "image");
+  const hitArea = specLinkControl.children.find((child) => child.tagName === "circle");
+  assert.equal(specIcon.attributes.get("href"), "/icons/spec-icon.svg");
+  assert.equal(specIcon.attributes.get("width"), "20");
+  assert.equal(specIcon.attributes.get("height"), "20");
+  assert.equal(hitArea.attributes.get("pointer-events"), "all");
+  assert.equal(hitArea.attributes.get("fill"), "transparent");
+  assert.equal(hitArea.attributes.get("r"), "12");
+  assert.equal(specLinkControl.dataset.specNodeId, "saveItem");
+  assert.equal(specLinkControl.children.some((child) => child.tagName === "text"), false);
+  editor.services = { byId: () => ({ querySelectorAll: () => [specLinkControl] }) };
+  editor.activeSpecPreview = {
+    filePath: "screens/home/specs/screen.md",
+    nodeId: "saveItem"
+  };
+  editor.updateSpecLinkSelection();
+  assert.equal(specLinkControl.classNames.has("selected"), true);
+  assert.equal(specLinkControl.attributes.get("aria-pressed"), "true");
+  editor.activeSpecPreview = null;
+  editor.updateSpecLinkSelection();
+  assert.equal(specLinkControl.classNames.has("selected"), false);
+  assert.equal(specLinkControl.attributes.get("aria-pressed"), "false");
 
   const attributes = new Map();
   const createElement = (tagName) => {
@@ -226,6 +290,15 @@ test("parses explicit SpecUX workflow links", async () => {
   const sectionPosition = { textContent: "" };
   const previousButton = { disabled: false, addEventListener() {} };
   const nextButton = { disabled: false, addEventListener() {} };
+  const fileSelect = {
+    hidden: true,
+    value: "",
+    options: [],
+    ownerDocument: { createElement },
+    listeners: {},
+    addEventListener(name, listener) { this.listeners[name] = listener; },
+    replaceChildren(...options) { this.options = options; }
+  };
   const previewEditor = new WorkflowEditor({
     state: {},
     services: {
@@ -235,18 +308,29 @@ test("parses explicit SpecUX workflow links", async () => {
         : id === "screen-stage" ? stage
           : id === "workflow-spec-section-navigation" ? sectionNav
             : id === "workflow-spec-section-position" ? sectionPosition
+              : id === "workflow-spec-file-select" ? fileSelect
               : id === "workflow-spec-section-previous" ? previousButton
                 : id === "workflow-spec-section-next" ? nextButton
           : noopElement
     }
   });
   previewEditor.showSpecPreview(
-    "screens/home/specs/screen.md",
-    "# Home behavior\n\n## Purpose",
     [
-      { lineIndex: 2, sectionLineIndex: 2 },
-      { lineIndex: 0, sectionLineIndex: 0 }
-    ]
+      {
+        filePath: "screens/home/specs/screen.md",
+        source: "# Home behavior\n\n## Purpose",
+        references: [
+          { lineIndex: 2, sectionLineIndex: 2 },
+          { lineIndex: 0, sectionLineIndex: 0 }
+        ]
+      },
+      {
+        filePath: "screens/home/specs/element-save.md",
+        source: "# Save behavior\n\n## Requirements",
+        references: [{ lineIndex: 2, sectionLineIndex: 2 }]
+      }
+    ],
+    "saveItem"
   );
   assert.equal(preview.className, "workflow-spec-preview");
   assert.equal(preview.hidden, false);
@@ -254,8 +338,14 @@ test("parses explicit SpecUX workflow links", async () => {
   assert.equal(preview.children[0].children[2].textContent, "## Purpose");
   assert.equal(preview.scrollTop, 20);
   assert.equal(sectionNav.hidden, false);
-  assert.equal(sectionPosition.textContent, "1 of 2");
-  assert.equal(previousButton.disabled, true);
+  assert.equal(sectionPosition.textContent, "1 of 3");
+  assert.equal(fileSelect.hidden, false);
+  assert.deepEqual(fileSelect.options.map((option) => option.value), [
+    "screens/home/specs/screen.md",
+    "screens/home/specs/element-save.md"
+  ]);
+  assert.equal(fileSelect.value, "screens/home/specs/screen.md");
+  assert.equal(previousButton.disabled, false);
   assert.equal(nextButton.disabled, false);
   assert.equal(
     attributes.get("aria-label"),
@@ -263,16 +353,35 @@ test("parses explicit SpecUX workflow links", async () => {
   );
   assert.equal(stageAttributes.get("aria-label"), attributes.get("aria-label"));
   previewEditor.moveSpecReference(1);
-  assert.equal(sectionPosition.textContent, "2 of 2");
+  assert.equal(sectionPosition.textContent, "2 of 3");
+  assert.equal(fileSelect.value, "screens/home/specs/screen.md");
   assert.equal(previousButton.disabled, false);
-  assert.equal(nextButton.disabled, true);
-  previewEditor.showSpecPreview(
-    "screens/home/specs/screen.md",
-    "# Home behavior\n\n## Purpose",
-    [{ lineIndex: 2, sectionLineIndex: 2 }]
-  );
+  assert.equal(nextButton.disabled, false);
+  previewEditor.moveSpecReference(1);
+  assert.equal(sectionPosition.textContent, "3 of 3");
+  assert.equal(fileSelect.value, "screens/home/specs/element-save.md");
+  assert.equal(preview.children[0].children[2].textContent, "## Requirements");
+  assert.equal(previousButton.disabled, false);
+  assert.equal(nextButton.disabled, false);
+  previewEditor.moveSpecReference(1);
+  assert.equal(sectionPosition.textContent, "1 of 3");
+  assert.equal(fileSelect.value, "screens/home/specs/screen.md");
+  previewEditor.moveSpecReference(-1);
+  assert.equal(sectionPosition.textContent, "3 of 3");
+  assert.equal(fileSelect.value, "screens/home/specs/element-save.md");
+  fileSelect.listeners.change({
+    target: { value: "screens/home/specs/screen.md" }
+  });
+  assert.equal(sectionPosition.textContent, "1 of 3");
+  assert.equal(fileSelect.value, "screens/home/specs/screen.md");
+  previewEditor.showSpecPreview([{
+    filePath: "screens/home/specs/screen.md",
+    source: "# Home behavior\n\n## Purpose",
+    references: [{ lineIndex: 2, sectionLineIndex: 2 }]
+  }], "saveItem");
   assert.equal(sectionNav.hidden, false);
   assert.equal(sectionPosition.textContent, "1 of 1");
+  assert.equal(fileSelect.hidden, true);
   assert.equal(previousButton.disabled, true);
   assert.equal(nextButton.disabled, true);
   assert.equal(mainClasses.has("workflow-spec-preview-active"), true);

@@ -146,6 +146,21 @@ async function validateProject(projectRoot) {
   } else if (project.specux !== SPECUX_VERSION) {
     errors.push(`project.yml: SpecUX version "${project.specux}" is not supported by this CLI (expected "${SPECUX_VERSION}").`);
   }
+  if (project.name !== undefined && typeof project.name !== "string") {
+    errors.push("project.yml: name must be a string.");
+  }
+  if (project.description !== undefined && typeof project.description !== "string") {
+    errors.push("project.yml: description must be a string.");
+  }
+  const projectProperties = new Set([
+    "name", "description", "specux", "screens", "theme", "spec",
+    "assets", "asset-templates", "workflows"
+  ]);
+  for (const property of Object.keys(project)) {
+    if (!projectProperties.has(property)) {
+      errors.push(`project.yml: unsupported property "${property}".`);
+    }
+  }
   if (!Array.isArray(project.screens)) errors.push("project.yml: screens must be a list.");
   if (Object.hasOwn(project, "assets") || Object.hasOwn(project, "asset-templates")) {
     errors.push("project.yml: asset registries are no longer supported; place files under assets/ or screens/<screen-id>/assets/.");
@@ -180,6 +195,11 @@ async function validateProject(projectRoot) {
       if (typeof entry.id !== "string" || !/^[a-z][a-z0-9-]*$/.test(entry.id)) {
         errors.push(`project.yml: ${kind}[${index}] id must use lowercase letters, numbers, and hyphens.`);
         continue;
+      }
+      for (const property of Object.keys(entry)) {
+        if (!["id", "file"].includes(property)) {
+          errors.push(`project.yml: ${kind}[${index}] has unsupported property "${property}".`);
+        }
       }
       if (ids.has(entry.id)) errors.push(`project.yml: ${kind} defines id "${entry.id}" more than once.`);
       ids.add(entry.id);
@@ -341,6 +361,15 @@ async function validateProject(projectRoot) {
   const linkedSpecsByScreen = new Map();
   for (const screen of screens) {
     normalizeScreenLayers(screen.data);
+    if (typeof screen.data.name !== "string") {
+      errors.push(`${screen.file}: name must be a string.`);
+    }
+    if (typeof screen.data.description !== "string") {
+      errors.push(`${screen.file}: description must be a string.`);
+    }
+    if (screen.data.note !== undefined && typeof screen.data.note !== "string") {
+      errors.push(`${screen.file}: note must be a string.`);
+    }
     const linkedSpecPaths = new Set();
     linkedSpecsByScreen.set(screen.file, linkedSpecPaths);
     const materialIds = new Set();

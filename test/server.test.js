@@ -25,8 +25,13 @@ async function withServer(run) {
   await fs.mkdir(path.join(rootDirectory, "specux", "screens"), { recursive: true });
   await fs.mkdir(path.join(rootDirectory, "specux", "assets"), { recursive: true });
   await fs.mkdir(path.join(rootDirectory, "browser"), { recursive: true });
+  await fs.mkdir(path.join(rootDirectory, "icons"), { recursive: true });
   await fs.writeFile(path.join(rootDirectory, "index.html"), "<h1>Editor</h1>");
   await fs.writeFile(path.join(rootDirectory, "app.mjs"), "window.editor = true;");
+  await fs.writeFile(
+    path.join(rootDirectory, "icons", "spec-icon.svg"),
+    '<svg xmlns="http://www.w3.org/2000/svg"></svg>'
+  );
   await fs.writeFile(path.join(rootDirectory, "styles.css"), "body { color: black; }\n");
   await fs.writeFile(
     path.join(rootDirectory, "browser", "AssetEditor.mjs"),
@@ -244,6 +249,10 @@ test("serves the editor root and the example project", async () => {
     assert.equal(splitViewLayoutModule.status, 200);
     assert.equal(themeEditorModule.status, 200);
     assert.equal(workflowEditorModule.status, 200);
+    const specIcon = await fetch(`${baseUrl}/icons/spec-icon.svg`);
+    assert.equal(specIcon.status, 200);
+    assert.match(specIcon.headers.get("content-type"), /image\/svg\+xml/);
+    assert.match(await specIcon.text(), /<svg/);
     assert.equal(mermaidModule.status, 200);
     assert.match(mermaidModule.headers.get("content-type"), /text\/javascript/);
     assert.equal(workspaceViewRendererModule.status, 200);

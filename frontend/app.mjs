@@ -857,17 +857,21 @@ workflowEditor = new WorkflowEditor({
         return { filePath, source };
       }));
     },
-    openWorkflowSpec: async (filePath, references) => {
-      const action = projectFileNavigator.getProjectFileAction(filePath);
-      if (action?.kind !== "spec") {
-        throw new Error(`Workflow spec "${filePath}" is not linked to this project.`);
-      }
-      let source = specSources.get(filePath);
-      if (source === undefined) {
-        source = await loadText(filePath);
-        specSources.set(filePath, source);
-      }
-      workflowEditor.showSpecPreview(filePath, source, references);
+    openWorkflowSpec: async (linkedSpecs, nodeId) => {
+      const specs = await Promise.all(linkedSpecs.map(async (linkedSpec) => {
+        const { filePath } = linkedSpec;
+        const action = projectFileNavigator.getProjectFileAction(filePath);
+        if (action?.kind !== "spec") {
+          throw new Error(`Workflow spec "${filePath}" is not linked to this project.`);
+        }
+        let source = specSources.get(filePath);
+        if (source === undefined) {
+          source = await loadText(filePath);
+          specSources.set(filePath, source);
+        }
+        return { ...linkedSpec, source };
+      }));
+      workflowEditor.showSpecPreview(specs, nodeId);
     }
   }
 });

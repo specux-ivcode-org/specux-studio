@@ -1401,6 +1401,15 @@
       gap: 4px;
     }
     .workflow-spec-section-navigation[hidden] { display: none; }
+    .workflow-spec-reference-navigation {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+    }
     .workflow-spec-section-position {
       min-width: 36px;
       color: var(--ui-text-medium);
@@ -1415,6 +1424,18 @@
       padding: 0;
       font-size: 14px;
     }
+    .workflow-spec-file-select {
+      max-width: 260px;
+      min-width: 140px;
+      height: 28px;
+      padding: 0 6px;
+      border-color: var(--line);
+      background: var(--panel);
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .workflow-spec-file-select:hover { border-color: var(--ui-primary-hover-border); }
+    .workflow-spec-file-select:focus-visible { border-color: var(--studio-focus); }
     .workflow-view-selector,
     .workflow-panel-selector { margin-left: auto; }
     .workflow-toolbar-actions > .workflow-view-selector { margin-left: 0; }
@@ -1488,20 +1509,21 @@
     .workflow-diagram .workflow-linked-node { cursor: pointer; }
     .workflow-diagram .workflow-linked-node:focus-visible { outline: 2px solid var(--studio-focus); }
     .workflow-diagram .workflow-spec-link { cursor: pointer; }
-    .workflow-diagram .workflow-spec-link circle {
-      fill: var(--panel);
-      stroke: var(--ui-primary);
-      stroke-width: 1.5px;
-    }
-    .workflow-diagram .workflow-spec-link text {
-      fill: var(--ui-primary);
-      font: 700 9px sans-serif;
-      text-anchor: middle;
+    .workflow-diagram .workflow-spec-link image {
       pointer-events: none;
     }
-    .workflow-diagram .workflow-spec-link:focus-visible circle {
-      stroke: var(--studio-focus);
-      stroke-width: 3px;
+    .workflow-diagram .node .workflow-spec-link:not(:hover):not(.selected) circle {
+      fill: transparent !important;
+      stroke: transparent !important;
+      stroke-width: 0 !important;
+      filter: none !important;
+    }
+    .workflow-diagram .node .workflow-spec-link:hover circle,
+    .workflow-diagram .node .workflow-spec-link.selected circle {
+      fill: var(--panel) !important;
+      stroke: var(--studio-focus) !important;
+      stroke-width: 1.5px !important;
+      filter: none !important;
     }
     .workflow-diagram .node.selected rect,
     .workflow-diagram .node.selected polygon,

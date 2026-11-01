@@ -732,6 +732,7 @@ async function serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, res
   else if ([
     "/index.html",
     "/app.mjs",
+    "/icons/spec-icon.svg",
     "/browser/AssetEditor.mjs",
     "/browser/EditorEventController.mjs",
     "/styles.css",

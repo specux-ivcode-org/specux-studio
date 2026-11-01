@@ -22,13 +22,13 @@ The `id` must match the filename without `.stml`. The front matter supports only
 
 | Property | Type | Required | Definition |
 |---|---|---:|---|
-| `id` | string | Yes | Material identifier using lowercase letters, numbers, and hyphens. |
+| `id` | string | Yes | Material identifier beginning with a lowercase letter and containing only lowercase letters, numbers, and hyphens. |
 | `name` | string | Yes | Non-empty human-readable name. |
 | `description` | string | No | Description of this visual object. |
 | `type` | string | Yes | One of `label`, `button`, `surface`, `avatar`, `navigation-item`, `text-field`, `progress`, `divider`, or `checkbox`; identifies the Material's visual kind. |
 | `attributes` | mapping | No | Variable definitions available to this template's HTML. Uses the same definitions as Asset template attributes. |
 
-The HTML body must contain one balanced root element. Use `${attributes.<name>}` to reference a variable declared in the YAML front matter. Material attributes support `string`, `boolean`, `list`, and `number` types, with optional defaults and an `overridable` flag. Each Screen instance may set only overridable attribute values; omitted values use the declared default. The HTML must not reference undeclared attributes. Materials cannot define slots, undeclared placeholders, links, interactive controls, forms, scripts, or embedded documents. They are visual only and do not accept input or perform actions; represent a button with visual markup such as a styled `<div>`, not an interactive `<button>`. Inline styles and local resources may be used; local resource paths are relative to the `materials/` directory.
+The HTML body must contain one balanced root element. Use `${attributes.<name>}` to reference a variable declared in the YAML front matter. Material attributes support `string`, `boolean`, `list`, and `number` types, with optional defaults and an `overridable` flag. Each Screen instance may set only overridable attribute values; omitted values use the declared default. The HTML must not reference undeclared attributes. Materials cannot define slots, undeclared placeholders, links, interactive controls, forms, scripts, or embedded documents. They are visual only and do not accept input or perform actions; represent a button with visual markup such as a styled `<div>`, not an interactive `<button>`. Inline styles and local resources may be used; local resource paths are relative to the `materials/` directory. Material styles must not set the CSS `z-index` property: Screen layer and placement order control stacking.
 
 ## Screen placement
 

@@ -171,30 +171,43 @@
             class="workflow-spec-section-navigation"
             id="workflow-spec-section-navigation"
             role="group"
-            aria-label="Linked sections in behavior spec"
+            aria-label="Behavior spec navigation"
             hidden
           >
-            <button
-              class="screen-view-button workflow-spec-section-button"
-              id="workflow-spec-section-previous"
-              type="button"
-              aria-label="Previous linked section"
-              title="Previous linked section"
+            <select
+              class="screen-view-button workflow-spec-file-select"
+              id="workflow-spec-file-select"
+              aria-label="Behavior spec file"
               aria-controls="workflow-spec-preview"
-            >↑</button>
-            <span
-              class="workflow-spec-section-position"
-              id="workflow-spec-section-position"
-              aria-live="polite"
-            ></span>
-            <button
-              class="screen-view-button workflow-spec-section-button"
-              id="workflow-spec-section-next"
-              type="button"
-              aria-label="Next linked section"
-              title="Next linked section"
-              aria-controls="workflow-spec-preview"
-            >↓</button>
+              hidden
+            ></select>
+            <div
+              class="workflow-spec-reference-navigation"
+              role="group"
+              aria-label="Linked spec references"
+            >
+              <button
+                class="screen-view-button workflow-spec-section-button"
+                id="workflow-spec-section-previous"
+                type="button"
+                aria-label="Previous linked reference"
+                title="Previous linked reference"
+                aria-controls="workflow-spec-preview"
+              >↑</button>
+              <span
+                class="workflow-spec-section-position"
+                id="workflow-spec-section-position"
+                aria-live="polite"
+              ></span>
+              <button
+                class="screen-view-button workflow-spec-section-button"
+                id="workflow-spec-section-next"
+                type="button"
+                aria-label="Next linked reference"
+                title="Next linked reference"
+                aria-controls="workflow-spec-preview"
+              >↓</button>
+            </div>
           </div>
           <div class="screen-view-selector workflow-view-selector" role="group" aria-label="Workflow view">
             <button class="screen-view-button" id="workflow-view-split" type="button" aria-pressed="true" aria-controls="screen-stage workflow-editor-panel">Split</button>

@@ -1,6 +1,6 @@
 # Screen Workflow File
 
-A workflow file describes a user journey for one Screen using a Mermaid flowchart. Store it as `screens/<screen-id>/workflows/<workflow-id>.mmd`. Workflows are Screen-scoped diagrams; they are not executable interaction logic.
+A workflow file describes a user journey for one Screen using a Mermaid flowchart. Store it as `screens/<screen-id>/workflows/<workflow-id>.mmd`; Screen and workflow IDs begin with a lowercase letter and contain only lowercase letters, numbers, and hyphens. Workflows are Screen-scoped diagrams; they are not executable interaction logic.
 
 The Studio parses and renders the Mermaid source in the workflow editor. Use **Diagram** and **Source** to switch between the rendered flow and its Mermaid text. Invalid Mermaid is surfaced in the editor and blocks saving.
 
@@ -19,7 +19,7 @@ Link to a workflow from the behavior spec using a regular Markdown link. The ref
 [Save item](specux://screen/<screen-id>/workflows/<workflow-id>.mmd?node=<node-id>)
 ```
 
-Clicking the spec icon shows the Markdown file in the workflow editor's dedicated spec preview surface, separate from the Screen canvas preview, and scrolls to the link's enclosing section. The up/down section selector remains visible in the preview header; it is disabled when there is only one matching section. Moving between linked sections does not change the node's Screen preview link.
+Spec references are represented by one standalone checkmark per workflow node. Show a circular affordance only while the pointer hovers over the link or while its spec preview is selected. Clicking it shows the linked Markdown files in the workflow editor's dedicated spec preview surface, separate from the Screen canvas preview. When multiple files are linked, a bordered file selector switches to the first reference in the chosen file; keep it visually distinct from the bordered reference navigation control. The up/down selector traverses all references in file order, wrapping from the last reference to the first and vice versa, and highlights the current section and link; it is disabled when there is only one reference. Moving between linked sections or files does not change the node's Screen preview link.
 
 Use Mermaid flowcharts to describe user journeys and branches. Normative behavior and acceptance criteria remain in the linked Screen or Element behavior specs; do not duplicate those requirements in the workflow.
 

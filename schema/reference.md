@@ -1,6 +1,6 @@
 # SpecUX Authoring Reference
 
-This reference is versioned with the SpecUX CLI. Read the target project's `specux` version from `project.yml` and use a CLI with the same value. Use `specux schema project`, `screen`, `material`, `theme`, and `spec` for the complete artifact schemas.
+This reference is versioned with the SpecUX CLI. Read the target project's `specux` version from `project.yml` and use a CLI with the same value. Use `specux schema project`, `screen`, `asset`, `material`, `theme`, `spec`, and `workflow` for the complete artifact schemas.
 
 ## Project discovery
 
@@ -11,7 +11,7 @@ This reference is versioned with the SpecUX CLI. Read the target project's `spec
 
 ## Create or revise a Screen
 
-1. Read `specux schema project`, `screen`, `material`, `theme`, and `spec` before authoring or changing the corresponding artifacts.
+1. Read the relevant `specux schema` guidance before authoring or changing an artifact. This includes `project`, `screen`, `asset`, `material`, `theme`, `spec`, and `workflow`.
 2. A Screen ID belongs in `project.yml`, not the Screen YAML file. A Screen can be empty while it is being built. Create or reuse an STML Material template, then add an instance referencing it to the Screen's `materials` list.
 3. Define shared visual markup and YAML attribute mappings in the Material's STML file. Reference declared values as `${attributes.<name>}` in the HTML. Set instance-specific values in its `attributes` mapping and each Screen instance's absolute `position`, `size`, and optional `rotation`; instance data and transforms belong to the placement, not the shared Material.
 4. Materials are visual only: do not model inputs, actions, layout groups, or slots.

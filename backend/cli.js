@@ -19,6 +19,7 @@ const schemaFiles = new Map([
   ["material", "material.md"],
   ["theme", "theme.md"],
   ["spec", "spec.md"],
+  ["workflow", "workflow.md"],
   ["reference", "reference.md"]
 ]);
 
@@ -35,7 +36,7 @@ function usage() {
     "  specux init [--project <directory>]",
     "  specux validate [--project <directory>]",
     "  specux version",
-    "  specux schema [project|screen|asset|material|theme|spec|reference]",
+    "  specux schema [project|screen|asset|material|theme|spec|workflow|reference]",
     "  specux render <screen> --format <html|image> [--state <id>] [--output <file>] [--annotations] [--project <directory>]",
     "  specux prune [--apply] [--project <directory>]"
   ].join("\n");
@@ -236,11 +237,11 @@ async function runServerCommand(command, args) {
 }
 
 async function runSchemaCommand(args) {
-  if (args.length > 1) throw new Error("Usage: specux schema [project|screen|asset|material|theme|spec|reference]");
+  if (args.length > 1) throw new Error("Usage: specux schema [project|screen|asset|material|theme|spec|workflow|reference]");
   const type = args[0];
   const docs = type ? [schemaFiles.get(type)] : [...schemaFiles.values()];
   if (type && !docs[0]) {
-    throw new Error(`Unknown schema type "${type}". Use project, screen, asset, material, theme, spec, or reference.`);
+    throw new Error(`Unknown schema type "${type}". Use project, screen, asset, material, theme, spec, workflow, or reference.`);
   }
   const content = await Promise.all(docs.map((file) =>
     fs.readFile(path.join(repositoryRoot, "schema", file), "utf8")

@@ -146,6 +146,15 @@
     if (typeof markup !== "string" || !markup.trim()) {
       throw new Error(`${source} must contain one HTML element.`);
     }
+    const materialStyles = [
+      ...markup.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)
+        .map((match) => match[1]),
+      ...markup.matchAll(/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]*))/gi)
+        .map((match) => match[1] ?? match[2] ?? match[3])
+    ].join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
+    if (/(?:^|[;{])\s*z-index\s*:/i.test(materialStyles)) {
+      throw new Error(`${source} cannot set the CSS "z-index" property; Screen layers control Material stacking.`);
+    }
     for (const match of markup.matchAll(/\$\{([^}]+)\}/g)) {
       if (!/^attributes\.[a-zA-Z_][a-zA-Z0-9_-]*$/.test(match[1])) {
         throw new Error(`${source} placeholders must reference declared attributes as \${attributes.<name>}.`);

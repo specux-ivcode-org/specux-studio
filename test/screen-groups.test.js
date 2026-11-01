@@ -188,6 +188,8 @@ test("frontend Screen validation accepts recursive groups and rejects child laye
   const screen = {
     file: "screens/home/screen.yml",
     data: {
+      name: "Home",
+      description: "Test Screen",
       layers: [{ id: "base", name: "Base" }],
       materials: [{
         id: "group",

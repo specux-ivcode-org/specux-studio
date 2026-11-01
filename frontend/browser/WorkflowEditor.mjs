@@ -203,6 +203,9 @@ export class WorkflowEditor {
     services.byId("workflow-spec-section-next").addEventListener("click", () =>
       this.moveSpecReference(1)
     );
+    services.byId("workflow-spec-file-select").addEventListener("change", (event) =>
+      this.selectSpecFile(event.target.value)
+    );
   }
 
   async render(filePath, screenIndex) {
@@ -268,6 +271,7 @@ export class WorkflowEditor {
     this.state.viewingWorkflow = false;
     this.state.activeWorkflowPath = null;
     this.activeSpecPreview = null;
+    this.updateSpecLinkSelection();
     this.updateSpecSectionNavigation();
     this.services.byId("main").classList.remove("workflow-editing");
     this.services.byId("workflow-editor-panel").hidden = true;
@@ -372,9 +376,7 @@ export class WorkflowEditor {
             this.selectNode(id, link);
           });
         }
-        linkedSpecs.forEach((linkedSpec, index) =>
-          this.addSpecLinkControl(node, linkedSpec, index)
-        );
+        if (linkedSpecs.length) this.addSpecLinkControl(node, linkedSpecs);
       });
       for (const nodeId of new Set([...links.keys(), ...specLinks.keys()])) {
         if (!nodeIds.has(nodeId)) {
@@ -383,6 +385,7 @@ export class WorkflowEditor {
           );
         }
       }
+      this.updateSpecLinkSelection();
     }
     state.invalidWorkflowFiles.delete(filePath);
     if (filePath === state.activeWorkflowPath) {
@@ -412,42 +415,47 @@ export class WorkflowEditor {
       : `Preview ${target} in state ${link.stateId}`;
   }
 
-  addSpecLinkControl(node, linkedSpec, index) {
+  addSpecLinkControl(node, linkedSpecs) {
     const bounds = node.getBBox();
     const svgNamespace = "http://www.w3.org/2000/svg";
     const control = node.ownerDocument.createElementNS(svgNamespace, "g");
     control.classList.add("workflow-spec-link");
-    control.dataset.specLinkIndex = String(index);
+    control.dataset.specNodeId = this.getNodeId(node);
     control.setAttribute(
       "transform",
-      `translate(${bounds.x + bounds.width - 8 - index * 18},${bounds.y + 8})`
+      `translate(${bounds.x + bounds.width - 11},${bounds.y + 11})`
     );
     control.setAttribute("role", "button");
     control.setAttribute("tabindex", "0");
     control.setAttribute(
       "aria-label",
-      `Open behavior spec ${linkedSpec.filePath}`
+      `Open linked behavior specs for workflow node ${control.dataset.specNodeId}`
     );
 
-    const background = node.ownerDocument.createElementNS(svgNamespace, "circle");
-    background.setAttribute("cx", "0");
-    background.setAttribute("cy", "0");
-    background.setAttribute("r", "8");
-    const glyph = node.ownerDocument.createElementNS(svgNamespace, "text");
-    glyph.setAttribute("x", "0");
-    glyph.setAttribute("y", "3");
-    glyph.textContent = "S";
+    const hitArea = node.ownerDocument.createElementNS(svgNamespace, "circle");
+    hitArea.setAttribute("cx", "0");
+    hitArea.setAttribute("cy", "0");
+    hitArea.setAttribute("r", "12");
+    hitArea.setAttribute("fill", "transparent");
+    hitArea.setAttribute("pointer-events", "all");
+    const icon = node.ownerDocument.createElementNS(svgNamespace, "image");
+    icon.setAttribute("href", "/icons/spec-icon.svg");
+    icon.setAttribute("x", "-10");
+    icon.setAttribute("y", "-10");
+    icon.setAttribute("width", "20");
+    icon.setAttribute("height", "20");
+    icon.setAttribute("aria-hidden", "true");
     const title = node.ownerDocument.createElementNS(svgNamespace, "title");
-    title.textContent = `Open ${linkedSpec.filePath}`;
-    control.append(background, glyph, title);
+    title.textContent = `Open linked behavior specs for ${control.dataset.specNodeId}`;
+    control.append(hitArea, icon, title);
 
     const openSpec = (event) => {
       event.preventDefault();
       event.stopPropagation();
       Promise.resolve()
         .then(() => this.services.openWorkflowSpec(
-          linkedSpec.filePath,
-          linkedSpec.references
+          linkedSpecs,
+          control.dataset.specNodeId
         ))
         .catch((error) => {
           const status = this.services.byId("workflow-status");
@@ -471,26 +479,52 @@ export class WorkflowEditor {
       if (!node) return;
       const bounds = node.getBBox();
       if (!bounds.width || !bounds.height) return;
-      const index = Number(control.dataset.specLinkIndex) || 0;
       control.setAttribute(
         "transform",
-        `translate(${bounds.x + bounds.width - 8 - index * 18},${bounds.y + 8})`
+        `translate(${bounds.x + bounds.width - 11},${bounds.y + 11})`
       );
     });
   }
 
-  showSpecPreview(filePath, source, references) {
+  updateSpecLinkSelection() {
+    const active = this.activeSpecPreview;
+    const controls = this.services.byId("workflow-diagram")
+      .querySelectorAll?.(".workflow-spec-link") || [];
+    controls.forEach((control) => {
+      const selected = active?.nodeId === control.dataset.specNodeId;
+      control.classList.toggle("selected", selected);
+      control.setAttribute("aria-pressed", String(selected));
+    });
+  }
+
+  showSpecPreview(linkedSpecs, nodeId = null) {
     const { services } = this;
     const main = services.byId("main");
     if (main.getAttribute?.("data-workflow-view") === "diagram") {
       this.setViewMode("split");
     }
+    const navigation = linkedSpecs.flatMap((spec, fileIndex) =>
+      spec.references.map((reference, referenceIndex) => ({
+        fileIndex,
+        referenceIndex,
+        reference
+      }))
+    );
     this.activeSpecPreview = {
-      filePath,
-      source,
-      references,
-      referenceIndex: 0
+      nodeId,
+      linkedSpecs,
+      navigation,
+      navigationIndex: 0
     };
+    const fileSelect = services.byId("workflow-spec-file-select");
+    const options = linkedSpecs.map((spec) => {
+      const option = fileSelect.ownerDocument.createElement("option");
+      option.value = spec.filePath;
+      option.textContent = spec.filePath;
+      return option;
+    });
+    fileSelect.replaceChildren(...options);
+    this.updateSpecLinkSelection();
     this.renderSpecPreview();
   }
 
@@ -500,10 +534,12 @@ export class WorkflowEditor {
     const { services } = this;
     const preview = services.byId("workflow-spec-preview");
     const document = preview.ownerDocument;
+    const currentNavigation = active.navigation[active.navigationIndex];
+    const linkedSpec = active.linkedSpecs[currentNavigation.fileIndex];
+    const reference = currentNavigation.reference;
     const file = document.createElement("pre");
     file.className = "workflow-spec-file";
-    const lines = active.source.split(/\r?\n/);
-    const reference = active.references[active.referenceIndex];
+    const lines = linkedSpec.source.split(/\r?\n/);
     lines.forEach((text, lineIndex) => {
       const line = document.createElement("span");
       line.className = "workflow-spec-line";
@@ -520,14 +556,15 @@ export class WorkflowEditor {
 
     preview.setAttribute(
       "aria-label",
-      `Behavior spec preview: ${active.filePath}`
+      `Behavior spec preview: ${linkedSpec.filePath}`
     );
     preview.replaceChildren(file);
     preview.scrollTop = 0;
     services.byId("screen-stage").setAttribute(
       "aria-label",
-      `Behavior spec preview: ${active.filePath}`
+      `Behavior spec preview: ${linkedSpec.filePath}`
     );
+    services.byId("workflow-spec-file-select").value = linkedSpec.filePath;
     this.updateSpecSectionNavigation();
 
     const target = file.querySelector(
@@ -541,17 +578,28 @@ export class WorkflowEditor {
 
   moveSpecReference(offset) {
     const active = this.activeSpecPreview;
+    if (!active || active.navigation.length < 2) return;
+    active.navigationIndex =
+      (active.navigationIndex + offset + active.navigation.length) %
+      active.navigation.length;
+    this.renderSpecPreview();
+  }
+
+  selectSpecFile(filePath) {
+    const active = this.activeSpecPreview;
     if (!active) return;
-    const nextIndex = active.referenceIndex + offset;
-    if (nextIndex < 0 || nextIndex >= active.references.length) return;
-    active.referenceIndex = nextIndex;
+    const navigationIndex = active.navigation.findIndex((entry) =>
+      active.linkedSpecs[entry.fileIndex].filePath === filePath
+    );
+    if (navigationIndex < 0) return;
+    active.navigationIndex = navigationIndex;
     this.renderSpecPreview();
   }
 
   updateSpecSectionNavigation() {
     const { services } = this;
     const active = this.activeSpecPreview;
-    const count = active?.references.length || 0;
+    const count = active?.navigation.length || 0;
     services.byId("main").classList.toggle(
       "workflow-spec-preview-active",
       Boolean(active)
@@ -559,13 +607,15 @@ export class WorkflowEditor {
     const navigation = services.byId("workflow-spec-section-navigation");
     navigation.hidden = !active;
     services.byId("workflow-spec-section-position").textContent = active
-      ? `${active.referenceIndex + 1} of ${count}`
+      ? `${active.navigationIndex + 1} of ${count}`
       : "";
     services.byId("workflow-spec-preview").hidden = !active;
+    services.byId("workflow-spec-file-select").hidden =
+      !active || active.linkedSpecs.length < 2;
     services.byId("workflow-spec-section-previous").disabled =
-      !active || count < 2 || active.referenceIndex === 0;
+      !active || count < 2;
     services.byId("workflow-spec-section-next").disabled =
-      !active || count < 2 || active.referenceIndex === count - 1;
+      !active || count < 2;
   }
 
   selectNode(nodeId, link) {
@@ -584,6 +634,7 @@ export class WorkflowEditor {
       try {
         await this.services.showWorkflowNode(link, workflowScreenIndex, workflowPath);
         this.activeSpecPreview = null;
+        this.updateSpecLinkSelection();
         this.updateSpecSectionNavigation();
       } catch (error) {
         const status = this.services.byId("workflow-status");
