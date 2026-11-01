@@ -1,10 +1,10 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-function createInstance(path, children = [], shadowRoot = null) {
+function createInstance(path, children = [], shadowRoot = null, bounds = null) {
   const classes = new Set(["material-instance"]);
   const styles = new Map();
-  return {
+  const instance = {
     children,
     classList: {
       add: (...names) => names.forEach((name) => classes.add(name)),
@@ -19,6 +19,8 @@ function createInstance(path, children = [], shadowRoot = null) {
       setProperty: (name, value) => styles.set(name, value)
     }
   };
+  if (bounds) instance.getBoundingClientRect = () => bounds;
+  return instance;
 }
 
 function createControl() {
@@ -81,7 +83,8 @@ test("focuses an Element spec target and dims unrelated preview branches", async
   const selected = createInstance(
     [0, "navigation", 0],
     [],
-    { children: [selectedChild] }
+    { children: [selectedChild] },
+    { left: 100, top: 100, right: 300, bottom: 300 }
   );
   const siblingDescendant = createInstance([0, "header", 0, "logo", 0]);
   const sibling = createInstance(
@@ -92,7 +95,13 @@ test("focuses an Element spec target and dims unrelated preview branches", async
   const ancestor = createInstance([0], [], { children: [selected, sibling] });
   const unrelatedDescendant = createInstance([1, "content", 0]);
   const unrelated = createInstance([1], [], { children: [unrelatedDescendant] });
-  const preview = { children: [ancestor, unrelated] };
+  const insideSelectedArea = createInstance(
+    [2],
+    [],
+    null,
+    { left: 120, top: 120, right: 280, bottom: 280 }
+  );
+  const preview = { children: [ancestor, unrelated, insideSelectedArea] };
   const services = createEditorServices(preview);
   const editor = new SpecEditor({
     state: {},
@@ -113,6 +122,8 @@ test("focuses an Element spec target and dims unrelated preview branches", async
   assert.equal(siblingDescendant.classList.contains("spec-focus-dimmed"), false);
   assert.equal(unrelated.style.getPropertyValue("filter"), "blur(1.5px)");
   assert.equal(unrelatedDescendant.style.getPropertyValue("filter"), "");
+  assert.equal(insideSelectedArea.classList.contains("spec-focus-dimmed"), false);
+  assert.equal(insideSelectedArea.style.getPropertyValue("filter"), "");
 
   editor.updatePreviewFocus(null);
 
@@ -122,6 +133,7 @@ test("focuses an Element spec target and dims unrelated preview branches", async
   assert.equal(sibling.classList.contains("spec-focus-dimmed"), false);
   assert.equal(sibling.style.getPropertyValue("filter"), "");
   assert.equal(unrelated.style.getPropertyValue("filter"), "");
+  assert.equal(insideSelectedArea.style.getPropertyValue("filter"), "");
 });
 
 test("highlights the selected Spec link and its section in the source overlay", async () => {

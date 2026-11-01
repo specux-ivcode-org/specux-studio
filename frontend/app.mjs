@@ -1416,6 +1416,7 @@ async function showWorkflowNode(link, ownerScreenIndex, workflowPath) {
     preserveWorkflow: true,
     previewStateSelected: !link.placementId && stateId !== "default"
   });
+  specEditor.updatePreviewFocus(instancePath);
 
   screenAnnotationController.setEnabled(false);
   viewingWorkflow = true;

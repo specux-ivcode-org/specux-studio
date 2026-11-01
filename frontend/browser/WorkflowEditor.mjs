@@ -1,3 +1,43 @@
+export function getMarkdownSectionRange(source, sectionLineIndex, fallbackLineIndex) {
+  const lines = source.split(/\r?\n/);
+  const sectionHeading = lines[sectionLineIndex]?.match(/^\s*(#{1,6})\s+.+?\s*#*\s*$/);
+  if (!sectionHeading) {
+    return { start: fallbackLineIndex, end: fallbackLineIndex };
+  }
+
+  const sectionLevel = sectionHeading[1].length;
+  let codeFence = null;
+  let end = lines.length - 1;
+  for (let lineIndex = sectionLineIndex + 1; lineIndex < lines.length; lineIndex += 1) {
+    const fence = lines[lineIndex].match(/^\s*(`{3,}|~{3,})/);
+    if (codeFence) {
+      if (fence &&
+          fence[1][0] === codeFence.character &&
+          fence[1].length >= codeFence.length &&
+          /^\s*$/.test(lines[lineIndex].slice(fence[0].length))) {
+        codeFence = null;
+      }
+      continue;
+    }
+    if (fence) {
+      codeFence = { character: fence[1][0], length: fence[1].length };
+      continue;
+    }
+    const heading = lines[lineIndex].match(/^\s*(#{1,6})\s+.+?\s*#*\s*$/);
+    if (heading && heading[1].length <= sectionLevel) {
+      end = lineIndex - 1;
+      break;
+    }
+  }
+  return { start: sectionLineIndex, end };
+}
+
+export function findMarkdownSpecLink(line, columnIndex) {
+  return [...line.matchAll(
+    /\[[^\]]*\]\(specux:\/\/[^)\s]+(?:\s+"[^"]*")?\)/g
+  )].find((match) => match.index === columnIndex) || null;
+}
+
 export function parseWorkflowLink(href) {
   let url;
   try {
@@ -277,6 +317,7 @@ export class WorkflowEditor {
     this.activeSpecPreview = null;
     this.updateSpecLinkSelection();
     this.updateSpecSectionNavigation();
+    this.clearSpecReferencePreview();
     this.services.byId("main").classList.remove("workflow-editing");
     this.services.byId("workflow-editor-panel").hidden = true;
     this.services.byId("workflow-source").oninput = null;
@@ -643,17 +684,35 @@ export class WorkflowEditor {
     const reference = currentNavigation.reference;
     const file = document.createElement("pre");
     file.className = "workflow-spec-file";
+    const section = getMarkdownSectionRange(
+      linkedSpec.source,
+      reference.sectionLineIndex,
+      reference.lineIndex
+    );
     const lines = linkedSpec.source.split(/\r?\n/);
     lines.forEach((text, lineIndex) => {
       const line = document.createElement("span");
       line.className = "workflow-spec-line";
       line.dataset.lineIndex = String(lineIndex);
-      line.textContent = text;
-      if (lineIndex === reference.sectionLineIndex) {
+      if (lineIndex >= section.start && lineIndex <= section.end) {
         line.classList.add("workflow-spec-section-target");
       }
-      if (lineIndex === reference.lineIndex) {
-        line.classList.add("workflow-spec-link-target");
+      const link = lineIndex === reference.lineIndex
+        ? findMarkdownSpecLink(text, reference.columnIndex)
+        : null;
+      if (link) {
+        const before = document.createElement("span");
+        before.textContent = text.slice(0, link.index);
+        line.append(before);
+        const target = document.createElement("span");
+        target.className = "workflow-spec-link-target";
+        target.textContent = link[0];
+        line.append(target);
+        const after = document.createElement("span");
+        after.textContent = text.slice(link.index + link[0].length);
+        line.append(after);
+      } else {
+        line.textContent = text;
       }
       file.append(line);
     });

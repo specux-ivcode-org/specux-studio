@@ -196,7 +196,11 @@ test("parses explicit SpecUX workflow links", async () => {
     const main = {
       classList: {
         add: (name) => classes.add(name),
-        remove: (name) => classes.delete(name)
+        remove: (name) => classes.delete(name),
+        toggle(name, enabled) {
+          if (enabled) classes.add(name);
+          else classes.delete(name);
+        }
       }
     };
     const heading = { textContent: "Preview" };
@@ -248,13 +252,19 @@ test("parses explicit SpecUX workflow links", async () => {
       ["main", main],
       ["spec-view-heading", heading],
       ["spec-workflow-preview", preview],
+      ["workflow-spec-preview", { hidden: true }],
       ["workflow-panel-diagram", noopControl],
       ["workflow-panel-source", noopControl],
       ["workflow-view-split", noopControl],
       ["workflow-view-diagram", noopControl],
       ["workflow-spec-section-previous", noopControl],
       ["workflow-spec-section-next", noopControl],
-      ["workflow-spec-file-select", noopControl]
+      ["workflow-spec-file-select", noopControl],
+      ["workflow-diagram", { querySelectorAll: () => [] }],
+      ["workflow-spec-section-navigation", { hidden: false }],
+      ["workflow-spec-section-position", { textContent: "1 of 1" }],
+      ["workflow-editor-panel", { hidden: false }],
+      ["workflow-source", { oninput() {} }]
     ]);
     const workflowPath = "screens/home/workflows/add-item.mmd";
     const editor = new WorkflowEditor({
@@ -310,6 +320,18 @@ test("parses explicit SpecUX workflow links", async () => {
     assert.equal(preview.innerHTML, "");
     assert.equal(classes.has("spec-workflow-preview-active"), false);
     assert.equal(heading.textContent, "Preview");
+
+    classes.add("spec-workflow-preview-active");
+    preview.hidden = false;
+    preview.innerHTML = "<svg></svg>";
+    heading.textContent = `Workflow: ${workflowPath}`;
+    editor.deactivate();
+    assert.equal(preview.hidden, true);
+    assert.equal(preview.innerHTML, "");
+    assert.equal(classes.has("spec-workflow-preview-active"), false);
+    assert.equal(heading.textContent, "Preview");
+    assert.equal(elements.get("workflow-editor-panel").hidden, true);
+    assert.equal(elements.get("workflow-source").oninput, null);
   });
   editor.diagramId = 3;
   assert.equal(editor.getNodeId({
@@ -389,7 +411,10 @@ test("parses explicit SpecUX workflow links", async () => {
       textContent: "",
       dataset: {},
       children: [],
-      classList: { add: (value) => classes.add(value) },
+      classList: {
+        add: (value) => classes.add(value),
+        contains: (value) => classes.has(value)
+      },
       append(child) { this.children.push(child); },
       querySelector(selector) {
         const lineIndex = Number(selector.match(/"(\d+)"/)?.[1]);
@@ -458,9 +483,22 @@ test("parses explicit SpecUX workflow links", async () => {
     [
       {
         filePath: "screens/home/specs/screen.md",
-        source: "# Home behavior\n\n## Purpose",
+        source: [
+          "# Home behavior",
+          "",
+          "## Purpose",
+          "[Save item](specux://screen/home/workflows/add-item.mmd?node=saveItem) trailing content.",
+          "Purpose text.",
+          "### Details",
+          "Nested details.",
+          "```md",
+          "## Not a heading",
+          "```",
+          "## Next section",
+          "Outside the active section."
+        ].join("\n"),
         references: [
-          { lineIndex: 2, sectionLineIndex: 2 },
+          { lineIndex: 3, columnIndex: 0, sectionLineIndex: 2 },
           { lineIndex: 0, sectionLineIndex: 0 }
         ]
       },
@@ -475,7 +513,20 @@ test("parses explicit SpecUX workflow links", async () => {
   assert.equal(preview.className, "workflow-spec-preview");
   assert.equal(preview.hidden, false);
   assert.equal(preview.children[0].tagName, "pre");
-  assert.equal(preview.children[0].children[2].textContent, "## Purpose");
+  const renderedLines = preview.children[0].children;
+  assert.equal(renderedLines[2].textContent, "## Purpose");
+  assert.equal(renderedLines[2].classList.contains("workflow-spec-section-target"), true);
+  assert.equal(renderedLines[3].classList.contains("workflow-spec-section-target"), true);
+  assert.equal(renderedLines[4].classList.contains("workflow-spec-section-target"), true);
+  assert.equal(renderedLines[5].classList.contains("workflow-spec-section-target"), true);
+  assert.equal(renderedLines[8].classList.contains("workflow-spec-section-target"), true);
+  assert.equal(renderedLines[10].classList.contains("workflow-spec-section-target"), false);
+  assert.equal(renderedLines[3].children[1].className, "workflow-spec-link-target");
+  assert.equal(
+    renderedLines[3].children[1].textContent,
+    "[Save item](specux://screen/home/workflows/add-item.mmd?node=saveItem)"
+  );
+  assert.equal(renderedLines[3].children[2].textContent, " trailing content.");
   assert.equal(preview.scrollTop, 20);
   assert.equal(sectionNav.hidden, false);
   assert.equal(sectionPosition.textContent, "1 of 3");

@@ -1,4 +1,8 @@
-import { parseWorkflowSpecReferences } from "./WorkflowEditor.mjs";
+import {
+  findMarkdownSpecLink,
+  getMarkdownSectionRange,
+  parseWorkflowSpecReferences
+} from "./WorkflowEditor.mjs";
 
 function getReferenceKey(reference) {
   return reference?.href ||
@@ -201,39 +205,12 @@ export class SpecEditor {
     const source = state.specSources.get(state.activeSpecPath) || "";
     const lines = source.split(/\r?\n/);
     const linkLine = lines[reference.lineIndex] || "";
-    const link = [...linkLine.matchAll(
-      /\[[^\]]*\]\(specux:\/\/[^)\s]+(?:\s+"[^"]*")?\)/g
-    )].find((match) => match.index === reference.columnIndex);
-    const sectionLine = reference.sectionLineIndex;
-    const sectionHeading = lines[sectionLine]?.match(/^\s*(#{1,6})\s+.+?\s*#*\s*$/);
-    let sectionStart = sectionHeading ? sectionLine : reference.lineIndex;
-    let sectionEnd = sectionStart;
-    if (sectionHeading) {
-      const sectionLevel = sectionHeading[1].length;
-      let codeFence = null;
-      sectionEnd = lines.length - 1;
-      for (let lineIndex = sectionLine + 1; lineIndex < lines.length; lineIndex += 1) {
-        const fence = lines[lineIndex].match(/^\s*(`{3,}|~{3,})/);
-        if (codeFence) {
-          if (fence &&
-              fence[1][0] === codeFence.character &&
-              fence[1].length >= codeFence.length &&
-              /^\s*$/.test(lines[lineIndex].slice(fence[0].length))) {
-            codeFence = null;
-          }
-          continue;
-        }
-        if (fence) {
-          codeFence = { character: fence[1][0], length: fence[1].length };
-          continue;
-        }
-        const heading = lines[lineIndex].match(/^\s*(#{1,6})\s+.+?\s*#*\s*$/);
-        if (heading && heading[1].length <= sectionLevel) {
-          sectionEnd = lineIndex - 1;
-          break;
-        }
-      }
-    }
+    const link = findMarkdownSpecLink(linkLine, reference.columnIndex);
+    const { start: sectionStart, end: sectionEnd } = getMarkdownSectionRange(
+      source,
+      reference.sectionLineIndex,
+      reference.lineIndex
+    );
     const { ownerDocument } = highlight;
 
     lines.forEach((text, lineIndex) => {
@@ -286,6 +263,19 @@ export class SpecEditor {
         ancestorPaths.add(JSON.stringify(instancePath.slice(0, length)));
       }
     }
+    const focusTarget = focusPath
+      ? instances.find(({ element }) => element.dataset.instancePath === focusPath)?.element
+      : null;
+    const focusBounds = focusTarget?.getBoundingClientRect?.();
+    const isInsideFocusArea = (element) => {
+      if (!focusBounds) return false;
+      const bounds = element.getBoundingClientRect?.();
+      return bounds &&
+        bounds.left >= focusBounds.left &&
+        bounds.top >= focusBounds.top &&
+        bounds.right <= focusBounds.right &&
+        bounds.bottom <= focusBounds.bottom;
+    };
 
     const dimmedBranches = new Set();
     for (const { element, parentInstance } of instances) {
@@ -309,6 +299,8 @@ export class SpecEditor {
         element.classList.add("spec-focus-ancestor");
       } else if (focusPrefix && path.startsWith(`${focusPrefix},`)) {
         element.classList.add("spec-focus-descendant");
+      } else if (isInsideFocusArea(element)) {
+        continue;
       } else if (!parentInstance || !dimmedBranches.has(parentInstance)) {
         element.classList.add("spec-focus-dimmed");
         element.style.setProperty("filter", "blur(1.5px)");
