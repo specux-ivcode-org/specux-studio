@@ -1609,6 +1609,16 @@
       background: var(--theme-panel, #fff);
       box-shadow: none;
     }
+    .screen-preview.theme-material-preview {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .screen-preview.theme-material-preview > .material-file-preview-sample {
+      flex: none;
+      min-height: 0;
+      padding: 0;
+    }
     .screen-preview.annotation-mode { cursor: crosshair; }
     .screen-preview.marquee-selection-mode { cursor: crosshair; }
     .screen-selection-overlay {
@@ -2417,6 +2427,85 @@
       color: var(--muted);
       font-size: 10px;
       line-height: 1.5;
+    }
+    .theme-color-radius-cursor {
+      position: fixed;
+      z-index: 11999;
+      display: none;
+      width: calc(var(--theme-color-pick-radius) * 2);
+      height: calc(var(--theme-color-pick-radius) * 2);
+      border: 1px solid rgb(255 255 255 / 90%);
+      border-radius: 50%;
+      box-shadow: 0 0 0 1px rgb(0 0 0 / 90%);
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+    }
+    .theme-color-radius-cursor.is-visible { display: block; }
+    .theme-color-picker-popover {
+      position: fixed;
+      z-index: 12000;
+      display: grid;
+      min-width: 190px;
+      max-height: min(60vh, 480px);
+      gap: 8px;
+      overflow-y: auto;
+      padding: 12px;
+      border: 1px solid var(--ui-border-strong);
+      border-radius: 9px;
+      color: var(--ui-text-strong);
+      background: var(--panel);
+      box-shadow: 0 12px 32px rgb(0 0 0 / 24%);
+    }
+    .theme-color-picker-candidate {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      align-items: center;
+      gap: 9px;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .theme-color-picker-candidate input[type="color"] {
+      width: 42px;
+      height: 32px;
+      padding: 2px;
+      border: 1px solid var(--ui-border-strong);
+      border-radius: 6px;
+      background: var(--panel);
+      cursor: pointer;
+    }
+    .theme-color-picker-candidate-details { min-width: 0; }
+    .theme-color-picker-token {
+      overflow-wrap: anywhere;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .theme-color-picker-unavailable {
+      display: grid;
+      width: 42px;
+      height: 32px;
+      place-items: center;
+      border: 1px solid var(--ui-border-strong);
+      border-radius: 6px;
+      color: var(--ui-text-soft);
+      font-size: 14px;
+    }
+    .theme-color-picker-title {
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .theme-color-picker-source {
+      color: var(--ui-text-soft);
+      font-size: 10px;
+      line-height: 1.4;
+    }
+    .theme-color-picker-close {
+      justify-self: end;
+      padding: 5px 9px;
+      border: 1px solid var(--ui-border-strong);
+      border-radius: 6px;
+      color: var(--ui-text-medium);
+      background: var(--panel);
+      cursor: pointer;
     }
 
     .note-box {

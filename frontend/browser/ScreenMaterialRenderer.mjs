@@ -9,7 +9,8 @@ export class ScreenMaterialRenderer {
   render(material, index, path = [index]) {
     const { state, services } = this;
     const group = isScreenGroup(material);
-    const editorInteractionsEnabled = !state.isRenderOnly && !state.viewingWorkflow;
+    const editorInteractionsEnabled = !state.isRenderOnly &&
+      !state.viewingWorkflow && !state.viewingTheme;
     const definition = group ? null : state.materialFiles.get(material.src);
     if (!group && !definition) {
       throw new Error(`Screen placement "${material.id}" references unavailable Material "${material.src}".`);

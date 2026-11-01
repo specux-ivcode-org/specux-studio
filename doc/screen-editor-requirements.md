@@ -87,6 +87,15 @@ When a Screen-editor requirement is added, changed, or removed, update this docu
 | SE-041 | When an annotation targets a placement, retain its placement identity and Material reference where available so downstream tooling can associate the mark with the design. |
 | SE-042 | Keep editor annotation data separate from Screen composition and use the structured annotations for the CLI's annotated render workflow. The CLI produces the PNG; the editor does not upload a screenshot as the annotation source. |
 
+## Theme context
+
+| ID | Requirement |
+|---|---|
+| SE-078 | The Theme editor lets users inspect token usage in a selected Screen or reusable Material. Screen context usage is always Screen-wide; preview input does not select placements. |
+| SE-079 | Theme-context preview input picks colors only. Do not expose placement selection or transforms, Screen-composition structural editing, annotations, or placement context-menu actions. |
+| SE-080 | Show authored `var(--theme-...)` references and their Material/attribute sources. Editing a referenced token changes the selected appearance's Theme value globally; do not infer a Theme binding from a computed style or rewrite literal values as tokens. |
+| SE-081 | In Theme context, show a 35 CSS-pixel-diameter radius guide around the normal pointer in the preview. Preview pointer input lists directly mapped Theme colors within that circle, nearest first, including painted layers beneath transparent foreground Materials, never selecting a Screen placement. List each token once; allow live color editing only for values resolving to a single solid color, and do not infer Theme bindings from computed color alone. |
+
 ## Workflows
 
 | ID | Requirement |

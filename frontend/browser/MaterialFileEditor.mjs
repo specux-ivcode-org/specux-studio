@@ -133,7 +133,7 @@ export class MaterialFileEditor {
       const sample = services.element("div", "form-content material-file-preview-sample");
       sample.id = `material-file-preview-${material.id}`;
       const dimensions = getMaterialDefaultSize(material.data.type);
-      if (!dimensions) throw new Error(`Material "${filePath}" has an unsupported type.`);
+      if (!dimensions) throw new Error(`Material "${material.file}" has an unsupported type.`);
       const instance = {
         attributes: Object.fromEntries(
           Object.entries(material.data.attributes || {})

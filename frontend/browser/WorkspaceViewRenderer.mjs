@@ -14,8 +14,9 @@ export class WorkspaceViewRenderer {
     const { state, services } = this;
     const selected = state.screens[index];
     if (!selected) return;
+    const preserveTheme = options.preserveTheme === true;
     services.discardUneditedActiveSpecDraft();
-    state.activeProjectFilePath = selected.file;
+    state.activeProjectFilePath = preserveTheme ? state.project?.theme : selected.file;
     services.closeAssetContextMenu();
     clearTimeout(state.assetPreviewTimer);
     state.assetPreviewTimer = null;
@@ -37,7 +38,7 @@ export class WorkspaceViewRenderer {
     services.projectFileTree.reveal(selected.file);
     state.viewingAssetTemplate = false;
     state.viewingMaterialFile = false;
-    state.viewingTheme = false;
+    state.viewingTheme = preserveTheme;
     state.viewingProject = false;
     state.viewingSpec = false;
     state.viewingPreviewState = options.previewStateSelected === true;
@@ -50,8 +51,10 @@ export class WorkspaceViewRenderer {
     services.hideEditorMessage();
     services.updateNavigationSelection();
     services.updateScreenDomContext(selected);
-    services.byId("screen-heading").textContent = selected.data.name || selected.id;
-    services.byId("breadcrumb").textContent = "Screens";
+    services.byId("screen-heading").textContent = preserveTheme
+      ? "Theme"
+      : selected.data.name || selected.id;
+    services.byId("breadcrumb").textContent = preserveTheme ? "Project theme" : "Screens";
     services.renderPreviewStateControls(selected.data);
     services.configureScreenYamlEditor(selected);
     services.syncScreenViewMode();

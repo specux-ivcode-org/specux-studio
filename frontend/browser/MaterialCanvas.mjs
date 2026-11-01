@@ -106,7 +106,8 @@ export class MaterialCanvas {
     this.applyTransform(frame, host, transform);
     if (!this.state.isRenderOnly &&
         !this.state.viewingSpec &&
-        !this.state.viewingWorkflow) {
+        !this.state.viewingWorkflow &&
+        !this.state.viewingTheme) {
       const isNestedPlacement = path.length > 1;
       if (!isNestedPlacement) this.addControls(frame);
       this.configureInteractions(

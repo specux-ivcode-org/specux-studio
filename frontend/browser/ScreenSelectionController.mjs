@@ -75,7 +75,7 @@ export class ScreenSelectionController {
   }
 
   isInteractionDisabled() {
-    return this.state.isRenderOnly || this.state.viewingWorkflow;
+    return this.state.isRenderOnly || this.state.viewingWorkflow || this.state.viewingTheme;
   }
 
   render() {

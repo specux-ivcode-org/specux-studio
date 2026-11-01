@@ -422,6 +422,10 @@ const themeEditor = new ThemeEditor({
   state: {
     get theme() { return theme; },
     get project() { return project; },
+    get screens() { return screens; },
+    get materialFiles() { return materialFiles; },
+    get activeScreenIndex() { return activeScreenIndex; },
+    get activeInstancePath() { return activeInstancePath; },
     get themeModeNames() { return themeModeNames; },
     get themeModePreference() { return themeModePreference; },
     set themeModePreference(value) { themeModePreference = value; },
@@ -452,13 +456,22 @@ const themeEditor = new ThemeEditor({
     appendEditableField,
     element,
     byId,
+    document,
+    getComputedStyle: (node, pseudoElement) =>
+      window.getComputedStyle(node, pseudoElement),
     applyTheme,
     markEdited,
     renderInspector,
     discardUneditedActiveSpecDraft,
     hidePreviewStateControls,
     hideEditorMessage,
-    updateNavigationSelection
+    updateNavigationSelection,
+    getInstanceAtPath,
+    selectInstance,
+    clearPreviewSelection: () => selectInstanceInPreview([]),
+    renderThemeScreen,
+    renderThemeMaterial,
+    showFatalError
   }
 });
 const assetEditor = new AssetEditor({
@@ -697,6 +710,7 @@ const materialCanvas = new MaterialCanvas({
     get isRenderOnly() { return isRenderOnly; },
     get viewingSpec() { return viewingSpec; },
     get viewingWorkflow() { return viewingWorkflow; },
+    get viewingTheme() { return viewingTheme; },
     get activeInstancePath() { return activeInstancePath; },
     get activeInstancePaths() { return activeInstancePaths; },
     get scaleType() { return screenSelectionController?.scaleType || "xy"; }
@@ -860,7 +874,8 @@ workflowEditor = new WorkflowEditor({
 const screenSelectionController = new ScreenSelectionController({
   state: {
     get isRenderOnly() { return isRenderOnly; },
-    get viewingWorkflow() { return viewingWorkflow; }
+    get viewingWorkflow() { return viewingWorkflow; },
+    get viewingTheme() { return viewingTheme; }
   },
   services: {
     byId,
@@ -1559,8 +1574,27 @@ async function renderScreen(index, options = {}) {
   if (!isRenderOnly) {
     await screenAnnotationController.setScreen(screens[index]);
     screenSelectionController.setScreen(screens[index]);
+    if (viewingTheme) {
+      screenAnnotationController.setEnabled(false);
+      hidePreviewStateControls();
+    }
     publishSelection();
   }
+}
+
+async function renderThemeScreen(index) {
+  const preview = byId("screen-preview");
+  preview.classList.remove("theme-material-preview");
+  await workspaceViewRenderer.renderScreen(index, { preserveTheme: true });
+  screenSelectionController.setScreen(screens[index]);
+  hidePreviewStateControls();
+}
+
+function renderThemeMaterial(filePath) {
+  const material = materialFiles.get(filePath);
+  if (!material) throw new Error(`Material file "${filePath}" is not available.`);
+  materialFileEditor.renderPreview(material);
+  byId("screen-preview").classList.add("theme-material-preview");
 }
 
 async function showWorkflowNode(link, ownerScreenIndex, workflowPath) {
@@ -1776,6 +1810,11 @@ function selectInstance(path, assetId, options = {}) {
   activeAssetId = activeInstancePath.length
     ? activeInstance?.src || assetId || null
     : null;
+  if (viewingTheme) {
+    selectInstanceInPreview(activeInstancePaths);
+    renderInspector();
+    return;
+  }
   if (viewingSpec) {
     selectInstanceInPreview(activeInstancePaths);
     return;
@@ -1803,7 +1842,8 @@ function selectInstances(paths) {
 }
 
 function openScreenPlacementContextMenu(event, path) {
-  if (isRenderOnly || viewingWorkflow || !Array.isArray(path) || path.length === 0) return;
+  if (isRenderOnly || viewingWorkflow || viewingTheme ||
+      !Array.isArray(path) || path.length === 0) return;
   const screen = screens[activeScreenIndex];
   if (getActivePreviewStateId(screen?.data) !== "default") {
     closeScreenPlacementContextMenu();

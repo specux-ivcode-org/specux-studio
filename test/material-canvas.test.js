@@ -100,7 +100,7 @@ function createDocument() {
   };
 }
 
-async function createHarness(scaleType = "xy", viewingWorkflow = false) {
+async function createHarness(scaleType = "xy", viewingWorkflow = false, viewingTheme = false) {
   const content = createElement("div");
   content.offsetWidth = 1000;
   content.offsetHeight = 800;
@@ -119,7 +119,7 @@ async function createHarness(scaleType = "xy", viewingWorkflow = false) {
   const calls = { edited: 0, selected: 0, inspector: 0 };
   const { MaterialCanvas } = await import("../frontend/browser/MaterialCanvas.mjs");
   const canvas = new MaterialCanvas({
-    state: { isRenderOnly: false, viewingWorkflow, scaleType },
+    state: { isRenderOnly: false, viewingWorkflow, viewingTheme, scaleType },
     services: {
       document: createDocument(),
       markEdited() { calls.edited += 1; },
@@ -201,6 +201,19 @@ test("workflow preview does not create selection or transform controls", async (
   assert.equal(frame.listeners.has("pointerup"), false);
   assert.equal(host.listeners.has("pointerdown"), false);
   assert.equal(host.listeners.has("click"), false);
+});
+
+test("Theme preview does not select or transform Screen placements", async () => {
+  const { frame, host, instance, calls } = await createHarness("xy", false, true);
+
+  assert.deepEqual(frame.querySelectorAll(".material-control"), []);
+  assert.equal(frame.listeners.has("pointerdown"), false);
+  assert.equal(frame.listeners.has("pointermove"), false);
+  assert.equal(host.listeners.has("pointerdown"), false);
+
+  assert.deepEqual(instance.position, { x: 10, y: 20 });
+  assert.equal(calls.selected, 0);
+  assert.equal(calls.edited, 0);
 });
 
 test("resizes and rotates materials with pointer handles", async () => {

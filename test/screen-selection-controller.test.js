@@ -135,6 +135,17 @@ test("scale mode is temporary and updates the active toolbar control", async () 
   assert.equal(controller.state.scaleType, undefined);
 });
 
+test("Theme context disables Screen selection tools and marquee interactions", async () => {
+  const { ScreenSelectionController } =
+    await import("../frontend/browser/ScreenSelectionController.mjs");
+  const controller = new ScreenSelectionController({
+    state: { viewingTheme: true },
+    services: {}
+  });
+
+  assert.equal(controller.isInteractionDisabled(), true);
+});
+
 test("context-menu handling works through the marquee overlay and normal canvas", async () => {
   const { ScreenSelectionController } =
     await import("../frontend/browser/ScreenSelectionController.mjs");
