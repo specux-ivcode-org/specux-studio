@@ -14,6 +14,7 @@ const MAX_FILES_PER_SAVE = 100;
 const MAX_ANNOTATIONS_PER_SCREEN = 200;
 const MAX_POINTS_PER_ANNOTATION = 2048;
 const ANNOTATION_TOOLS = new Set(["pen", "circle", "rectangle", "arrow", "highlight", "note"]);
+const mermaidDistRoot = path.dirname(require.resolve("mermaid"));
 const CONTENT_TYPES = new Map([
   [".css", "text/css; charset=utf-8"],
   [".html", "text/html; charset=utf-8"],
@@ -429,7 +430,7 @@ async function serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, res
       sendJson(response, 404, { error: "File not found." });
       return;
     }
-    allowedRoot = path.resolve(__dirname, "..", "node_modules", "mermaid", "dist");
+    allowedRoot = mermaidDistRoot;
     relativePath = path.join(...packagePath.split("/"));
   }
   else if ([
