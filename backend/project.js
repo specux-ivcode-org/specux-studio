@@ -33,7 +33,145 @@ async function resolveProjectPath(projectRoot, relativePath, expectedType) {
 }
 
 function pushError(errors, source, error) {
-  errors.push(`${source}: ${error.message || String(error)}`);
+  const location = Number.isInteger(error.line) && Number.isInteger(error.column)
+    ? ` (line ${error.line}, column ${error.column})`
+    : "";
+  errors.push(`${source}: ${error.message || String(error)}${location}`);
+}
+
+function getSourcePosition(source, offset, lineOffset = 0) {
+  const before = source.slice(0, offset);
+  return {
+    line: before.split("\n").length + lineOffset,
+    column: offset - Math.max(before.lastIndexOf("\n"), before.lastIndexOf("\r"))
+  };
+}
+
+function findYamlScalarNode(document, value) {
+  function visit(node) {
+    if (!node) return null;
+    if (node.items && Array.isArray(node.items)) {
+      for (const item of node.items) {
+        if (item.key && item.value?.toJSON() === value) return item.value;
+        const found = visit(item.key) || visit(item.value);
+        if (found) return found;
+        if (!item.key) {
+          const nested = visit(item);
+          if (nested) return nested;
+        }
+      }
+      return null;
+    }
+    return node.toJSON?.() === value ? node : null;
+  }
+  return visit(document.contents);
+}
+
+function getYamlNode(document, pathSegments) {
+  let node = document.contents;
+  let keyNode = null;
+  for (const segment of pathSegments) {
+    if (Array.isArray(node?.items)) {
+      if (typeof segment === "number") {
+        node = node.items[segment];
+        keyNode = null;
+      } else {
+        const pair = node.items.find((item) => item.key?.toJSON() === segment);
+        if (!pair) return keyNode || node;
+        node = pair.value;
+        keyNode = pair.key;
+      }
+    } else {
+      return keyNode || node;
+    }
+  }
+  return keyNode || node;
+}
+
+function getYamlErrorPath(document, source, lineOffset, detail) {
+  const pathSegments = [];
+  let message = detail;
+  const indexedContext = detail.match(
+    /^(screens|layers|materials)\[(\d+)\](?:\.children\[(\d+)\])*/
+  );
+  if (indexedContext) {
+    pathSegments.push(indexedContext[1], Number(indexedContext[2]));
+    const children = [...indexedContext[0].matchAll(/\.children\[(\d+)\]/g)];
+    for (const child of children) pathSegments.push("children", Number(child[1]));
+    message = detail.slice(indexedContext[0].length).replace(/^[\s:]+/, "");
+  } else if (detail.startsWith("preview state ")) {
+    const stateId = detail.match(/^preview state "([^"]+)"/)?.[1];
+    const states = document.toJS()["preview-states"];
+    const stateIndex = states?.findIndex((state) => state.id === stateId) ?? -1;
+    if (stateIndex >= 0) pathSegments.push("preview-states", stateIndex);
+    const layerId = detail.match(/layer "([^"]+)"/)?.[1];
+    const placementId = detail.match(/placement "([^"]+)"/)?.[1];
+    if (layerId) pathSegments.push("layers", layerId);
+    if (placementId) pathSegments.push("placements", placementId);
+    message = detail.replace(/^preview state "[^"]+"\s*/, "");
+  } else if (detail.includes("must reference every non-default preview state with SHOW:")) {
+    const stateId = detail.match(/SHOW:\s*([a-z][a-z0-9-]*)/)?.[1];
+    const states = document.toJS()["preview-states"];
+    const stateIndex = states?.findIndex((state) => state.id === stateId) ?? -1;
+    if (stateIndex >= 0) pathSegments.push("preview-states", stateIndex, "id");
+  }
+
+  const unsupportedProperty = message.match(/unsupported (?:property|override) "([^"]+)"/);
+  const propertyNames = [
+    "preview-states", "materials", "layers", "position", "description", "visibility",
+    "children", "attributes", "rotation", "affine", "visible", "size", "scale",
+    "theme", "screens", "specux", "spec", "layer", "note", "name", "type", "src",
+    "file", "id", "workflows", "elements", "tokens", "modes"
+  ];
+  const property = unsupportedProperty?.[1] ||
+    propertyNames.find((name) => new RegExp(`\\b${name}\\b`).test(message));
+  if (property) pathSegments.push(property);
+
+  const node = getYamlNode(document, pathSegments);
+  const offset = node?.range?.[0];
+  if (!Number.isInteger(offset)) return null;
+  const before = source.slice(0, offset);
+  const line = before.split(/\r?\n/).length + lineOffset;
+  const column = offset - Math.max(before.lastIndexOf("\n"), before.lastIndexOf("\r"));
+  return { line, column };
+}
+
+function addYamlErrorLocations(errors, yamlDocuments) {
+  return errors.map((error) => {
+    if (/\(line \d+, column \d+\)$/.test(error) ||
+        /:\d+:\d+:/.test(error)) return error;
+    for (const [filePath, yamlSource] of yamlDocuments) {
+      const prefix = `${filePath}:`;
+      const sourcePrefix = error.startsWith(prefix)
+        ? prefix
+        : error.startsWith(`${filePath} `) ? `${filePath} ` : null;
+      if (!sourcePrefix) continue;
+      const detail = error.slice(sourcePrefix.length).trimStart();
+      const location = getYamlErrorPath(
+        yamlSource.document,
+        yamlSource.source,
+        yamlSource.lineOffset || 0,
+        detail
+      );
+      if (!location) return error;
+      return `${error} (line ${location.line}, column ${location.column})`;
+    }
+    const targetPath = error.match(/^([^:]+):/)?.[1] ||
+      [...error.matchAll(/"([^"]+\.(?:yml|yaml|md|stml))"/g)].map((match) => match[1])[0];
+    if (targetPath) {
+      for (const [filePath, yamlSource] of yamlDocuments) {
+        const node = findYamlScalarNode(yamlSource.document, targetPath);
+        if (!node?.range) continue;
+        const position = getSourcePosition(
+          yamlSource.source,
+          node.range[0],
+          yamlSource.lineOffset || 0
+        );
+        return `${error} (referenced at ${filePath}:${position.line}:${position.column})`;
+      }
+    }
+    return error;
+  });
 }
 
 async function validateProject(projectRoot) {
@@ -42,6 +180,7 @@ async function validateProject(projectRoot) {
   const { isScreenGroup, isValidAffineMatrix, isValidScale } =
     await import("../shared/ScreenGroups.mjs");
   const errors = [];
+  const yamlDocuments = new Map();
   const materialFiles = new Map();
   const screens = [];
   const referencedSpecPaths = new Set();
@@ -54,8 +193,15 @@ async function validateProject(projectRoot) {
       const target = await resolveProjectPath(projectRoot, relativePath, "file");
       const source = await fs.readFile(target, "utf8");
       const document = YAML.parseDocument(source);
+      yamlDocuments.set(relativePath, { document, source });
       if (document.errors.length) {
-        throw new Error(document.errors.map((issue) => issue.message).join("; "));
+        for (const issue of document.errors) {
+          const position = issue.linePos?.[0];
+          errors.push(
+            `${relativePath}${position ? `:${position.line}:${position.col}` : ""}: ${issue.message}`
+          );
+        }
+        return null;
       }
       const data = document.toJS();
       if (!validation.isMapping(data)) throw new Error("must contain a YAML mapping.");
@@ -66,11 +212,15 @@ async function validateProject(projectRoot) {
     }
   }
 
-  async function checkFile(relativePath, source) {
+  async function checkFile(relativePath, source, position) {
     try {
       await resolveProjectPath(projectRoot, relativePath, "file");
       return true;
     } catch (error) {
+      if (position) {
+        error.line = position.line;
+        error.column = position.column;
+      }
       pushError(errors, source, error);
       return false;
     }
@@ -91,45 +241,69 @@ async function validateProject(projectRoot) {
       .map((entry) => `${relativeDirectory}/${entry.name}`);
   }
 
-  async function validateResources(sourceText, sourceFile, baseDirectory) {
+  async function validateResources(sourceText, sourceFile, baseDirectory, lineOffset = 0) {
     const references = [];
     const tags = /<([a-z][\w:-]*)\b([^>]*)>/gi;
     const attributes = /(?:^|\s)(?:src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
     for (const tag of sourceText.matchAll(tags)) {
       for (const attribute of tag[2].matchAll(attributes)) {
-        references.push(attribute[1] ?? attribute[2] ?? attribute[3]);
+        const reference = attribute[1] ?? attribute[2] ?? attribute[3];
+        references.push({
+          value: reference,
+          offset: tag.index + tag[0].indexOf(tag[2]) + attribute.index +
+            attribute[0].lastIndexOf(reference)
+        });
       }
     }
     const cssUrls = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/gi;
     for (const reference of sourceText.matchAll(cssUrls)) {
-      references.push((reference[1] ?? reference[2] ?? reference[3]).trim());
+      const value = (reference[1] ?? reference[2] ?? reference[3]).trim();
+      references.push({
+        value,
+        offset: reference.index + reference[0].indexOf(value)
+      });
     }
-    for (const reference of new Set(references)) {
+    const seenReferences = new Set();
+    for (const { value: reference, offset } of references) {
       if (!reference || reference.startsWith("#") || reference.startsWith("data:image/") ||
-          reference.includes("${")) continue;
+          reference.includes("${") || seenReferences.has(reference)) continue;
+      seenReferences.add(reference);
+      const position = getSourcePosition(sourceText, offset, lineOffset);
       const encodedPath = reference.split(/[?#]/, 1)[0];
       let resourcePath;
       try {
         resourcePath = decodeURIComponent(encodedPath);
       } catch {
-        errors.push(`${sourceFile}: resource "${reference}" contains invalid URL escaping.`);
+        errors.push(
+          `${sourceFile}: resource "${reference}" contains invalid URL escaping. ` +
+          `(line ${position.line}, column ${position.column})`
+        );
         continue;
       }
       if (/^[a-z][a-z0-9+.-]*:/i.test(reference) || reference.startsWith("//") ||
           resourcePath.startsWith("/") || resourcePath.includes("\\") ||
           resourcePath.split("/").includes("..")) {
-        errors.push(`${sourceFile}: resource "${reference}" must stay inside the project.`);
+        errors.push(
+          `${sourceFile}: resource "${reference}" must stay inside the project. ` +
+          `(line ${position.line}, column ${position.column})`
+        );
         continue;
       }
       if (!resourcePath) continue;
       const relativePath = path.posix.join(baseDirectory, resourcePath);
-      await checkFile(relativePath, `${sourceFile} resource "${reference}"`);
+      await checkFile(relativePath, `${sourceFile} resource "${reference}"`, position);
     }
   }
 
   project = await readYaml("project.yml");
   if (!project) {
-    return { errors, project: null, materialFiles, screens, referencedSpecPaths };
+    return {
+      errors: addYamlErrorLocations(errors, yamlDocuments),
+      project: null,
+      materialFiles,
+      screens,
+      referencedSpecPaths
+    };
   }
 
   if (typeof project.specux !== "string" || !project.specux) {
@@ -244,18 +418,29 @@ async function validateProject(projectRoot) {
         }
         const source = await fs.readFile(absolutePath, "utf8");
         const { header, body } = validation.splitMaterialDocument(source, relativePath);
+        const bodyLineOffset = source.slice(0, source.length - body.length).split("\n").length - 1;
         const document = YAML.parseDocument(header);
+        yamlDocuments.set(relativePath, { document, source: header, lineOffset: 1 });
         if (document.errors.length) {
-          throw new Error(document.errors.map((issue) => issue.message).join("; "));
+          for (const issue of document.errors) {
+            const position = issue.linePos?.[0];
+            const error = new Error(issue.message);
+            if (position) {
+              error.line = position.line + 1;
+              error.column = position.col;
+            }
+            pushError(errors, relativePath, error);
+          }
+          continue;
         }
         const data = document.toJS();
         validation.validateMaterialDocumentHeader(data, `${relativePath} front matter`);
         if (data.id !== expectedId) {
           throw new Error(`front matter id must match filename "${expectedId}".`);
         }
-        validation.validateMaterialMarkup(body, relativePath);
-        validation.validateMaterialAttributeMarkup(data, body, relativePath);
-        await validateResources(body, relativePath, "materials");
+        validation.validateMaterialMarkup(body, relativePath, bodyLineOffset);
+        validation.validateMaterialAttributeMarkup(data, body, relativePath, bodyLineOffset);
+        await validateResources(body, relativePath, "materials", bodyLineOffset);
         if (materialFiles.has(relativePath)) {
           throw new Error("Material file paths must be unique.");
         }
@@ -652,7 +837,7 @@ async function validateProject(projectRoot) {
   }
 
   return {
-    errors,
+    errors: addYamlErrorLocations(errors, yamlDocuments),
     project,
     materialFiles,
     screens,

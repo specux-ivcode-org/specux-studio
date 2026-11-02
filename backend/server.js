@@ -4,6 +4,7 @@ const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 const YAML = require("yaml");
 const validation = require("../shared/validation");
+const { validateProject } = require("./project");
 const {
   clearBrowserAnnotationCache,
   writeBrowserAnnotationCache
@@ -232,12 +233,17 @@ async function resolveProjectDirectory(projectRoot, relativePath, { create = fal
 
 function parseYamlMapping(source) {
   if (typeof source !== "string") throw requestError("YAML source must be text.");
-  let data;
-  try {
-    data = YAML.parse(source);
-  } catch (error) {
-    throw requestError(`Invalid YAML: ${error.message}`);
+  const document = YAML.parseDocument(source);
+  if (document.errors.length) {
+    const issues = document.errors.map((error) => {
+      const position = error.linePos?.[0];
+      return position
+        ? `line ${position.line}, column ${position.col}: ${error.message}`
+        : error.message;
+    });
+    throw requestError(`Invalid YAML: ${issues.join("; ")}`);
   }
+  const data = document.toJS();
   if (!data || Array.isArray(data) || typeof data !== "object") {
     throw requestError("YAML source must contain a mapping.");
   }
@@ -565,6 +571,11 @@ function createServer(options = {}) {
       requestUrl = new URL(request.url, "http://localhost");
       pathname = requestUrl.pathname;
       if (request.method === "GET") {
+        if (pathname === "/api/validation") {
+          const result = await validateProject(projectRoot);
+          sendJson(response, 200, { errors: result.errors });
+          return;
+        }
         if (pathname === "/api/status") {
           const address = server.address();
           sendJson(response, 200, {

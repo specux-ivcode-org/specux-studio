@@ -282,6 +282,17 @@ test("lists project files without exposing hidden paths", async () => {
   });
 });
 
+test("returns project validation errors with source locations", async () => {
+  await withServer(async ({ baseUrl }) => {
+    const response = await fetch(`${baseUrl}/api/validation`);
+    const result = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.ok(result.errors.length > 0);
+    assert.ok(result.errors.every((error) => /line \d+, column \d+/.test(error)));
+  });
+});
+
 test("reports server status and browser selection and notifies connected browsers", async () => {
   await withServer(async ({ baseUrl }) => {
     const status = await fetch(`${baseUrl}/api/status`);
@@ -791,7 +802,7 @@ test("parses, serializes, and saves edited YAML source", async () => {
       body: JSON.stringify({ source: "name: [unterminated" })
     });
     assert.equal(invalidYamlResponse.status, 400);
-    assert.match((await invalidYamlResponse.json()).error, /Invalid YAML/);
+    assert.match((await invalidYamlResponse.json()).error, /Invalid YAML: line \d+, column \d+:/);
 
     const savedResponse = await fetch(`${baseUrl}/api/save`, {
       method: "POST",

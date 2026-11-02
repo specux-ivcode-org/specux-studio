@@ -156,7 +156,15 @@ export function parseWorkflowSpecReferences(source, workflowPath = null) {
 
     const markdownLink = /\[[^\]]*\]\((specux:\/\/[^)\s]+)(?:\s+"[^"]*")?\)/g;
     for (const match of line.matchAll(markdownLink)) {
-      const reference = parseWorkflowSpecReference(match[1], workflowPath);
+      let reference;
+      try {
+        reference = parseWorkflowSpecReference(match[1], workflowPath);
+      } catch (error) {
+        throw new Error(
+          `${error.message || String(error)} (line ${lineIndex + 1}, column ${match.index + 1})`,
+          { cause: error }
+        );
+      }
       if (!reference) continue;
       references.push({
         ...("workflowPath" in reference ? { workflowPath: reference.workflowPath } : {}),
@@ -173,7 +181,14 @@ export function parseWorkflowSpecReferences(source, workflowPath = null) {
 export function collectWorkflowSpecLinks(documents, workflowPath) {
   const linksByNode = new Map();
   for (const document of documents) {
-    for (const reference of parseWorkflowSpecReferences(document.source, workflowPath)) {
+    let references;
+    try {
+      references = parseWorkflowSpecReferences(document.source, workflowPath);
+    } catch (error) {
+      const source = document.filePath ? `${document.filePath}: ` : "";
+      throw new Error(`${source}${error.message || String(error)}`, { cause: error });
+    }
+    for (const reference of references) {
       const links = linksByNode.get(reference.nodeId) || [];
       let linkedSpec = links.find((link) => link.filePath === document.filePath);
       if (!linkedSpec) {
@@ -205,15 +220,42 @@ export function parseWorkflowClickDirectives(source) {
     );
     if (!match) {
       throw new Error(
-        `Invalid SpecUX click link on line ${index + 1}; expected click <node-id> href "specux://...".`
+        `Invalid SpecUX click link on line ${index + 1}, column ${line.search(/\S/) + 1}; expected click <node-id> href "specux://...".`
       );
     }
     if (links.has(match[1])) {
-      throw new Error(`Workflow node "${match[1]}" has more than one SpecUX link.`);
+      throw new Error(
+        `Workflow node "${match[1]}" has more than one SpecUX link (line ${index + 1}, column ${line.search(/\S/) + 1}).`
+      );
     }
     links.set(match[1], parseWorkflowLink(match[2]));
   }
   return { diagramSource: diagramLines.join("\n"), links };
+}
+
+function withWorkflowErrorLocation(filePath, source, error, token = null) {
+  const message = error.message || String(error);
+  if (message.startsWith(`${filePath}:`)) return error;
+  const explicit = message.match(/line (\d+), column (\d+)/i);
+  let line = explicit ? Number(explicit[1]) : null;
+  let column = explicit ? Number(explicit[2]) : null;
+  if (line === null) {
+    line = Number(message.match(/parse error on line (\d+)/i)?.[1]) || null;
+    const caret = message.split(/\r?\n/).find((part) => /^\s*-+\^/.test(part));
+    if (caret) column = caret.indexOf("^") + 1;
+  }
+  if (line === null && token) {
+    const lines = source.split(/\r?\n/);
+    const lineIndex = lines.findIndex((part) => part.includes(token));
+    if (lineIndex >= 0) {
+      line = lineIndex + 1;
+      column = lines[lineIndex].indexOf(token) + 1;
+    }
+  }
+  const location = line === null
+    ? filePath
+    : `${filePath}:${line}:${column || 1}`;
+  return new Error(`${location}: ${message}`, { cause: error });
 }
 
 export class WorkflowEditor {
@@ -332,16 +374,27 @@ export class WorkflowEditor {
     }
 
     const version = ++this.specPreviewVersion;
-    const { diagramSource } = parseWorkflowClickDirectives(source);
-    const mermaid = await this.getMermaid();
-    await mermaid.parse(source);
+    let diagramSource;
+    let mermaid;
+    try {
+      ({ diagramSource } = parseWorkflowClickDirectives(source));
+      mermaid = await this.getMermaid();
+      await mermaid.parse(source);
+    } catch (error) {
+      throw withWorkflowErrorLocation(reference.workflowPath, source, error);
+    }
     if (version !== this.specPreviewVersion || !state.viewingSpec) return;
 
     const preview = services.byId("spec-workflow-preview");
-    const rendered = await mermaid.render(
-      `specux-workflow-${++this.diagramId}`,
-      diagramSource
-    );
+    let rendered;
+    try {
+      rendered = await mermaid.render(
+        `specux-workflow-${++this.diagramId}`,
+        diagramSource
+      );
+    } catch (error) {
+      throw withWorkflowErrorLocation(reference.workflowPath, source, error);
+    }
     if (version !== this.specPreviewVersion || !state.viewingSpec) return;
     preview.innerHTML = rendered.svg;
     rendered.bindFunctions?.(preview);
@@ -480,18 +533,33 @@ export class WorkflowEditor {
   async renderDiagram(source, expectedVersion, filePath) {
     const { state, services } = this;
     const isCurrent = () => this.fileVersions.get(filePath) === expectedVersion;
-    const { diagramSource, links } = parseWorkflowClickDirectives(source);
+    let diagramSource;
+    let links;
+    try {
+      ({ diagramSource, links } = parseWorkflowClickDirectives(source));
+    } catch (error) {
+      throw withWorkflowErrorLocation(filePath, source, error);
+    }
     const mermaid = await this.getMermaid();
-    await mermaid.parse(source);
+    try {
+      await mermaid.parse(source);
+    } catch (error) {
+      throw withWorkflowErrorLocation(filePath, source, error);
+    }
     const specDocuments = await services.getWorkflowSpecDocuments();
     const specLinks = collectWorkflowSpecLinks(specDocuments, filePath);
     if (!isCurrent()) return links;
     if (filePath === state.activeWorkflowPath) {
       const diagram = services.byId("workflow-diagram");
-      const rendered = await mermaid.render(
-        `specux-workflow-${++this.diagramId}`,
-        diagramSource
-      );
+      let rendered;
+      try {
+        rendered = await mermaid.render(
+          `specux-workflow-${++this.diagramId}`,
+          diagramSource
+        );
+      } catch (error) {
+        throw withWorkflowErrorLocation(filePath, source, error);
+      }
       if (!isCurrent() || filePath !== state.activeWorkflowPath) return links;
       diagram.innerHTML = rendered.svg;
       rendered.bindFunctions?.(diagram);
@@ -525,8 +593,11 @@ export class WorkflowEditor {
       });
       for (const nodeId of new Set([...links.keys(), ...specLinks.keys()])) {
         if (!nodeIds.has(nodeId)) {
-          throw new Error(
-            `Workflow link refers to unknown Mermaid node "${nodeId}" in "${filePath}".`
+          throw withWorkflowErrorLocation(
+            filePath,
+            source,
+            new Error(`Workflow link refers to unknown Mermaid node "${nodeId}".`),
+            nodeId
           );
         }
       }

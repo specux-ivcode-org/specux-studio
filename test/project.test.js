@@ -190,6 +190,7 @@ test("validates project manifest fields and required Screen metadata", async () 
     const screenPath = path.join(root, "screens", "home", "screen.yml");
     const screen = YAML.parse(await fs.readFile(screenPath, "utf8"));
     delete screen.description;
+    screen.materials[0].size.width = 12;
     await fs.writeFile(screenPath, YAML.stringify(screen));
 
     const result = await validateProject(root);
@@ -197,6 +198,29 @@ test("validates project manifest fields and required Screen metadata", async () 
     assert.ok(result.errors.some((error) => error.includes('project.yml: unsupported property "extra".')));
     assert.ok(result.errors.some((error) => error.includes('screens[0] has unsupported property "label".')));
     assert.ok(result.errors.some((error) => error.includes("screens/home/screen.yml: description must be a string.")));
+    const sizeError = result.errors.find((error) => error.includes("materials[0]: size must contain"));
+    assert.match(sizeError, /\(line \d+, column \d+\)$/);
+    const screenSource = await fs.readFile(screenPath, "utf8");
+    const expectedLine = screenSource.split(/\r?\n/).findIndex((line) => /^\s+size:/.test(line)) + 1;
+    assert.ok(sizeError.endsWith(`(line ${expectedLine}, column 5)`), sizeError);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("points missing project files to their YAML references", async () => {
+  const root = await createProject();
+  try {
+    const manifestPath = path.join(root, "project.yml");
+    const manifest = YAML.parse(await fs.readFile(manifestPath, "utf8"));
+    manifest.theme = "missing-theme.yml";
+    await fs.writeFile(manifestPath, YAML.stringify(manifest));
+
+    const result = await validateProject(root);
+    assert.ok(result.errors.some((error) =>
+      error.includes("missing-theme.yml") &&
+      /referenced at project\.yml:\d+:\d+/.test(error)
+    ));
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -406,7 +430,9 @@ test("validates reusable Material front matter and single-root markup", async ()
     }, "<div>One</div><div>Two</div>\n"));
     result = await validateProject(root);
     assert.ok(!result.errors.some((error) => error.includes("front matter type must be one of:")));
-    assert.ok(result.errors.some((error) => error.includes("one root HTML element")));
+    const rootMarkupError = result.errors.find((error) => error.includes("one root HTML element"));
+    assert.ok(rootMarkupError);
+    assert.match(rootMarkupError, /\(line \d+, column \d+\)$/);
 
     await fs.writeFile(materialPath, materialDocument({
       id: "brand",
@@ -414,7 +440,11 @@ test("validates reusable Material front matter and single-root markup", async ()
       type: "label"
     }, "<div>${attributes.unknown}</div>\n"));
     result = await validateProject(root);
-    assert.ok(result.errors.some((error) => error.includes('references undeclared attribute "unknown"')));
+    const undeclaredAttributeError = result.errors.find((error) =>
+      error.includes('references undeclared attribute "unknown"')
+    );
+    assert.ok(undeclaredAttributeError);
+    assert.match(undeclaredAttributeError, /\(line \d+, column \d+\)$/);
 
     await fs.writeFile(materialPath, materialDocument({
       id: "brand",
@@ -423,6 +453,18 @@ test("validates reusable Material front matter and single-root markup", async ()
     }, "<button>Not an interactive control</button>\n"));
     result = await validateProject(root);
     assert.ok(result.errors.some((error) => error.includes("interactive controls")));
+
+    await fs.writeFile(materialPath, materialDocument({
+      id: "brand",
+      name: "Brand",
+      type: "label"
+    }, '<img src="missing.png">\n'));
+    result = await validateProject(root);
+    const missingResourceError = result.errors.find((error) =>
+      error.includes('resource "missing.png"')
+    );
+    assert.ok(missingResourceError);
+    assert.match(missingResourceError, /\(line \d+, column \d+\)$/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -499,6 +541,35 @@ test("validates Screen spec references against the loaded project", async () => 
     assert.ok(result.errors.some((error) =>
       error.includes('preview state "missing" is not available on Screen "home"')
     ));
+    assert.ok(result.errors.some((error) =>
+      error.includes('preview state "missing" is not available on Screen "home"') &&
+      /\(line 1, column 1\)$/.test(error)
+    ));
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("points behavior spec content errors to the failing line", async () => {
+  const root = await createProject();
+  try {
+    const screenPath = path.join(root, "screens", "home", "screen.yml");
+    const screen = YAML.parse(await fs.readFile(screenPath, "utf8"));
+    screen.spec = "screens/home/specs/screen.md";
+    await fs.writeFile(screenPath, YAML.stringify(screen));
+    const specPath = path.join(root, "screens", "home", "specs", "screen.md");
+    const specSource = validSpec.replace(
+      "- **WHEN** the user activates the Element",
+      "- **GIVEN** the user activates the Element"
+    );
+    await fs.writeFile(specPath, specSource);
+
+    const result = await validateProject(root);
+    const specError = result.errors.find((error) =>
+      error.includes('Each scenario must include "- **WHEN** ..." and "- **THEN** ..." steps.')
+    );
+    assert.ok(specError);
+    assert.match(specError, /\(line 11, column 1\)$/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

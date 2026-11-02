@@ -80,6 +80,20 @@ export class ProjectRepository {
     return result.files;
   }
 
+  async validateProject() {
+    const response = await this.fetcher("/api/validation");
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || `Could not validate project (HTTP ${response.status}).`);
+    }
+    if (!Array.isArray(result.errors) || result.errors.some((error) =>
+      typeof error !== "string"
+    )) {
+      throw new Error("The project validation response is invalid.");
+    }
+    if (result.errors.length) throw new Error(result.errors.join("\n"));
+  }
+
   validateScreenMaterials(screen, materialFiles = this.materialFiles) {
     normalizeScreenLayers(screen.data);
     if (typeof screen.data.name !== "string") {
@@ -382,6 +396,7 @@ export class ProjectRepository {
   }
 
   async load() {
+    await this.validateProject();
     const project = await this.loadYaml("project.yml");
     if (project.name !== undefined && typeof project.name !== "string") {
       throw new Error("project.yml name must be a string.");

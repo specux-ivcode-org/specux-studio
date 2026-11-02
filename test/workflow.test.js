@@ -182,7 +182,7 @@ test("parses explicit SpecUX workflow links", async () => {
       'click saveItem href "specux://screen/home/screen.yml"',
       'click saveItem href "specux://screen/home/screen.yml?placement=about"'
     ].join("\n")),
-    /more than one SpecUX link/
+    /more than one SpecUX link \(line 2, column 1\)/
   );
   const noopElement = { addEventListener() {} };
   const editor = new WorkflowEditor({

@@ -56,6 +56,13 @@ test("folds indented plain scalar continuations", () => {
   });
 });
 
+test("reports line and column for YAML syntax errors", () => {
+  assert.throws(
+    () => parseSpecuxYaml("name Example"),
+    /Expected a key followed by a colon \(line 1, column 1\)/
+  );
+});
+
 test("parses native Material transforms in the example Screens", () => {
   for (const screenId of ["home", "sign-in"]) {
     const filePath = path.join(__dirname, "..", "specux", "screens", screenId, "screen.yml");

@@ -27,6 +27,14 @@
     return value !== null && typeof value === "object" && !Array.isArray(value);
   }
 
+  function errorAt(message, source, offset, lineOffset = 0) {
+    const error = new Error(message);
+    const before = source.slice(0, offset);
+    error.line = before.split("\n").length + lineOffset;
+    error.column = offset - Math.max(before.lastIndexOf("\n"), before.lastIndexOf("\r"));
+    return error;
+  }
+
   function getPreviewStates(screen) {
     return screen["preview-states"] === undefined
       ? [{ id: "default", name: "Default" }]
@@ -111,7 +119,7 @@
     }
     const match = source.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/);
     if (!match) {
-      throw new Error(`${context} must begin with a YAML front matter block delimited by "---".`);
+      throw errorAt(`${context} must begin with a YAML front matter block delimited by "---".`, source, 0);
     }
     return { header: match[1], body: source.slice(match[0].length) };
   }
@@ -142,9 +150,14 @@
     validateAttributeDefinitions(data, `${source} front matter`);
   }
 
-  function validateMaterialMarkup(markup, source) {
+  function validateMaterialMarkup(markup, source, lineOffset = 0) {
     if (typeof markup !== "string" || !markup.trim()) {
-      throw new Error(`${source} must contain one HTML element.`);
+      throw errorAt(
+        `${source} must contain one HTML element.`,
+        typeof markup === "string" ? markup : "",
+        0,
+        lineOffset
+      );
     }
     const materialStyles = [
       ...markup.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)
@@ -152,22 +165,41 @@
       ...markup.matchAll(/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]*))/gi)
         .map((match) => match[1] ?? match[2] ?? match[3])
     ].join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
-    if (/(?:^|[;{])\s*z-index\s*:/i.test(materialStyles)) {
-      throw new Error(`${source} cannot set the CSS "z-index" property; Screen layers control Material stacking.`);
+    const zIndex = /(?:^|[;{])\s*z-index\s*:/i.exec(materialStyles);
+    if (zIndex) {
+      const offset = markup.search(/z-index\s*:/i);
+      throw errorAt(
+        `${source} cannot set the CSS "z-index" property; Screen layers control Material stacking.`,
+        markup,
+        offset,
+        lineOffset
+      );
     }
-    for (const match of markup.matchAll(/\$\{([^}]+)\}/g)) {
-      if (!/^attributes\.[a-zA-Z_][a-zA-Z0-9_-]*$/.test(match[1])) {
-        throw new Error(`${source} placeholders must reference declared attributes as \${attributes.<name>}.`);
+    for (const match of markup.matchAll(/\$\{/g)) {
+      const placeholder = markup.slice(match.index).match(/^\$\{([^}]*)\}/);
+      if (!placeholder || !/^attributes\.[a-zA-Z_][a-zA-Z0-9_-]*$/.test(placeholder[1])) {
+        throw errorAt(
+          placeholder
+            ? `${source} placeholders must reference declared attributes as \${attributes.<name>}.`
+            : `${source} contains a malformed attribute placeholder.`,
+          markup,
+          match.index,
+          lineOffset
+        );
       }
     }
-    if (markup.replace(/\$\{attributes\.[a-zA-Z_][a-zA-Z0-9_-]*\}/g, "").includes("${")) {
-      throw new Error(`${source} contains a malformed attribute placeholder.`);
+    const interactiveElement = /<(?:a|audio|base|button|embed|form|iframe|input|link|object|script|select|textarea|video)\b/i.exec(markup);
+    if (interactiveElement) {
+      throw errorAt(
+        `${source} cannot contain links, interactive controls, forms, scripts, or embedded documents.`,
+        markup,
+        interactiveElement.index,
+        lineOffset
+      );
     }
-    if (/<(?:a|audio|base|button|embed|form|iframe|input|link|object|script|select|textarea|video)\b/i.test(markup)) {
-      throw new Error(`${source} cannot contain links, interactive controls, forms, scripts, or embedded documents.`);
-    }
-    if (/data-specux-slot\s*=/i.test(markup)) {
-      throw new Error(`${source} cannot define layout slots.`);
+    const layoutSlot = /data-specux-slot\s*=/i.exec(markup);
+    if (layoutSlot) {
+      throw errorAt(`${source} cannot define layout slots.`, markup, layoutSlot.index, lineOffset);
     }
 
     const voidElements = new Set([
@@ -183,19 +215,39 @@
     for (const match of sourceWithoutCommentsAndStyles.matchAll(tagPattern)) {
       const tagName = match[1].toLowerCase();
       if (match[0][1] === "/") {
-        if (openTags.pop() !== tagName) {
-          throw new Error(`${source} must use balanced HTML elements.`);
+        if (openTags.pop()?.name !== tagName) {
+          throw errorAt(
+            `${source} must use balanced HTML elements.`,
+            markup,
+            markup.indexOf(match[0]),
+            lineOffset
+          );
         }
         continue;
       }
       if (openTags.length === 0 && ++rootCount > 1) {
-        throw new Error(`${source} must contain one root HTML element and no layout group.`);
+        throw errorAt(
+          `${source} must contain one root HTML element and no layout group.`,
+          markup,
+          markup.indexOf(match[0]),
+          lineOffset
+        );
       }
       const selfClosing = /\/\s*>$/.test(match[0]);
-      if (!selfClosing && !voidElements.has(tagName)) openTags.push(tagName);
+      if (!selfClosing && !voidElements.has(tagName)) {
+        openTags.push({ name: tagName, offset: markup.indexOf(match[0]) });
+      }
     }
-    if (rootCount !== 1 || openTags.length > 0) {
-      throw new Error(`${source} must contain one balanced root HTML element.`);
+    if (openTags.length > 0) {
+      throw errorAt(
+        `${source} must contain one balanced root HTML element.`,
+        markup,
+        openTags[openTags.length - 1].offset,
+        lineOffset
+      );
+    }
+    if (rootCount !== 1) {
+      throw errorAt(`${source} must contain one balanced root HTML element.`, markup, 0, lineOffset);
     }
   }
 
@@ -256,7 +308,7 @@
           url = new URL(match[1]);
         } catch {
           if (match[1].startsWith("specux://screen/")) {
-            throw new Error(`${context}: invalid Screen link "${match[1]}".`);
+            throw errorAt(`${context}: invalid Screen link "${match[1]}".`, source, lineOffset(source, lineIndex) + match.index);
           }
           continue;
         }
@@ -266,28 +318,34 @@
         try {
           pathSegments = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
         } catch {
-          throw new Error(`${context}: invalid Screen link path "${match[1]}".`);
+          throw errorAt(`${context}: invalid Screen link path "${match[1]}".`, source, lineOffset(source, lineIndex) + match.index);
         }
         if (pathSegments[1] !== "screen.yml") continue;
         if (url.username || url.password || url.port || url.hash ||
             pathSegments.length !== 2 ||
             !/^[a-z][a-z0-9-]*$/.test(pathSegments[0])) {
-          throw new Error(`${context}: invalid Screen link "${match[1]}".`);
+          throw errorAt(`${context}: invalid Screen link "${match[1]}".`, source, lineOffset(source, lineIndex) + match.index);
         }
 
         const queryEntries = [...url.searchParams.entries()];
         if (queryEntries.some(([key]) => !["placement", "state"].includes(key)) ||
             url.searchParams.getAll("placement").length > 1 ||
             url.searchParams.getAll("state").length > 1) {
-          throw new Error(
-            `${context}: Screen links support one placement and one state parameter: "${match[1]}".`
+          throw errorAt(
+            `${context}: Screen links support one placement and one state parameter: "${match[1]}".`,
+            source,
+            lineOffset(source, lineIndex) + match.index
           );
         }
         const placementId = url.searchParams.get("placement");
         const stateId = url.searchParams.get("state") ?? "default";
         if ((placementId !== null && !/^[a-z][a-z0-9-]*$/.test(placementId)) ||
             !/^[a-z][a-z0-9-]*$/.test(stateId)) {
-          throw new Error(`${context}: invalid placement or state in Screen link "${match[1]}".`);
+          throw errorAt(
+            `${context}: invalid placement or state in Screen link "${match[1]}".`,
+            source,
+            lineOffset(source, lineIndex) + match.index
+          );
         }
         references.push({
           href: match[1],
@@ -303,19 +361,35 @@
     return references;
   }
 
+  function lineOffset(source, lineIndex) {
+    let offset = 0;
+    for (let index = 0; index < lineIndex; index += 1) {
+      const newline = source.indexOf("\n", offset);
+      if (newline < 0) return source.length;
+      offset = newline + 1;
+    }
+    return offset;
+  }
+
   function validateSpecScreenReferences(source, screens, context = "Behavior spec") {
     const references = parseSpecScreenReferences(source, context);
     for (const reference of references) {
       const screen = screens.find((entry) => entry.id === reference.screenId);
       if (!screen) {
-        throw new Error(`${context}: Screen "${reference.screenId}" is not available.`);
+        throw errorAt(
+          `${context}: Screen "${reference.screenId}" is not available.`,
+          source,
+          lineOffset(source, reference.lineIndex) + reference.columnIndex
+        );
       }
       const data = screen.data || screen;
       if (!getPreviewStates(data).some((previewState) =>
         previewState.id === reference.stateId
       )) {
-        throw new Error(
-          `${context}: preview state "${reference.stateId}" is not available on Screen "${screen.id}".`
+        throw errorAt(
+          `${context}: preview state "${reference.stateId}" is not available on Screen "${screen.id}".`,
+          source,
+          lineOffset(source, reference.lineIndex) + reference.columnIndex
         );
       }
       if (reference.placementId) {
@@ -325,8 +399,10 @@
             containsPlacement(placement.children, reference.placementId)
           );
         if (!containsPlacement(data.materials)) {
-          throw new Error(
-            `${context}: placement "${reference.placementId}" is not available on Screen "${screen.id}".`
+          throw errorAt(
+            `${context}: placement "${reference.placementId}" is not available on Screen "${screen.id}".`,
+            source,
+            lineOffset(source, reference.lineIndex) + reference.columnIndex
           );
         }
       }
@@ -339,18 +415,28 @@
       throw new Error("Behavior spec content must be Markdown text.");
     }
 
-    const lines = source.replace(/\r\n?/g, "\n").split("\n");
+    const normalizedSource = source.replace(/\r\n?/g, "\n");
+    const lines = normalizedSource.split("\n");
+    const lineStarts = [];
+    let offset = 0;
+    for (const line of lines) {
+      lineStarts.push(offset);
+      offset += line.length + 1;
+    }
+    const errorOnLine = (message, lineIndex, column = 0) =>
+      errorAt(message, normalizedSource, lineStarts[lineIndex] + column);
+    const errorAtEnd = (message) => errorAt(message, normalizedSource, normalizedSource.length);
     const purposeIndex = lines.findIndex((line) => /^## Purpose\s*$/.test(line));
     const requirementsIndex = lines.findIndex((line) => /^## Requirements\s*$/.test(line));
-    if (purposeIndex < 0) throw new Error('Behavior spec must include a "## Purpose" section.');
-    if (requirementsIndex < 0) throw new Error('Behavior spec must include a "## Requirements" section.');
+    if (purposeIndex < 0) throw errorAtEnd('Behavior spec must include a "## Purpose" section.');
+    if (requirementsIndex < 0) throw errorAtEnd('Behavior spec must include a "## Requirements" section.');
     if (purposeIndex >= requirementsIndex) {
-      throw new Error('"## Purpose" must appear before "## Requirements".');
+      throw errorOnLine('"## Purpose" must appear before "## Requirements".', requirementsIndex);
     }
     const purposeEnd = lines.findIndex((line, index) => index > purposeIndex && /^##\s/.test(line));
     if (!lines.slice(purposeIndex + 1, purposeEnd < 0 ? lines.length : purposeEnd)
       .some((line) => line.trim())) {
-      throw new Error('"## Purpose" must contain a description.');
+      throw errorOnLine('"## Purpose" must contain a description.', purposeIndex);
     }
 
     const requirementsEnd = lines.findIndex((line, index) => index > requirementsIndex && /^##\s/.test(line));
@@ -360,18 +446,29 @@
       if (/^### Requirement:/.test(lines[index])) requirementIndexes.push(index);
     }
     if (requirementIndexes.length === 0) {
-      throw new Error('"## Requirements" must contain at least one "### Requirement: <name>" heading.');
+      throw errorOnLine(
+        '"## Requirements" must contain at least one "### Requirement: <name>" heading.',
+        requirementsIndex
+      );
     }
 
     for (let index = 0; index < requirementIndexes.length; index += 1) {
       const requirementIndex = requirementIndexes[index];
       const name = lines[requirementIndex].slice("### Requirement:".length).trim();
-      if (!name) throw new Error('Each "### Requirement:" heading must have a name.');
+      if (!name) {
+        throw errorOnLine('Each "### Requirement:" heading must have a name.', requirementIndex);
+      }
       if (name.length >= 50) {
-        throw new Error(`Requirement name "${name}" must be shorter than 50 characters.`);
+        throw errorOnLine(
+          `Requirement name "${name}" must be shorter than 50 characters.`,
+          requirementIndex
+        );
       }
       if (!/\b(?:SHALL|MUST|SHOULD|MAY)\s+\S/.test(lines[requirementIndex + 1] || "")) {
-        throw new Error(`Requirement "${name}" must be followed immediately by a normative SHALL, MUST, SHOULD, or MAY statement.`);
+        throw errorOnLine(
+          `Requirement "${name}" must be followed immediately by a normative SHALL, MUST, SHOULD, or MAY statement.`,
+          requirementIndex
+        );
       }
 
       const requirementEnd = index + 1 < requirementIndexes.length
@@ -382,25 +479,43 @@
         if (/^#### Scenario:/.test(lines[lineIndex])) scenarioIndexes.push(lineIndex);
       }
       if (scenarioIndexes.length === 0) {
-        throw new Error(`Requirement "${name}" must contain at least one "#### Scenario: <name>" section.`);
+        throw errorOnLine(
+          `Requirement "${name}" must contain at least one "#### Scenario: <name>" section.`,
+          requirementIndex
+        );
       }
 
       for (let scenarioIndex = 0; scenarioIndex < scenarioIndexes.length; scenarioIndex += 1) {
         const lineIndex = scenarioIndexes[scenarioIndex];
         if (!/^#### Scenario:\s+\S/.test(lines[lineIndex])) {
-          throw new Error(`Requirement "${name}" has a scenario heading without a name.`);
+          throw errorOnLine(
+            `Requirement "${name}" has a scenario heading without a name.`,
+            lineIndex
+          );
         }
         const scenarioEnd = scenarioIndex + 1 < scenarioIndexes.length
           ? scenarioIndexes[scenarioIndex + 1]
           : requirementEnd;
         const steps = lines.slice(lineIndex + 1, scenarioEnd)
-          .map((line) => line.match(/^\s*-\s+\*\*(GIVEN|WHEN|THEN|AND|SHOW)\*\*\s+\S/)?.[1])
-          .filter(Boolean);
-        if (!steps.includes("WHEN") || !steps.includes("THEN")) {
-          throw new Error('Each scenario must include "- **WHEN** ..." and "- **THEN** ..." steps.');
+          .map((step, index) => ({
+            type: step.match(/^\s*-\s+\*\*(GIVEN|WHEN|THEN|AND|SHOW)\*\*\s+\S/)?.[1],
+            lineIndex: lineIndex + index + 1
+          }))
+          .filter((step) => step.type);
+        if (!steps.some((step) => step.type === "WHEN") ||
+            !steps.some((step) => step.type === "THEN")) {
+          throw errorOnLine(
+            'Each scenario must include "- **WHEN** ..." and "- **THEN** ..." steps.',
+            lineIndex
+          );
         }
-        if (steps.includes("SHOW") && steps.indexOf("SHOW") < steps.indexOf("THEN")) {
-          throw new Error('A scenario "- **SHOW** <state-id>" step must follow its "- **THEN** ..." step.');
+        const showStep = steps.find((step) => step.type === "SHOW");
+        const thenStep = steps.find((step) => step.type === "THEN");
+        if (showStep && showStep.lineIndex < thenStep.lineIndex) {
+          throw errorOnLine(
+            'A scenario "- **SHOW** <state-id>" step must follow its "- **THEN** ..." step.',
+            showStep.lineIndex
+          );
         }
       }
     }
@@ -410,13 +525,13 @@
 
   function validateScreenSpecStateReferences(source, states, context) {
     const documents = Array.isArray(source) ? source : [{ content: source }];
-    const shownStateIds = new Set();
+    const shownStateIds = new Map();
     for (const document of documents) {
       const documentContext = document.path ? `${context} (${document.path})` : context;
       const lines = document.content.replace(/\r\n?/g, "\n").split("\n");
       let inScenario = false;
       let thenSeen = false;
-      for (const line of lines) {
+      for (const [lineIndex, line] of lines.entries()) {
         if (/^#### Scenario:\s+\S/.test(line)) {
           inScenario = true;
           thenSeen = false;
@@ -427,19 +542,36 @@
         if (!line.includes("**SHOW**")) continue;
         const match = line.match(/^\s*-\s+\*\*SHOW\*\*\s+([a-z][a-z0-9-]*)\s*$/);
         if (!match) {
-          throw new Error(`${documentContext}: SHOW steps must use the form "- **SHOW** <state-id>".`);
+          throw errorAt(
+            `${documentContext}: SHOW steps must use the form "- **SHOW** <state-id>".`,
+            document.content,
+            lineOffset(document.content, lineIndex) + Math.max(0, line.indexOf("**SHOW**"))
+          );
         }
         if (!inScenario || !thenSeen) {
-          throw new Error(`${documentContext}: SHOW steps must appear in a scenario after its THEN step.`);
+          throw errorAt(
+            `${documentContext}: SHOW steps must appear in a scenario after its THEN step.`,
+            document.content,
+            lineOffset(document.content, lineIndex) + Math.max(0, line.indexOf("**SHOW**"))
+          );
         }
-        shownStateIds.add(match[1]);
+        shownStateIds.set(match[1], {
+          source: document.content,
+          offset: lineOffset(document.content, lineIndex) + Math.max(0, line.indexOf("**SHOW**")),
+          path: document.path
+        });
       }
     }
 
     const stateIds = new Set(states.map((state) => state.id));
-    for (const stateId of shownStateIds) {
+    for (const [stateId, reference] of shownStateIds) {
       if (!stateIds.has(stateId)) {
-        throw new Error(`${context}: linked spec references unknown preview state "${stateId}".`);
+        const documentContext = reference.path ? `${context} (${reference.path})` : context;
+        throw errorAt(
+          `${documentContext}: linked spec references unknown preview state "${stateId}".`,
+          reference.source,
+          reference.offset
+        );
       }
     }
     const missingStateIds = states
@@ -508,11 +640,16 @@
     }
   }
 
-  function validateMaterialAttributeMarkup(material, markup, source) {
+  function validateMaterialAttributeMarkup(material, markup, source, lineOffset = 0) {
     const attributeNames = new Set(Object.keys(material.attributes || {}));
     for (const match of markup.matchAll(/\$\{attributes\.([^}]+)\}/g)) {
       if (!attributeNames.has(match[1])) {
-        throw new Error(`${source} references undeclared attribute "${match[1]}".`);
+        throw errorAt(
+          `${source} references undeclared attribute "${match[1]}".`,
+          markup,
+          match.index,
+          lineOffset
+        );
       }
     }
   }

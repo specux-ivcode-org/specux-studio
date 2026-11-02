@@ -9,25 +9,29 @@ function parseSpecuxYaml(source) {
     const indent = raw.length - raw.trimStart().length;
     const text = stripYamlComment(raw.trimStart()).trimEnd();
     if (text.trim()) {
-      lines.push({ indent, text: text.trim(), line: index + 1 });
+      lines.push({ indent, column: indent + 1, text: text.trim(), line: index + 1 });
     }
   });
 
   let cursor = 0;
 
-  function fail(message, line) {
-    throw new Error(`${message} (line ${line}).`);
+  function fail(message, line, column = 1) {
+    throw new Error(`${message} (line ${line}, column ${column}).`);
   }
 
-  function splitPair(text, line) {
+  function splitPair(text, line, column) {
     const match = /^([^:]+):(?:\s|$)(.*)$/.exec(text);
     if (!match) {
-      fail("Expected a key followed by a colon", line);
+      fail("Expected a key followed by a colon", line, column);
     }
-    return [match[1].trim(), match[2].trim()];
+    const raw = match[2];
+    const valueColumn = raw
+      ? column + text.length - raw.length + raw.length - raw.trimStart().length
+      : column + text.length;
+    return [match[1].trim(), raw.trim(), valueColumn];
   }
 
-  function scalar(raw, line) {
+  function scalar(raw, line, column) {
     if (raw === "true") return true;
     if (raw === "false") return false;
     if (raw === "null" || raw === "~") return null;
@@ -36,7 +40,7 @@ function parseSpecuxYaml(source) {
       try {
         return JSON.parse(raw);
       } catch {
-        fail("Invalid double-quoted string", line);
+        fail("Invalid double-quoted string", line, column);
       }
     }
     if (raw.startsWith("'") && raw.endsWith("'")) {
@@ -47,7 +51,7 @@ function parseSpecuxYaml(source) {
     return raw;
   }
 
-  function valueAfterPair(raw, indent, line) {
+  function valueAfterPair(raw, indent, line, column) {
     if (raw) {
       const parts = [raw];
       if (!raw.startsWith('"') && !raw.startsWith("'") && !raw.startsWith("{") && !raw.startsWith("[")) {
@@ -56,7 +60,7 @@ function parseSpecuxYaml(source) {
           cursor += 1;
         }
       }
-      return scalar(parts.join(" "), line);
+      return scalar(parts.join(" "), line, column);
     }
     if (cursor < lines.length && lines[cursor].indent > indent) {
       return block(lines[cursor].indent);
@@ -68,15 +72,15 @@ function parseSpecuxYaml(source) {
     while (cursor < lines.length) {
       const current = lines[cursor];
       if (current.indent < indent) break;
-      if (current.indent > indent) fail("Unexpected indentation", current.line);
+      if (current.indent > indent) fail("Unexpected indentation", current.line, current.column);
       if (current.text === "-" || current.text.startsWith("- ")) break;
 
-      const [key, raw] = splitPair(current.text, current.line);
+      const [key, raw, valueColumn] = splitPair(current.text, current.line, current.column);
       if (Object.prototype.hasOwnProperty.call(result, key)) {
-        fail(`Duplicate key "${key}"`, current.line);
+        fail(`Duplicate key "${key}"`, current.line, current.column);
       }
       cursor += 1;
-      result[key] = valueAfterPair(raw, indent, current.line);
+      result[key] = valueAfterPair(raw, indent, current.line, valueColumn);
     }
     return result;
   }
@@ -86,7 +90,7 @@ function parseSpecuxYaml(source) {
     while (cursor < lines.length) {
       const current = lines[cursor];
       if (current.indent < indent) break;
-      if (current.indent > indent) fail("Unexpected indentation", current.line);
+      if (current.indent > indent) fail("Unexpected indentation", current.line, current.column);
       if (current.text !== "-" && !current.text.startsWith("- ")) break;
 
       const rest = current.text.slice(1).trim();
@@ -107,7 +111,7 @@ function parseSpecuxYaml(source) {
           parts.push(lines[cursor].text);
           cursor += 1;
         }
-        result.push(scalar(parts.join(" "), current.line));
+        result.push(scalar(parts.join(" "), current.line, current.column + 2));
         continue;
       }
 
@@ -115,7 +119,8 @@ function parseSpecuxYaml(source) {
       const item = {};
       const key = pair[1].trim();
       const raw = pair[2].trim();
-      item[key] = valueAfterPair(raw, itemIndent, current.line);
+      const valueColumn = current.column + current.text.indexOf(raw);
+      item[key] = valueAfterPair(raw, itemIndent, current.line, valueColumn);
       result.push(mapping(itemIndent, item));
     }
     return result;
@@ -124,7 +129,7 @@ function parseSpecuxYaml(source) {
   function block(indent) {
     if (cursor >= lines.length) return null;
     if (lines[cursor].indent !== indent) {
-      fail("Inconsistent indentation", lines[cursor].line);
+      fail("Inconsistent indentation", lines[cursor].line, lines[cursor].column);
     }
     const text = lines[cursor].text;
     return text === "-" || text.startsWith("- ")
