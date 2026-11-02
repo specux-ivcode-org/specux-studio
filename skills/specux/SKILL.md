@@ -9,7 +9,7 @@ SpecUX is a versioned, file-based standard for describing application Screens, r
 
 ## Set up SpecUX
 
-Keep the CLI and skill project-local, not global, so different projects on one machine can use different SpecUX versions.
+Keep the CLI and skill project-local, not global, so different projects on one machine can use different SpecUX versions. Install both from the <copilot-ref kind="repo" target-id="https://github.com/specux-ivcode-org/specux-studio" label="specux-ivcode-org/specux-studio" /> repository.
 
 1. Identify the user's intended workspace. Look for `project.yml` in the current directory, its parents, and an `specux/` subdirectory. If more than one exists, select the one the user is asking about.
 2. Check whether the SpecUX CLI is installed in the workspace's npm dependencies and whether that installed CLI is usable:
@@ -24,10 +24,10 @@ Keep the CLI and skill project-local, not global, so different projects on one m
 4. Development mode currently provides only `0.1.0-SNAPSHOT`. For an existing project with that version and no matching local CLI, install the development build from the host workspace root (the directory whose `package.json` should own the dependency, not necessarily the directory containing `specux/project.yml`):
 
    ```sh
-   npm install --save-dev git+https://github.com/specux-ivcode-org/.github.git#feature/editor-asset-add-flow
+   npm install --save-dev git+https://github.com/specux-ivcode-org/specux-studio.git#main
    ```
 
-   This installs the latest commit on the development branch and records the exact resolved dependency in the workspace lockfile. Then rerun both checks in step 2 and confirm the CLI reports `0.1.0-SNAPSHOT`. No other SpecUX format versions are available in development mode yet; if an existing project declares another version, do not install a mismatched CLI or alter the project. Tell the user that version is unavailable and ask how they want to proceed.
+   This installs the latest commit on the repository's `main` branch and records the exact resolved dependency in the workspace lockfile. Then rerun both checks in step 2 and confirm the CLI reports `0.1.0-SNAPSHOT`. No other SpecUX format versions are available in development mode yet; if an existing project declares another version, do not install a mismatched CLI or alter the project. Tell the user that version is unavailable and ask how they want to proceed.
 5. If no `project.yml` exists, install the latest available SpecUX development build using the same command, then initialize a starter project in the intended workspace:
 
    ```sh
