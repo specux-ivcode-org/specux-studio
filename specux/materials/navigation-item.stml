@@ -1,0 +1,46 @@
+---
+id: navigation-item
+name: Navigation Item
+type: navigation-item
+attributes:
+  text:
+    type: string
+    default: Dashboard
+    overridable: true
+  icon:
+    type: string
+    default: D
+    overridable: true
+  color:
+    type: string
+    default: "var(--theme-muted, #536174)"
+    overridable: true
+  background:
+    type: string
+    default: transparent
+    overridable: true
+  icon-color:
+    type: string
+    default: "var(--theme-muted, #66738a)"
+    overridable: true
+  icon-background:
+    type: string
+    default: "var(--theme-surface-muted, #f1f3f8)"
+    overridable: true
+  border-radius:
+    type: number
+    format: integer
+    default: 9
+    overridable: true
+  font-size:
+    type: number
+    format: integer
+    default: 12
+    overridable: true
+  font-weight:
+    type: number
+    format: integer
+    default: 550
+    overridable: true
+---
+<div class="material-visual" style="gap:10px;padding:0 11px;color:${attributes.color};background:${attributes.background};border-radius:${attributes.border-radius}px;font-size:${attributes.font-size}px;font-weight:${attributes.font-weight}"><span style="display:flex;width:23px;height:23px;flex:none;align-items:center;justify-content:center;border-radius:7px;color:${attributes.icon-color};background:${attributes.icon-background};font-size:10px;font-weight:750">${attributes.icon}</span><span>${attributes.text}</span></div>

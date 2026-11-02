@@ -1,0 +1,54 @@
+---
+id: button
+name: Button
+type: button
+attributes:
+  text:
+    type: string
+    default: Button
+    overridable: true
+  color:
+    type: string
+    default: "var(--theme-on-primary, #ffffff)"
+    overridable: true
+  background:
+    type: string
+    default: "var(--theme-primary, #4569e8)"
+    overridable: true
+  border:
+    type: string
+    default: "1px solid var(--theme-primary, #4569e8)"
+    overridable: true
+  border-radius:
+    type: number
+    format: integer
+    default: 8
+    overridable: true
+  padding:
+    type: string
+    default: 8px 14px
+    overridable: true
+  font-size:
+    type: number
+    format: integer
+    default: 14
+    overridable: true
+  font-weight:
+    type: number
+    format: integer
+    default: 650
+    overridable: true
+  text-align:
+    type: list
+    options:
+      - left
+      - center
+      - right
+    default: center
+    overridable: true
+  shadow:
+    type: string
+    default: "0 7px 14px color-mix(in srgb, var(--theme-primary, #4569e8) 20%, transparent)"
+    overridable: true
+---
+<div class="material-visual material-visual-button" style="color:${attributes.color};background:${attributes.background};border:${attributes.border};border-radius:${attributes.border-radius}px;padding:${attributes.padding};font-size:${attributes.font-size}px;font-weight:${attributes.font-weight};text-align:${attributes.text-align};box-shadow:${attributes.shadow}">${attributes.text}</div>

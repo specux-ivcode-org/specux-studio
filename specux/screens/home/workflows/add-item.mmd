@@ -1,0 +1,20 @@
+---
+Shows the add-item journey from opening the form to saving or canceling.
+Use the linked behavior spec for implementation requirements and acceptance criteria.
+---
+flowchart TD
+    home["Home"]
+    addItem["Add item"]
+    dialogState["Add item dialog open"]
+    saveItem["Save item"]
+    recentActivity["Recent activity"]
+    home -->|Open add item| addItem
+    addItem -->|Show form| dialogState
+    dialogState -->|Add item| saveItem
+    saveItem -->|Item appears in recent activity| recentActivity
+    dialogState -->|Cancel| home
+    click home href "specux://screen/home/screen.yml"
+    click addItem href "specux://screen/home/screen.yml?placement=add-item"
+    click dialogState href "specux://screen/home/screen.yml?state=add-item-open"
+    click saveItem href "specux://screen/home/screen.yml?placement=dialog-save&state=add-item-open"
+    click recentActivity href "specux://screen/home/screen.yml?placement=activity-card"

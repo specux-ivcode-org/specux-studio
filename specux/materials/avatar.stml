@@ -1,0 +1,34 @@
+---
+id: avatar
+name: Avatar
+type: avatar
+attributes:
+  initials:
+    type: string
+    default: JD
+    overridable: true
+  color:
+    type: string
+    default: "var(--theme-on-primary, #ffffff)"
+    overridable: true
+  background:
+    type: string
+    default: "var(--theme-primary-soft, #e9edff)"
+    overridable: true
+  border-radius:
+    type: number
+    format: integer
+    default: 50
+    overridable: true
+  font-size:
+    type: number
+    format: integer
+    default: 11
+    overridable: true
+  font-weight:
+    type: number
+    format: integer
+    default: 750
+    overridable: true
+---
+<div class="material-visual" style="justify-content:center;text-align:center;color:${attributes.color};background:${attributes.background};border-radius:${attributes.border-radius}px;font-size:${attributes.font-size}px;font-weight:${attributes.font-weight}">${attributes.initials}</div>

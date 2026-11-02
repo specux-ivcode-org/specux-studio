@@ -35,7 +35,7 @@ function findFolder(container, directoryPath) {
 }
 
 test("renders sorted project files and preserves expanded directory state", async () => {
-  const { ProjectFileTree } = await import("../browser/ProjectFileTree.mjs");
+  const { ProjectFileTree } = await import("../frontend/browser/ProjectFileTree.mjs");
   const container = createNode("div");
   const fileTree = new ProjectFileTree({
     container,
@@ -44,7 +44,7 @@ test("renders sorted project files and preserves expanded directory state", asyn
       "screens/sign-in/screen.yml",
       "project.yml",
       "screens/home/screen.yml",
-      "screens/home/assets/demo.stml",
+      "materials/demo.stml",
       "screens/home/specs/screen.md"
     ],
     renderFile: (file) => createNode("button", "file-tree-file", file.name)
@@ -52,26 +52,24 @@ test("renders sorted project files and preserves expanded directory state", asyn
 
   fileTree.expandPath("screens/home/screen.yml");
   fileTree.render();
-  assert.equal(container.children[0].dataset.directoryPath, "screens");
-  assert.equal(container.children[0].open, true);
+  assert.equal(container.children[0].dataset.directoryPath, "materials");
+  assert.equal(findFolder(container, "screens").open, true);
   assert.equal(findFolder(container, "screens/home").open, true);
-  assert.equal(findFolder(container, "screens/home/assets").open, false);
   assert.equal(findFolder(container, "screens/home/specs").open, false);
   assert.equal(findFolder(container, "screens/sign-in").open, false);
 
-  fileTree.expandPath("screens/home/assets/demo.stml");
+  fileTree.expandPath("materials/demo.stml");
   fileTree.render();
-  assert.equal(findFolder(container, "screens/home/assets").open, true);
+  assert.equal(findFolder(container, "materials").open, true);
   const homeFolder = findFolder(container, "screens/home");
   homeFolder.open = false;
   homeFolder.listeners.get("toggle")();
-  assert.equal(findFolder(container, "screens/home/assets").open, false);
-  assert.equal(fileTree.expandedDirectories.has("screens/home/assets"), false);
+  assert.equal(findFolder(container, "materials").open, true);
   homeFolder.open = true;
   homeFolder.listeners.get("toggle")();
   fileTree.render();
   assert.equal(findFolder(container, "screens/home").open, true);
-  assert.equal(findFolder(container, "screens/home/assets").open, false);
+  assert.equal(findFolder(container, "materials").open, true);
 
   const screensFolder = findFolder(container, "screens");
   screensFolder.open = false;

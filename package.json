@@ -3,20 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "description": "Local SpecUX editor prototype and example project",
-  "main": "server.js",
+  "main": "backend/server.js",
   "bin": {
-    "specux": "./cli.js"
+    "specux": "./backend/cli.js"
   },
   "scripts": {
-    "start": "node cli.js server start",
-    "specux": "node cli.js",
+    "start": "node backend/cli.js server start",
+    "specux": "node backend/cli.js",
     "test": "node --test"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
-    "html-to-image": "^1.11.13",
+    "mermaid": "^12.2.0",
     "yaml": "^2.8.1"
   }
 }

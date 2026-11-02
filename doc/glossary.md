@@ -8,19 +8,11 @@ Terms defined here should be used consistently throughout the standard. Where a 
 
 ### Screen
 
-A single view of a user interface. A screen defines the interface presented to the user, including its visible elements, layout, and relevant presentation states.
+A single view of a user interface. A Screen defines its visible Materials and relevant presentation states.
 
-### Asset
+### Material
 
-A reusable file discovered under the project's shared `assets/` directory or a Screen's `assets/` directory. An Asset may be a template, image, or supporting resource. Assets are discovered from the filesystem rather than registered in `project.yml`.
-
-### Element
-
-A placed occurrence on a Screen or inside a template slot. SpecUX directly supports text, image, and template Elements. Each Element has a unique Screen-local `id`; template Elements reference a template Asset by path and may define attributes, slots, visibility, and a Behavior Spec.
-
-### Template Asset
-
-An HTML Asset with YAML front matter that defines reusable markup, attributes, and optional named slots. The template is a reusable definition; a template Element is one placed occurrence.
+A reusable visual-only template defined by one `.stml` file under `materials/`. Its YAML front matter declares variables available to the HTML template. A Screen places Material instances by reference; every instance has its own Screen-local `id`, optional attribute overrides, absolute position, size, rotation, and optional visibility. Label and Button templates render instance-specific text through declared attributes and do not accept input or execute actions.
 
 ### Theme
 
@@ -28,7 +20,7 @@ A project-level set of visual properties applied across all screens, such as col
 
 ### Behavior Spec
 
-A Markdown file linked through the optional `spec` property on the project manifest or a Screen, or through `element-id` YAML front matter for a Screen Element. It uses OpenSpec's structured requirement-and-scenario format to define observable behavior; it is not executable or an implementation plan.
+A Markdown file linked through the optional `spec` property on the project manifest or a Screen. It uses OpenSpec's structured requirement-and-scenario format to define observable behavior; it is not executable or an implementation plan.
 
 ### State
 
@@ -52,13 +44,13 @@ An operation performed in response to an event or specified behavior. An action 
 
 ### Requirement
 
-A statement describing a condition, capability, or behavior that the software is expected to satisfy. Requirements may be linked to screens, assets, behavior specs, and verification scenarios.
+A statement describing a condition, capability, or behavior that the software is expected to satisfy. Requirements may be linked to Screens, Materials, behavior specs, and verification scenarios.
 
 ## Specification and Change Management
 
 ### Artifact
 
-A structured piece of information defined by the SpecUX standard, such as a Screen, Asset, Element, Theme, behavior spec, requirement, or change definition.
+A structured piece of information defined by the SpecUX standard, such as a Screen, Material, Theme, behavior spec, requirement, or change definition.
 
 ### Project
 

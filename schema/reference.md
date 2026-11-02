@@ -1,37 +1,33 @@
 # SpecUX Authoring Reference
 
-This reference is versioned with the SpecUX CLI. Start by reading the target project's `specux` version from `project.yml`; use a CLI with the same value. The skill bootstrap explains how to check and install that CLI. Use `specux schema project`, `screen`, `asset`, `theme`, and `spec` for the complete artifact schemas.
+This reference is versioned with the SpecUX CLI. Read the target project's `specux` version from `project.yml` and use a CLI with the same value. Use `specux schema project`, `screen`, `material`, `theme`, `spec`, and `workflow` for the complete artifact schemas.
 
 ## Project discovery
 
 - Work in the existing project the user identified. The project root is the directory containing `project.yml`, which may be in an `specux/` subdirectory.
-- Read `project.yml` to find Screen IDs and files, the Theme, and any project-wide spec. Discover Assets by scanning `assets/` and `screens/<screen-id>/assets/`; do not add an Asset registry to the project manifest.
-- Keep each Screen in `screens/<screen-id>/screen.yml`. Put shared Assets in `assets/` and Screen-owned Assets in `screens/<screen-id>/assets/`. Put the Screen spec in `screens/<screen-id>/specs/screen.md` and each Element spec directly in `screens/<screen-id>/specs/element-<element-id>.md`. Project-wide specs remain in `specs/`.
+- Read `project.yml` to find Screen IDs and files, the Theme, and any project-wide behavior spec. Reusable Material files are discovered under `materials/`.
+- Keep each Screen in `screens/<screen-id>/screen.yml`. Put the Screen spec in `screens/<screen-id>/specs/screen.md`; project-wide specs remain in `specs/`.
 - Do not initialize a second project or change the project's SpecUX version as a shortcut.
-- Use existing Screens, Assets, attributes, slots, notes, and specs as source context. Do not invent IDs, slots, attribute values, or requirements.
 
 ## Create or revise a Screen
 
-1. Read `specux schema project`, `screen`, `asset`, `theme`, and `spec` before authoring or changing the corresponding artifacts.
-2. A Screen ID belongs in `project.yml`, not the Screen YAML file. A Screen can be empty while it is being built; it does not need a root layout. Place text directly as a text Element, reference a discovered image Asset as an image Element, or reference a template Asset as a template Element.
-3. Keep Screen YAML structural. Reuse suitable templates; create a new template Asset only when existing files cannot express the requested visual element or layout.
-4. Before creating an Asset, decide whether it is shared or Screen-owned. Put shared files in project-level `assets/`; put Screen-specific files under that Screen's `assets/`. Screen-owned Assets may only be used by their Screen. Copying one to another Screen creates a Screen-local copy; shared Assets can be referenced by any Screen. Asset files are discovered from these directories, so do not maintain a duplicate registry.
-5. For every template Element, use only template-declared attributes marked `overridable: true`, with values matching their declared types and options. Declare slots in the template and use only those slot IDs.
-6. Keep visual variations such as a dialog-open or empty state on the same Screen. Define named `preview-states` in the Screen file; every non-default state needs a concise description. Include `- **SHOW** <state-id>` in a scenario after `THEN` for every non-default state in a spec linked to the Screen or one of its Elements. Set an Element's `visibility` mapping for states where it should be hidden; unspecified states are visible. These are Studio preview configurations, not executable application behavior.
+1. Read the relevant `specux schema` guidance before authoring or changing an artifact. This includes `project`, `screen`, `material`, `theme`, `spec`, and `workflow`.
+2. A Screen ID belongs in `project.yml`, not the Screen YAML file. A Screen can be empty while it is being built. Create or reuse an STML Material template, then add an instance referencing it to the Screen's `materials` list.
+3. Define shared visual markup and YAML attribute mappings in the Material's STML file. Reference declared values as `${attributes.<name>}` in the HTML. Set instance-specific values in its `attributes` mapping and each Screen instance's absolute `position`, `size`, and optional `rotation`; instance data and transforms belong to the placement, not the shared Material.
+4. Materials are visual only: do not model inputs, actions, layout groups, or slots.
+5. Keep visual variations such as a message-visible or empty state on the same Screen. Define named `preview-states` in the Screen file; every non-default state needs a concise description. Include `- **SHOW** <state-id>` in a scenario after `THEN` in the Screen-level spec. Set a Material's `visibility` mapping for states where it should be hidden; unspecified states are visible. These are Studio preview configurations, not executable application behavior.
 
 ## Behavior specs
 
-**Default requirement: every actionable UI element must have a behavior spec.** When creating or revising a Screen, inventory all actionable controls—buttons, links, form fields, checkboxes, tabs, toggles, menus, and any other element that accepts input or triggers an action. Create or update specs as part of the Screen work; do not wait for a separate request or omit them because the user did not explicitly ask.
+Materials do not accept input or trigger actions. Do not invent behavior specs for Label or Button Materials.
 
-- Each actionable UI element must be covered by a spec linked with `element-id` front matter to its Screen Element. If one template Element renders multiple actionable controls, its spec must describe each control separately with relevant requirements and scenarios.
-- Purely visual Elements do not need behavior specs.
-- If an actionable element's behavior is not clear from the user's request, Screen, notes, or existing specs, ask the user rather than inventing behavior or leaving the element without a spec.
-- A project-level spec is only for requirements shared across multiple Screens or applying throughout the project. It does not replace specs for individual actionable Elements.
-- Screen-level specs describe page behavior and preview-state activation conditions. A Screen with non-default preview states must reference every such state with `SHOW <state-id>` in its Screen-level spec or one of its Element specs.
-- Write each spec in OpenSpec format with `## Purpose`, `## Requirements`, named `### Requirement:` headings, immediate normative statements, and named `#### Scenario:` sections. Scenario steps use bold `GIVEN` (optional), `WHEN`, `THEN`, and `AND` bullet keywords. In specs linked to a Screen or its Elements, use `SHOW <state-id>` after `THEN` and ensure every non-default preview state is referenced by at least one linked spec. Keep requirements observable and testable; do not include implementation plans or repeat visual details already shown by the mockup.
+- Use a project-level spec for behavior shared across Screens and a Screen-level spec for that Screen's behavior and preview-state activation.
+- Add Markdown links such as `[Home](specux://screen/home/screen.yml)`, `[Dialog state](specux://screen/home/screen.yml?state=dialog-open)`, or `[Save button](specux://screen/home/screen.yml?placement=save-button)` to control the behavior spec editor's preview. Element specs in `screens/<screen-id>/specs/element-<placement-id>.md` must link to their owning placement; do not use `element-id` YAML front matter.
+- Keep shared Material markup and variable definitions in its STML file and instance-specific attribute values and transforms in Screen YAML; do not add individual Material behavior specs.
+- Write each spec in OpenSpec format with `## Purpose`, `## Requirements`, named `### Requirement:` headings, immediate normative statements, and named `#### Scenario:` sections. Scenario steps use bold `GIVEN` (optional), `WHEN`, `THEN`, and `AND` bullet keywords. Screen specs use `SHOW <state-id>` after `THEN` and reference every non-default preview state. Keep requirements observable and testable; do not include implementation plans or repeat visual details already shown by the mockup.
 - Replace example draft content with behavior derived from the user's intent and project context. Do not save an unchanged example draft.
 
-Before finishing, inspect the complete Screen and its referenced templates. Audit every actionable control against its owning Element's spec and verify the spec describes its actual behavior rather than generic Screen-wide behavior.
+Before finishing, inspect the complete Screen and verify every Material reference resolves to a valid STML file and each placement has intentional absolute transform values.
 
 ## Validate, render, and coordinate with the editor
 
@@ -47,18 +43,13 @@ Before finishing, inspect the complete Screen and its referenced templates. Audi
 4. After direct project-file edits, run `specux server update` to notify connected browser tabs. Tabs with unsaved edits are left untouched and prompted to save or reset before refreshing.
 5. Do not report completion until validation succeeds and the rendered Screen has been checked when rendering is available. Clearly state any check that could not be run.
 
-Use `specux server selected` when the user asks about the browser editor's current selection or has drawn temporary Screen annotations; its JSON includes the marks, Element paths, and nearby target text when available. Use `specux render <screen> --format image --annotations --output <file>` to capture a full Screen image with the marks overlaid. Use `specux server annotations clear` to remove marks from the selected Screen when requested. Annotations are temporary server memory, not project files. Edit project files directly; the CLI provides schema guidance, validation, rendering, and editor coordination. Do not remove Assets or specs as a side effect. `specux prune` only deletes files when explicitly run with `--apply`. Preserve unrelated user changes and avoid committing generated renders unless requested.
+Use `specux server selected` when the user asks about the browser editor's current selection or has drawn temporary Screen annotations; its JSON includes the marks, Material paths, and nearby target text when available. Use `specux render <screen> --format image --annotations --output <file>` to capture a full Screen image with the marks overlaid. Use `specux server annotations clear` to remove marks from the selected Screen when requested. Annotations are temporary server memory, not project files. Edit project files directly; the CLI provides schema guidance, validation, rendering, and editor coordination. Preserve unrelated user changes and avoid committing generated renders unless requested.
 
 ## Final validation checklist
 
-Before reporting a Screen or project task complete, explicitly review every item. Fix failed items; if an item cannot be verified or a behavior decision is unclear, say so and ask the user when needed.
-
-- [ ] Does every Element that renders an actionable UI element have a linked behavior spec?
-- [ ] If a template Element renders multiple actionable elements, does its spec describe each one with concrete requirements and scenarios?
-- [ ] Are page-level specs attached to Screens, actionable-element specs attached to Elements, and project-level specs reserved for project-wide behavior?
-- [ ] Are shared Assets in `assets/` and Screen-owned Assets in the matching Screen's `assets/` directory?
-- [ ] Do all Element asset paths, attributes, and slot IDs resolve to discovered files and template definitions?
-- [ ] Are alternate visual states represented as Screen preview states with Element visibility, rather than duplicate Screens?
+- [ ] Does every Material reference resolve to a valid STML definition with one HTML root element?
+- [ ] Does every Material have an absolute position and a valid size and rotation?
+- [ ] Are alternate visual states represented as Screen preview states with Material visibility?
 - [ ] Does the installed CLI version from `specux version` match the project's `specux` value?
 - [ ] Does `specux validate` succeed without errors?
 - [ ] Have changed Screens been rendered and visually inspected when rendering is available?

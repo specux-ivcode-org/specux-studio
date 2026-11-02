@@ -1,0 +1,19 @@
+---
+id: divider
+name: Divider
+type: divider
+attributes:
+  color:
+    type: string
+    default: "var(--theme-border-muted, #edf0f5)"
+    overridable: true
+  line-width:
+    type: string
+    default: 100%
+    overridable: true
+  line-height:
+    type: string
+    default: 1px
+    overridable: true
+---
+<div class="material-visual" style="justify-content:center"><div style="width:${attributes.line-width};height:${attributes.line-height};background:${attributes.color}"></div></div>

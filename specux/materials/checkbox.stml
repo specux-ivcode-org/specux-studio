@@ -1,0 +1,33 @@
+---
+id: checkbox
+name: Checkbox
+type: checkbox
+attributes:
+  mark:
+    type: string
+    default: x
+    overridable: true
+  color:
+    type: string
+    default: "var(--theme-on-primary, #ffffff)"
+    overridable: true
+  background:
+    type: string
+    default: "var(--theme-primary, #4569e8)"
+    overridable: true
+  border:
+    type: string
+    default: "1px solid var(--theme-primary, #4569e8)"
+    overridable: true
+  border-radius:
+    type: number
+    format: integer
+    default: 4
+    overridable: true
+  font-size:
+    type: number
+    format: integer
+    default: 10
+    overridable: true
+---
+<div class="material-visual" style="justify-content:center;text-align:center;color:${attributes.color};background:${attributes.background};border:${attributes.border};border-radius:${attributes.border-radius}px;font-size:${attributes.font-size}px;font-weight:800">${attributes.mark}</div>

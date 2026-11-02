@@ -70,19 +70,19 @@ const SPEC_LAYOUT = {
   editorTrackProperty: "--spec-markdown-track"
 };
 
-const ASSET_LAYOUT = {
+const MATERIAL_LAYOUT = {
   modes: ["split", "preview", "source"],
-  viewIdPrefix: "asset-view",
-  viewAttribute: "data-asset-view",
-  headingId: "asset-view-heading",
+  viewIdPrefix: "material-view",
+  viewAttribute: "data-material-view",
+  headingId: "material-view-heading",
   headingLabels: { split: "Preview", preview: "Preview", source: "Source" },
-  resizerId: "asset-split-resizer",
-  previewTrackProperty: "--asset-preview-track",
-  editorTrackProperty: "--asset-source-track"
+  resizerId: "material-split-resizer",
+  previewTrackProperty: "--material-preview-track",
+  editorTrackProperty: "--material-source-track"
 };
 
 test("switches between split, preview, and Markdown layouts", async () => {
-  const { SplitViewLayout } = await import("../browser/SplitViewLayout.mjs");
+  const { SplitViewLayout } = await import("../frontend/browser/SplitViewLayout.mjs");
   const harness = createHarness(SPEC_LAYOUT);
   const controller = new SplitViewLayout({ ...harness, ...SPEC_LAYOUT });
   controller.bind();
@@ -103,30 +103,30 @@ test("switches between split, preview, and Markdown layouts", async () => {
   assert.equal(harness.elements.get("spec-view-preview").attributes["aria-pressed"], "true");
 });
 
-test("switches between split, preview, and asset source layouts", async () => {
-  const { SplitViewLayout } = await import("../browser/SplitViewLayout.mjs");
-  const harness = createHarness(ASSET_LAYOUT);
-  const controller = new SplitViewLayout({ ...harness, ...ASSET_LAYOUT });
+test("switches between split, preview, and Material source layouts", async () => {
+  const { SplitViewLayout } = await import("../frontend/browser/SplitViewLayout.mjs");
+  const harness = createHarness(MATERIAL_LAYOUT);
+  const controller = new SplitViewLayout({ ...harness, ...MATERIAL_LAYOUT });
   controller.bind();
 
-  assert.equal(harness.elements.get("main").attributes["data-asset-view"], "split");
-  assert.equal(harness.elements.get("asset-view-heading").textContent, "Preview");
-  assert.equal(harness.elements.get("asset-view-split").attributes["aria-pressed"], "true");
-  assert.equal(harness.elements.get("asset-split-resizer").hidden, false);
+  assert.equal(harness.elements.get("main").attributes["data-material-view"], "split");
+  assert.equal(harness.elements.get("material-view-heading").textContent, "Preview");
+  assert.equal(harness.elements.get("material-view-split").attributes["aria-pressed"], "true");
+  assert.equal(harness.elements.get("material-split-resizer").hidden, false);
 
-  harness.elements.get("asset-view-source").listeners.get("click")();
-  assert.equal(harness.elements.get("main").attributes["data-asset-view"], "source");
-  assert.equal(harness.elements.get("asset-view-heading").textContent, "Source");
-  assert.equal(harness.elements.get("asset-view-source").attributes["aria-pressed"], "true");
-  assert.equal(harness.elements.get("asset-split-resizer").hidden, true);
+  harness.elements.get("material-view-source").listeners.get("click")();
+  assert.equal(harness.elements.get("main").attributes["data-material-view"], "source");
+  assert.equal(harness.elements.get("material-view-heading").textContent, "Source");
+  assert.equal(harness.elements.get("material-view-source").attributes["aria-pressed"], "true");
+  assert.equal(harness.elements.get("material-split-resizer").hidden, true);
 
-  harness.elements.get("asset-view-preview").listeners.get("click")();
-  assert.equal(harness.elements.get("main").attributes["data-asset-view"], "preview");
-  assert.equal(harness.elements.get("asset-view-preview").attributes["aria-pressed"], "true");
+  harness.elements.get("material-view-preview").listeners.get("click")();
+  assert.equal(harness.elements.get("main").attributes["data-material-view"], "preview");
+  assert.equal(harness.elements.get("material-view-preview").attributes["aria-pressed"], "true");
 });
 
 test("supports bounded pointer and keyboard resizing", async () => {
-  const { SplitViewLayout } = await import("../browser/SplitViewLayout.mjs");
+  const { SplitViewLayout } = await import("../frontend/browser/SplitViewLayout.mjs");
   const harness = createHarness(SPEC_LAYOUT);
   const controller = new SplitViewLayout({ ...harness, ...SPEC_LAYOUT });
   controller.bind();

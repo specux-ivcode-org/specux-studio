@@ -63,7 +63,7 @@ function createHarness(savedLayout) {
 }
 
 test("restores clamped panel sizes and persists keyboard and pointer resizing", async () => {
-  const { ResizablePanels } = await import("../browser/ResizablePanels.mjs");
+  const { ResizablePanels } = await import("../frontend/browser/ResizablePanels.mjs");
   const harness = createHarness('{"sidebar":999,"inspector":100}');
   const controller = new ResizablePanels({
     ...harness,

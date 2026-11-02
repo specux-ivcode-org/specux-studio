@@ -1,0 +1,79 @@
+---
+id: label
+name: Label
+type: label
+attributes:
+  text:
+    type: string
+    default: Label
+    overridable: true
+  color:
+    type: string
+    default: "var(--theme-ink, #1e293b)"
+    overridable: true
+  background:
+    type: string
+    default: transparent
+    overridable: true
+  border:
+    type: string
+    default: none
+    overridable: true
+  border-radius:
+    type: number
+    format: integer
+    default: 0
+    overridable: true
+  padding:
+    type: string
+    default: "0"
+    overridable: true
+  font-size:
+    type: number
+    format: integer
+    default: 14
+    overridable: true
+  font-weight:
+    type: number
+    format: integer
+    default: 500
+    overridable: true
+  line-height:
+    type: number
+    default: 1.4
+    overridable: true
+  letter-spacing:
+    type: string
+    default: normal
+    overridable: true
+  text-align:
+    type: list
+    options:
+      - left
+      - center
+      - right
+    default: left
+    overridable: true
+  align-items:
+    type: list
+    options:
+      - flex-start
+      - center
+      - flex-end
+    default: center
+    overridable: true
+  justify-content:
+    type: list
+    options:
+      - flex-start
+      - center
+      - flex-end
+      - space-between
+    default: flex-start
+    overridable: true
+  shadow:
+    type: string
+    default: none
+    overridable: true
+---
+<div class="material-visual material-visual-label" style="color:${attributes.color};background:${attributes.background};border:${attributes.border};border-radius:${attributes.border-radius}px;padding:${attributes.padding};font-size:${attributes.font-size}px;font-weight:${attributes.font-weight};line-height:${attributes.line-height};letter-spacing:${attributes.letter-spacing};text-align:${attributes.text-align};align-items:${attributes.align-items};justify-content:${attributes.justify-content};box-shadow:${attributes.shadow}">${attributes.text}</div>

@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A local SpecUX editor prototype with project save support.">
+  <title>SpecUX Studio</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to screen preview</a>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">S</span><span>SpecUX Studio</span></div>
+    <div class="workspace-context" id="workspace-context">
+      <div class="context-title">
+        <div class="eyebrow" id="breadcrumb">Screens</div>
+        <h1 id="screen-heading">Loading project...</h1>
+      </div>
+    </div>
+    <div class="topbar-spacer"></div>
+    <button class="save-button" id="save-project" type="button" disabled>Save</button>
+    <button class="reset-button" id="reset-project" type="button">Reset from files</button>
+  </header>
+
+  <div class="workspace" id="workspace">
+    <aside class="sidebar" aria-label="SpecUX project files">
+      <div class="screen-quick-selector" id="screen-quick-selector">
+        <button
+          class="screen-selector-toggle"
+          id="screen-selector-toggle"
+          type="button"
+          aria-label="Choose a Screen"
+          aria-haspopup="listbox"
+          aria-controls="screen-selector-options"
+          aria-expanded="false"
+          disabled
+        >
+          <span class="screen-selector-search-icon" aria-hidden="true"></span>
+          <span>Go to Screen</span>
+          <span class="screen-selector-chevron" aria-hidden="true"></span>
+        </button>
+        <div class="screen-selector-panel" id="screen-selector-panel" hidden>
+          <label class="screen-selector-search-label" for="screen-selector-search">Search Screens</label>
+          <input
+            class="screen-selector-search"
+            id="screen-selector-search"
+            type="search"
+            placeholder="Search by name or ID"
+            autocomplete="off"
+            aria-controls="screen-selector-options"
+          >
+          <div
+            class="screen-selector-options"
+            id="screen-selector-options"
+            role="listbox"
+            aria-label="Available Screens"
+          ></div>
+          <div class="screen-selector-no-results" id="screen-selector-no-results" role="status" hidden>
+            No matching Screens.
+          </div>
+        </div>
+      </div>
+      <div class="file-explorer-heading">
+        <div class="side-label">SpecUX project</div>
+        <button class="create-screen-button" id="create-screen" type="button" aria-label="Create new Screen" title="Create an empty Screen" disabled>+</button>
+      </div>
+      <div id="project-file-tree" class="project-file-tree" aria-label="Project files"></div>
+    </aside>
+    <div
+      class="panel-resizer sidebar-resizer"
+      id="sidebar-resizer"
+      role="separator"
+      aria-label="Resize project files panel"
+      aria-orientation="vertical"
+      aria-controls="sidebar main"
+      aria-valuemin="180"
+      aria-valuemax="420"
+      aria-valuenow="238"
+      title="Drag or use the arrow keys to resize the project files panel"
+      tabindex="0"
+    ></div>
+
+    <main class="canvas" id="main">
+      <div class="spec-view-toolbar" aria-label="Behavior spec preview layout">
+        <h2 class="spec-view-heading" id="spec-view-heading">Preview</h2>
+        <div class="screen-view-selector spec-view-selector" role="group" aria-label="Behavior spec view">
+          <button
+            class="screen-view-button"
+            id="spec-view-split"
+            type="button"
+            aria-pressed="true"
+            aria-controls="screen-stage spec-editor-panel"
+          >Split</button>
+          <button
+            class="screen-view-button"
+            id="spec-view-preview"
+            type="button"
+            aria-pressed="false"
+            aria-controls="screen-stage spec-editor-panel"
+          >Preview</button>
+          <button
+            class="screen-view-button"
+            id="spec-view-markdown"
+            type="button"
+            aria-pressed="false"
+            aria-controls="screen-stage spec-editor-panel"
+          >Markdown</button>
+        </div>
+      </div>
+      <div class="material-view-toolbar" aria-label="Material preview layout">
+        <h2 class="material-view-heading" id="material-view-heading">Preview</h2>
+        <div class="screen-view-selector material-view-selector" role="group" aria-label="Material view">
+          <button
+            class="screen-view-button"
+            id="material-view-split"
+            type="button"
+            aria-pressed="true"
+            aria-controls="screen-stage material-document-editor-panel"
+          >Split</button>
+          <button
+            class="screen-view-button"
+            id="material-view-preview"
+            type="button"
+            aria-pressed="false"
+            aria-controls="screen-stage material-document-editor-panel"
+          >Preview</button>
+          <button
+            class="screen-view-button"
+            id="material-view-source"
+            type="button"
+            aria-pressed="false"
+            aria-controls="screen-stage material-document-editor-panel"
+          >Source</button>
+        </div>
+      </div>
+      <div class="workflow-view-toolbar" aria-label="Workflow preview layout">
+        <h2 class="workflow-view-heading" id="workflow-view-heading">Selected node</h2>
+        <div class="workflow-toolbar-actions">
+          <div class="screen-zoom-controls workflow-zoom-controls" role="group" aria-label="Screen preview zoom">
+            <button
+              class="screen-zoom-button"
+              id="workflow-canvas-zoom-out"
+              type="button"
+              aria-label="Zoom out"
+              title="Zoom out"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 8h10"></path>
+              </svg>
+            </button>
+            <button
+              class="screen-zoom-button screen-zoom-value"
+              id="workflow-canvas-zoom-reset"
+              type="button"
+              aria-label="Reset canvas zoom to 100%"
+              title="Reset zoom"
+            >100%</button>
+            <button
+              class="screen-zoom-button"
+              id="workflow-canvas-zoom-in"
+              type="button"
+              aria-label="Zoom in"
+              title="Zoom in"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 8h10M8 3v10"></path>
+              </svg>
+            </button>
+          </div>
+          <div
+            class="workflow-spec-section-navigation"
+            id="workflow-spec-section-navigation"
+            role="group"
+            aria-label="Behavior spec navigation"
+            hidden
+          >
+            <select
+              class="screen-view-button workflow-spec-file-select"
+              id="workflow-spec-file-select"
+              aria-label="Behavior spec file"
+              aria-controls="workflow-spec-preview"
+              hidden
+            ></select>
+            <div
+              class="workflow-spec-reference-navigation"
+              role="group"
+              aria-label="Linked spec references"
+            >
+              <button
+                class="screen-view-button workflow-spec-section-button"
+                id="workflow-spec-section-previous"
+                type="button"
+                aria-label="Previous linked reference"
+                title="Previous linked reference"
+                aria-controls="workflow-spec-preview"
+              >↑</button>
+              <span
+                class="workflow-spec-section-position"
+                id="workflow-spec-section-position"
+                aria-live="polite"
+              ></span>
+              <button
+                class="screen-view-button workflow-spec-section-button"
+                id="workflow-spec-section-next"
+                type="button"
+                aria-label="Next linked reference"
+                title="Next linked reference"
+                aria-controls="workflow-spec-preview"
+              >↓</button>
+            </div>
+          </div>
+          <div class="screen-view-selector workflow-view-selector" role="group" aria-label="Workflow view">
+            <button class="screen-view-button" id="workflow-view-split" type="button" aria-pressed="true" aria-controls="screen-stage workflow-editor-panel">Split</button>
+            <button class="screen-view-button" id="workflow-view-preview" type="button" aria-pressed="false" aria-controls="screen-stage workflow-editor-panel">Preview</button>
+            <button class="screen-view-button" id="workflow-view-diagram" type="button" aria-pressed="false" aria-controls="screen-stage workflow-editor-panel">Diagram</button>
+          </div>
+        </div>
+      </div>
+      <section class="stage" id="screen-stage" aria-label="Screen canvas">
+        <div class="preview-state-toolbar responsive-toolbar" id="preview-state-toolbar" aria-label="Screen view and preview states" hidden>
+          <div class="preview-state-controls" id="preview-state-controls" role="group" aria-label="Preview state" data-overflow-group data-overflow-priority="4">
+            <label class="preview-state-label" for="preview-state-select">Preview state</label>
+            <select class="preview-state-select" id="preview-state-select"></select>
+            <button class="preview-state-add" id="add-preview-state" type="button">Add state</button>
+          </div>
+          <div class="screen-selection-tools" role="group" aria-label="Canvas selection tools" data-overflow-group data-overflow-priority="2">
+            <button
+              class="screen-selection-tool-button"
+              type="button"
+              data-selection-tool="select"
+              aria-label="Select"
+              title="Select"
+              aria-pressed="true"
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M5 3.5 15 11l-4.5.8L8 16.5z"></path>
+              </svg>
+            </button>
+            <button
+              class="screen-selection-tool-button"
+              type="button"
+              data-selection-tool="marquee"
+              aria-label="Drag to select"
+              title="Drag to select"
+              aria-pressed="false"
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <rect x="3.5" y="4.5" width="13" height="11" rx="1"></rect>
+                <path d="M7 4.5v2m6-2v2m3 2h-2m2 5h-2m-7 2v-2m-3-3h2"></path>
+              </svg>
+            </button>
+          </div>
+          <div class="screen-selection-tools" role="group" aria-label="Canvas resize mode" data-overflow-group data-overflow-priority="2">
+            <button
+              class="screen-selection-tool-button screen-scale-type-button"
+              type="button"
+              data-scale-type="xy"
+              aria-label="Resize by X/Y dimensions"
+              title="Resize by X/Y dimensions"
+              aria-pressed="true"
+            >X/Y</button>
+            <button
+              class="screen-selection-tool-button screen-scale-type-button"
+              type="button"
+              data-scale-type="transform"
+              aria-label="Resize by transform"
+              title="Resize by transform"
+              aria-pressed="false"
+            >Transform</button>
+          </div>
+          <button
+            class="preview-state-add open-screen-preview-button"
+            id="screen-preview-new-tab"
+            data-overflow-item
+            data-overflow-priority="1"
+            type="button"
+            title="Open this Screen as a static webpage in a new tab"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M9 2h5v5M14 2 7 9"></path>
+              <path d="M12 9v4H3V4h4"></path>
+            </svg>
+            <span>Open preview</span>
+          </button>
+          <div class="screen-zoom-controls" role="group" aria-label="Canvas zoom" data-overflow-group data-overflow-priority="2">
+            <button
+              class="screen-zoom-button"
+              id="screen-canvas-zoom-out"
+              data-overflow-label="Zoom out"
+              type="button"
+              aria-label="Zoom out"
+              title="Zoom out"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 8h10"></path>
+              </svg>
+            </button>
+            <button
+              class="screen-zoom-button screen-zoom-value"
+              id="screen-canvas-zoom-reset"
+              data-overflow-label="Reset"
+              type="button"
+              aria-label="Reset canvas zoom to 100%"
+              title="Reset zoom"
+            >100%</button>
+            <button
+              class="screen-zoom-button"
+              id="screen-canvas-zoom-in"
+              data-overflow-label="Zoom in"
+              type="button"
+              aria-label="Zoom in"
+              title="Zoom in"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 8h10M8 3v10"></path>
+              </svg>
+            </button>
+          </div>
+          <div class="screen-view-selector" role="group" aria-label="Screen view" data-overflow-group data-overflow-priority="3">
+            <button
+              class="screen-view-button"
+              id="screen-view-preview"
+              type="button"
+              aria-pressed="true"
+              aria-controls="screen-preview screen-yaml-editor-panel"
+            >Preview</button>
+            <button
+              class="screen-view-button"
+              id="screen-view-yaml"
+              type="button"
+              aria-pressed="false"
+              aria-controls="screen-preview screen-yaml-editor-panel"
+            >YAML</button>
+          </div>
+          <button
+            class="toolbar-overflow-toggle"
+            id="preview-toolbar-overflow-toggle"
+            type="button"
+            aria-label="More Screen toolbar controls"
+            aria-controls="preview-toolbar-overflow-menu"
+            aria-expanded="false"
+            title="More Screen toolbar controls"
+            hidden>
+          &gt;&gt;</button>
+          <div
+            class="toolbar-overflow-menu"
+            id="preview-toolbar-overflow-menu"
+            role="group"
+            aria-label="Additional Screen toolbar controls"
+            hidden
+          ></div>
+        </div>
+        <div class="screen-canvas-viewport" id="screen-canvas-viewport">
+          <div class="screen-ruler-corner" aria-hidden="true">px</div>
+          <canvas
+            class="screen-ruler screen-ruler-x"
+            id="screen-ruler-x"
+            role="img"
+            aria-label="Screen canvas X ruler in pixels"
+          ></canvas>
+          <canvas
+            class="screen-ruler screen-ruler-y"
+            id="screen-ruler-y"
+            role="img"
+            aria-label="Screen canvas Y ruler in pixels"
+          ></canvas>
+          <article class="screen-preview loading" id="screen-preview" aria-label="Rendered Screen preview">
+            <div class="loading-message">Reading project files...</div>
+          </article>
+        </div>
+        <article
+          class="spec-workflow-preview workflow-diagram"
+          id="spec-workflow-preview"
+          aria-label="Workflow diagram preview"
+          hidden
+        ></article>
+        <article
+          class="workflow-spec-preview"
+          id="workflow-spec-preview"
+          aria-label="Behavior spec preview"
+          hidden
+        ></article>
+        <section class="screen-yaml-editor-panel" id="screen-yaml-editor-panel" aria-label="Screen YAML editor" hidden>
+          <h2 class="screen-yaml-editor-heading">Screen YAML</h2>
+          <textarea
+            class="material-yaml-source screen-yaml-source"
+            id="screen-yaml-source"
+            aria-label="Screen YAML source"
+            spellcheck="false"
+          ></textarea>
+          <div class="screen-yaml-status" id="screen-yaml-status" role="status" aria-live="polite"></div>
+        </section>
+        <div class="annotation-toolbar responsive-toolbar" id="annotation-toolbar" role="toolbar" aria-label="Screen annotation tools" hidden>
+        <div class="annotation-tools-group" role="group" aria-label="Annotation tools and actions" data-overflow-group data-overflow-priority="3">
+        <div class="annotation-tool-buttons" role="group" aria-label="Choose annotation tool">
+          <button class="annotation-tool-button" id="annotation-tool-pen" type="button" data-annotation-tool="pen" aria-label="Pen" title="Pen" aria-pressed="true" disabled>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="m4 13.5 8.8-8.8a1.8 1.8 0 0 1 2.5 2.5l-8.8 8.8L3 17z"></path>
+              <path d="m11.5 6 2.5 2.5"></path>
+            </svg>
+          </button>
+          <button class="annotation-tool-button" id="annotation-tool-circle" type="button" data-annotation-tool="circle" aria-label="Circle" title="Circle" aria-pressed="false" disabled>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <circle cx="10" cy="10" r="6.5"></circle>
+            </svg>
+          </button>
+          <button class="annotation-tool-button" id="annotation-tool-rectangle" type="button" data-annotation-tool="rectangle" aria-label="Rectangle" title="Rectangle" aria-pressed="false" disabled>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <rect x="3.5" y="4.5" width="13" height="11" rx="1.5"></rect>
+            </svg>
+          </button>
+          <button class="annotation-tool-button" id="annotation-tool-arrow" type="button" data-annotation-tool="arrow" aria-label="Arrow" title="Arrow" aria-pressed="false" disabled>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M4 15 15 4M7 4h8v8"></path>
+            </svg>
+          </button>
+          <button class="annotation-tool-button" id="annotation-tool-highlight" type="button" data-annotation-tool="highlight" aria-label="Highlighter" title="Highlighter" aria-pressed="false" disabled>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="m5 12 7-7 4 4-7 7H5z"></path>
+              <path d="M4 16h11"></path>
+            </svg>
+          </button>
+          <button class="annotation-tool-button" id="annotation-tool-note" type="button" data-annotation-tool="note" aria-label="Note" title="Note" aria-pressed="false" disabled>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M4 3.5h12v10H9l-4 3v-3H4z"></path>
+              <path d="M7 7h6M7 10h4"></path>
+            </svg>
+          </button>
+        </div>
+        <span class="annotation-toolbar-divider" aria-hidden="true"></span>
+        <div class="annotation-action-buttons" role="group" aria-label="Annotation actions">
+          <button class="annotation-tool-button" id="annotation-undo" type="button" aria-label="Undo annotation" title="Undo" disabled>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M7 6 3.5 9.5 7 13"></path>
+              <path d="M4 9.5h7a5 5 0 0 1 5 5"></path>
+            </svg>
+          </button>
+          <button class="annotation-tool-button" id="annotation-redo" type="button" aria-label="Redo annotation" title="Redo" disabled>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="m13 6 3.5 3.5L13 13"></path>
+              <path d="M16 9.5H9a5 5 0 0 0-5 5"></path>
+            </svg>
+          </button>
+          <button class="annotation-tool-button" id="annotation-clear" type="button" aria-label="Clear annotations" title="Clear annotations" disabled>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M4.5 6h11M8 6V4h4v2m2 0-.7 10H6.7L6 6"></path>
+              <path d="M8.5 9v4M11.5 9v4"></path>
+            </svg>
+          </button>
+        </div>
+        <span class="annotation-toolbar-divider" aria-hidden="true"></span>
+        <button class="annotation-mode-exit" id="annotation-mode-exit" type="button" aria-label="Exit annotation mode" title="Exit annotation mode" disabled>
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="m5 5 10 10M15 5 5 15"></path>
+          </svg>
+        </button>
+        </div>
+        <button
+          class="toolbar-overflow-toggle"
+          id="annotation-toolbar-overflow-toggle"
+          type="button"
+          aria-label="More annotation tools and actions"
+          aria-controls="annotation-toolbar-overflow-menu"
+          aria-expanded="false"
+          title="More annotation tools and actions"
+          hidden>
+        &gt;&gt;</button>
+        <div
+          class="toolbar-overflow-menu"
+          id="annotation-toolbar-overflow-menu"
+          role="group"
+          aria-label="Additional annotation tools and actions"
+          hidden
+        ></div>
+        </div>
+      </section>
+
+      <div
+        class="spec-split-resizer"
+        id="spec-split-resizer"
+        role="separator"
+        aria-label="Resize preview and Markdown editor"
+        aria-orientation="horizontal"
+        aria-controls="screen-stage spec-editor-panel"
+        aria-valuemin="27"
+        aria-valuemax="73"
+        aria-valuenow="40"
+        title="Drag or use the arrow keys to resize the preview and Markdown editor"
+        tabindex="0"
+        hidden
+      ></div>
+
+      <div
+        class="spec-split-resizer material-split-resizer"
+        id="material-split-resizer"
+        role="separator"
+        aria-label="Resize preview and Material source editor"
+        aria-orientation="horizontal"
+        aria-controls="screen-stage material-document-editor-panel"
+        aria-valuemin="27"
+        aria-valuemax="73"
+        aria-valuenow="40"
+        title="Drag or use the arrow keys to resize the preview and Material source editor"
+        tabindex="0"
+        hidden
+      ></div>
+
+      <div
+        class="spec-split-resizer workflow-split-resizer"
+        id="workflow-split-resizer"
+        role="separator"
+        aria-label="Resize Screen preview and workflow diagram"
+        aria-orientation="horizontal"
+        aria-controls="screen-stage workflow-editor-panel"
+        aria-valuemin="27"
+        aria-valuemax="73"
+        aria-valuenow="40"
+        title="Drag or use the arrow keys to resize the Screen preview and workflow diagram"
+        tabindex="0"
+        hidden
+      ></div>
+
+      <section class="workflow-editor-panel" id="workflow-editor-panel" aria-label="Screen workflow Mermaid editor" hidden>
+        <div class="workflow-editor-heading">
+          <h2 id="workflow-editor-heading">Workflow</h2>
+          <div class="screen-view-selector workflow-panel-selector" role="group" aria-label="Workflow content">
+            <button class="screen-view-button" id="workflow-panel-diagram" type="button" aria-pressed="true">Diagram</button>
+            <button class="screen-view-button" id="workflow-panel-source" type="button" aria-pressed="false">Source</button>
+          </div>
+        </div>
+        <div class="workflow-diagram" id="workflow-diagram" aria-label="Mermaid workflow diagram"></div>
+        <textarea class="workflow-source" id="workflow-source" aria-label="Mermaid workflow source" spellcheck="false" hidden></textarea>
+        <div class="workflow-status" id="workflow-status" role="status" aria-live="polite"></div>
+      </section>
+
+      <section class="spec-editor-panel" id="spec-editor-panel" aria-label="Behavior spec Markdown editor" hidden>
+        <div class="spec-editor-toolbar">
+          <h2 class="spec-editor-heading" id="spec-editor-heading">Behavior spec</h2>
+          <div
+            class="workflow-spec-reference-navigation spec-reference-navigation"
+            id="spec-reference-navigation"
+            role="group"
+            aria-label="Linked preview references"
+            hidden
+          >
+            <button
+              class="screen-view-button workflow-spec-section-button"
+              id="spec-reference-previous"
+              type="button"
+              aria-label="Previous linked reference"
+              title="Previous linked reference"
+              aria-controls="screen-stage spec-editor-panel"
+            >↑</button>
+            <span
+              class="workflow-spec-section-position"
+              id="spec-reference-position"
+              aria-live="polite"
+            ></span>
+            <button
+              class="screen-view-button workflow-spec-section-button"
+              id="spec-reference-next"
+              type="button"
+              aria-label="Next linked reference"
+              title="Next linked reference"
+              aria-controls="screen-stage spec-editor-panel"
+            >↓</button>
+          </div>
+        </div>
+        <div class="spec-source-container" id="spec-source-container">
+          <pre class="spec-source-highlight" id="spec-source-highlight" aria-hidden="true"></pre>
+          <textarea class="spec-source" id="spec-source" aria-label="Behavior spec Markdown source" spellcheck="false"></textarea>
+        </div>
+      </section>
+
+      <section class="material-document-editor-panel" id="material-document-editor-panel" aria-label="Material source editor" hidden>
+        <h2 class="material-document-editor-heading" id="material-document-editor-heading">Material source</h2>
+        <textarea class="material-document-source" id="material-document-source" aria-label="Material source" spellcheck="false"></textarea>
+        <div class="material-document-status" id="material-document-status" role="status" aria-live="polite"></div>
+      </section>
+
+      <div class="editor-message" id="editor-message" role="status" aria-live="polite"></div>
+    </main>
+
+    <div
+      class="panel-resizer inspector-resizer"
+      id="inspector-resizer"
+      role="separator"
+      aria-label="Resize details panel"
+      aria-orientation="vertical"
+      aria-controls="main inspector"
+      aria-valuemin="220"
+      aria-valuemax="480"
+      aria-valuenow="292"
+      title="Drag or use the arrow keys to resize the details panel"
+      tabindex="0"
+    ></div>
+    <aside class="inspector" aria-label="Selected item details">
+      <div id="inspector-content">
+        <h2 class="panel-heading">Details</h2>
+        <div class="loading-message">Loading details...</div>
+      </div>
+    </aside>
+  </div>
+  <div class="context-menu screen-placement-context-menu" id="screen-placement-context-menu" role="menu" aria-label="Placement actions" hidden>
+    <button id="screen-placement-context-group" type="button" role="menuitem" tabindex="-1">Group</button>
+    <button id="screen-placement-context-ungroup" type="button" role="menuitem" tabindex="-1">Ungroup</button>
+  </div>
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>
