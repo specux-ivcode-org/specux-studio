@@ -23,7 +23,13 @@ Spec references are represented by one standalone checkmark per workflow node. S
 
 Use Mermaid flowcharts to describe user journeys and branches. Normative behavior and acceptance criteria remain in the linked Screen or Element behavior specs; do not duplicate those requirements in the workflow.
 
+Strongly encourage an optional description-and-notes header at the top of each workflow. Put concise plain-text context between `---` delimiters to explain the flow's purpose and any implementation guidance that may help an AI or developer. This is documentation, not a workflow node or requirement; it is not required.
+
 ```mermaid
+---
+Shows the add-item journey, including opening the dialog, canceling, and saving.
+Use the linked behavior spec for implementation requirements and acceptance criteria.
+---
 flowchart TD
     dashboard["Home"]
     dialogState["Add item dialog open"]
