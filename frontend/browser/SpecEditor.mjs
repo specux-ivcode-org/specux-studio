@@ -9,6 +9,33 @@ function getReferenceKey(reference) {
     (reference?.workflowPath ? `${reference.workflowPath}?node=${reference.nodeId}` : null);
 }
 
+export function getSelectedText(source, selectionStart, selectionEnd) {
+  if (typeof source !== "string" ||
+      !Number.isInteger(selectionStart) ||
+      !Number.isInteger(selectionEnd) ||
+      selectionStart < 0 ||
+      selectionEnd <= selectionStart ||
+      selectionEnd > source.length) {
+    return null;
+  }
+  const positionAt = (offset) => {
+    const before = source.slice(0, offset);
+    const lineBreak = Math.max(before.lastIndexOf("\n"), before.lastIndexOf("\r"));
+    return {
+      line: before.split(/\r\n|\r|\n/).length,
+      column: offset - lineBreak
+    };
+  };
+  return {
+    type: "text",
+    text: source.slice(selectionStart, selectionEnd),
+    range: {
+      start: positionAt(selectionStart),
+      end: positionAt(selectionEnd)
+    }
+  };
+}
+
 export class SpecEditor {
   constructor({ state, services }) {
     this.state = state;
@@ -26,6 +53,15 @@ export class SpecEditor {
         sourceHighlight.scrollTop = sourceEditor.scrollTop;
         sourceHighlight.scrollLeft = sourceEditor.scrollLeft;
       });
+    }
+    if (sourceEditor) {
+      const publishTextSelection = () => {
+        if (this.state.viewingSpec) this.services.publishSelection();
+      };
+      sourceEditor.addEventListener("select", publishTextSelection);
+      sourceEditor.addEventListener("keyup", publishTextSelection);
+      sourceEditor.addEventListener("mouseup", publishTextSelection);
+      sourceEditor.addEventListener("input", publishTextSelection);
     }
     services.byId("spec-reference-previous").addEventListener("click", () =>
       this.movePreviewReference(-1)
@@ -115,6 +151,7 @@ export class SpecEditor {
     }
     editor.disabled = state.isSaving;
     editor.oninput = () => this.handleSourceInput(filePath, editor.value);
+    services.publishSelection();
     services.renderInspector();
     await this.setPreviewReferences(filePath, editor.value, true);
   }

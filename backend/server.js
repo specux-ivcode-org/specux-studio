@@ -48,6 +48,28 @@ function requestError(message, statusCode = 400) {
   return error;
 }
 
+function isSpecuxPreviewUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "specux:" && url.hostname === "screen" &&
+      !url.username && !url.password && !url.port && !url.hash;
+  } catch {
+    return false;
+  }
+}
+
+function isValidStateSelection(value) {
+  if (typeof value === "string") return true;
+  if (!value || Array.isArray(value) || typeof value !== "object" ||
+      value.type !== "text" || typeof value.text !== "string" ||
+      !value.range || typeof value.range !== "object") return false;
+  return ["start", "end"].every((key) => {
+    const position = value.range[key];
+    return position && Number.isInteger(position.line) && position.line > 0 &&
+      Number.isInteger(position.column) && position.column > 0;
+  });
+}
+
 function isWithin(directory, target) {
   const relative = path.relative(directory, target);
   return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
@@ -539,7 +561,16 @@ function createServer(options = {}) {
     (options.rootDirectory ? path.join(rootDirectory, "specux") : path.join(repositoryRoot, "specux")));
   const sharedRoot = path.resolve(options.sharedRoot || path.join(repositoryRoot, "shared"));
   const eventClients = new Set();
-  const selectionState = { selection: null, updatedAt: null };
+  const selectionState = {
+    path: null,
+    file: null,
+    type: null,
+    name: null,
+    preview: null,
+    selection: null,
+    selected: [],
+    updatedAt: null
+  };
   const annotationsByScreen = new Map();
   let annotationCacheGeneration = 0;
   let annotationCacheQueue = Promise.resolve();
@@ -592,11 +623,18 @@ function createServer(options = {}) {
           sendJson(response, 200, { files: await listProjectFiles(projectRoot) });
           return;
         }
-        if (pathname === "/api/selection") {
+        if (pathname === "/api/state") {
           const screenId = selectionState.selection?.screen?.id;
           sendJson(response, 200, {
-            ...selectionState,
-            annotations: annotationsFor(screenId)
+            path: selectionState.path,
+            file: selectionState.file,
+            type: selectionState.type,
+            name: selectionState.name,
+            preview: selectionState.preview,
+            selected: selectionState.selected,
+            annotated: Boolean(
+              screenId && annotationsByScreen.get(screenId)?.annotations.length
+            )
           });
           return;
         }
@@ -634,10 +672,32 @@ function createServer(options = {}) {
         const body = await readJsonBody(request);
         if (!body || Array.isArray(body) || typeof body !== "object" ||
             !Object.hasOwn(body, "selection") ||
-            (body.selection !== null && (Array.isArray(body.selection) || typeof body.selection !== "object"))) {
-          throw requestError("Selection updates must contain an object or null.");
+            (body.selection !== null && (Array.isArray(body.selection) || typeof body.selection !== "object")) ||
+            (Object.hasOwn(body, "path") &&
+              (typeof body.path !== "string" || !body.path.startsWith("/") || body.path.startsWith("//"))) ||
+            (Object.hasOwn(body, "file") && body.file !== null && typeof body.file !== "string") ||
+            (Object.hasOwn(body, "type") &&
+              body.type !== null &&
+              !["screen", "workflow", "spec", "theme", "project", "material"].includes(body.type)) ||
+            (Object.hasOwn(body, "name") && body.name !== null && typeof body.name !== "string") ||
+            (Object.hasOwn(body, "preview") &&
+              body.preview !== null &&
+              !isSpecuxPreviewUrl(body.preview)) ||
+            (Object.hasOwn(body, "selected") &&
+              (!Array.isArray(body.selected) ||
+                body.selected.some((item) => !isValidStateSelection(item))))) {
+          throw requestError("Selection updates must contain an object or null and a valid URL path.");
         }
         selectionState.selection = body.selection;
+        selectionState.selected = body.selected ??
+          (typeof body.selection?.selectedPlacement?.id === "string"
+            ? [body.selection.selectedPlacement.id]
+            : []);
+        if (body.path !== undefined) selectionState.path = body.path;
+        if (body.file !== undefined) selectionState.file = body.file;
+        if (body.type !== undefined) selectionState.type = body.type;
+        if (body.name !== undefined) selectionState.name = body.name;
+        if (body.preview !== undefined) selectionState.preview = body.preview;
         selectionState.updatedAt = new Date().toISOString();
         annotationCacheGeneration += 1;
         await enqueueAnnotationCacheTask(() => clearBrowserAnnotationCache(projectRoot));

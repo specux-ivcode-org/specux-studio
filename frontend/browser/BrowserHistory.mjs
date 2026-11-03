@@ -59,12 +59,7 @@ export class BrowserHistory {
     } else {
       url.searchParams.delete("owner");
     }
-    const instancePath = selection.spec?.instancePath || selection.selectedPlacement?.instancePath;
-    if (Array.isArray(instancePath)) {
-      url.searchParams.set("instancePath", JSON.stringify(instancePath));
-    } else {
-      url.searchParams.delete("instancePath");
-    }
+    url.searchParams.delete("instancePath");
     const state = this.window.history.state && typeof this.window.history.state === "object"
       ? { ...this.window.history.state }
       : {};

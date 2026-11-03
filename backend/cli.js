@@ -28,7 +28,7 @@ function usage() {
     "Usage:",
     "  specux server start [--port <port>] [--project <directory>]",
     "  specux server status [--port <port>]",
-    "  specux server selected [--port <port>]",
+    "  specux server state [--port <port>]",
     "  specux server annotations [clear] [--port <port>] [--screen <id>]",
     "  specux server update [--port <port>]",
     "  specux init [--project <directory>]",
@@ -187,8 +187,10 @@ async function runServerCommand(command, args) {
     if (positional[0] === "clear") {
       let screenId = options.screen;
       if (!screenId) {
-        const selection = await requestServer(port, "/api/selection");
-        screenId = selection.selection?.screen?.id;
+        const state = await requestServer(port, "/api/state");
+        screenId = state.path
+          ? new URL(state.path, "http://localhost").searchParams.get("screen")
+          : null;
       }
       if (!screenId) throw new Error("No Screen is selected. Pass --screen <id> to clear its annotations.");
       const result = await requestServer(
@@ -219,9 +221,9 @@ async function runServerCommand(command, args) {
       return 1;
     }
   }
-  if (command === "selected") {
-    const selection = await requestServer(port, "/api/selection");
-    console.log(JSON.stringify(selection, null, 2));
+  if (command === "state") {
+    const state = await requestServer(port, "/api/state");
+    console.log(JSON.stringify(state, null, 2));
     return;
   }
   if (command === "update") {
@@ -709,7 +711,7 @@ async function main(args = process.argv.slice(2)) {
   const [command, ...rest] = args;
   if (command === "server") {
     const [subcommand, ...subArgs] = rest;
-    if (!subcommand) throw new Error("Usage: specux server <start|status|selected|annotations|update>");
+    if (!subcommand) throw new Error("Usage: specux server <start|status|state|annotations|update>");
     return runServerCommand(subcommand, subArgs);
   }
   if (command === "init") return runInitCommand(rest);

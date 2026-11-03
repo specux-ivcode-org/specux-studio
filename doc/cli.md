@@ -12,7 +12,7 @@ Run the commands as `specux ...` when the package's `bin` entry is available, or
 | --- | --- |
 | `specux server start [--port <port>] [--project <directory>]` | Start the local editor server in the foreground. The command blocks until interrupted. Defaults to port `3000` (or `SPECUX_PORT` / `PORT`) and binds to `127.0.0.1`. |
 | `specux server status [--port <port>]` | Check whether the editor server is reachable and print JSON with its URL, connected browser count, and selection availability. |
-| `specux server selected [--port <port>]` | Print JSON containing the current browser-editor selection, its Screen's temporary annotations, and the time it was last updated. |
+| `specux server state [--port <port>]` | Print the current editor path, selected file, artifact type and name, preview SpecUX URL, selected placement/workflow node IDs or selected spec text with its source range, and whether the Screen is annotated. |
 | `specux server annotations [clear] [--port <port>] [--screen <id>]` | Read temporary Screen annotations as JSON, or clear them for the selected Screen (or the Screen named by `--screen`). |
 | `specux server update [--port <port>]` | Notify connected browser tabs after project files have changed. Tabs without unsaved edits refresh; tabs with unsaved edits are left untouched and prompted to save or reset before refreshing. |
 | `specux init [--project <directory>]` | Create a starter project under `<directory>/specux` (defaults to the current directory). Refuses to overwrite any generated file that already exists. |
@@ -27,7 +27,7 @@ Run the commands as `specux ...` when the package's `bin` entry is available, or
 
 In the Screen preview, choose **Annotate**, select a drawing tool, and mark an area. Pen, circle, rectangle, arrow, highlighter, and note marks are available. Undo, redo, and Clear manage the current Screen's marks. Notes can carry short instructions; you can also describe marks in your AI conversation.
 
-Annotations are held in the running editor server's memory and are not saved to project files. They are stored as absolute Screen-canvas pixel coordinates, with Material targets where available. A project-keyed temporary cache lets the CLI render them after the editor has been closed; refreshing or reopening the editor clears the active annotations and cache. `specux server selected` includes the selected Screen's marks and any associated Material paths. Use `specux server annotations [--screen <id>]` to inspect them, or `specux server annotations clear [--screen <id>]` to clear them. Without `--screen`, `clear` uses the Screen currently selected in the editor.
+Annotations are held in the running editor server's memory and are not saved to project files. They are stored as absolute Screen-canvas pixel coordinates, with Material targets where available. A project-keyed temporary cache lets the CLI render them after the editor has been closed; refreshing or reopening the editor clears the active annotations and cache. `specux server state` reports the current editor path, file, type, name, preview SpecUX URL, selected placement or workflow node IDs, or selected spec text with its source range, and whether the Screen is annotated. Use `specux server annotations [--screen <id>]` to inspect annotation details, or `specux server annotations clear [--screen <id>]` to clear them. Without `--screen`, `clear` uses the Screen currently selected in the editor.
 
 ## Initialization
 
@@ -64,7 +64,7 @@ specux render home --format image --annotations --output home-annotated.png
 ## Intended workflow
 
 1. Start the editor with `specux server start` and check it with `specux server status`.
-2. Use `specux server selected` to get context about the Material selected in the browser editor and any annotations on its Screen. `specux render <screen> --format image --annotations` renders the full Screen with the marks overlaid.
+2. Use `specux server state` to get the current editor path, selection, and annotation status. Use `specux server annotations` for annotation details. `specux render <screen> --format image --annotations` renders the full Screen with the marks overlaid.
 3. Read the version-matched authoring workflow with `specux schema reference`, then consult `specux schema [type]` for an artifact's format details, including reusable Materials with `specux schema material`.
 4. Edit project files directly.
 5. Run `specux validate` to catch malformed files and project-level issues.

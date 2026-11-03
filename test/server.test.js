@@ -293,7 +293,7 @@ test("returns project validation errors with source locations", async () => {
   });
 });
 
-test("reports server status and browser selection and notifies connected browsers", async () => {
+test("reports server status and editor state and notifies connected browsers", async () => {
   await withServer(async ({ baseUrl }) => {
     const status = await fetch(`${baseUrl}/api/status`);
     assert.equal(status.status, 200);
@@ -306,18 +306,98 @@ test("reports server status and browser selection and notifies connected browser
 
     const selection = {
       view: "screen",
-      screen: { id: "home", name: "Home", file: "screens/home/screen.yml" }
+      screen: { id: "home", name: "Home", file: "screens/home/screen.yml" },
+      selectedPlacement: {
+        id: "continue-button",
+        name: "Continue",
+        instancePath: [0]
+      }
     };
+    const selected = ["continue-button", "cancel-button"];
+    const path = "/?file=screens/home/screen.yml&view=screen&screen=home";
+    const file = "screens/home/screen.yml";
+    const type = "screen";
+    const name = "Home";
+    const preview = "specux://screen/home/screen.yml";
     const published = await fetch(`${baseUrl}/api/selection`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ selection })
+      body: JSON.stringify({ path, file, type, name, preview, selection, selected })
     });
     assert.equal(published.status, 200);
-    const currentSelection = await fetch(`${baseUrl}/api/selection`);
-    const selectionState = await currentSelection.json();
-    assert.deepEqual(selectionState.selection, selection);
-    assert.equal(Number.isNaN(Date.parse(selectionState.updatedAt)), false);
+    const currentState = await fetch(`${baseUrl}/api/state`);
+    const state = await currentState.json();
+    assert.deepEqual(state, {
+      path,
+      file,
+      type,
+      name,
+      preview,
+      selected,
+      annotated: false,
+    });
+
+    const cliState = await execFileAsync(process.execPath, [
+      cliPath, "server", "state", "--port", new URL(baseUrl).port
+    ], { encoding: "utf8" });
+    assert.deepEqual(JSON.parse(cliState.stdout), state);
+
+    const workflowSelection = {
+      view: "workflow",
+      screen: selection.screen,
+      workflow: { file: "screens/home/workflows/add-item.mmd" }
+    };
+    const workflowStateUpdate = await fetch(`${baseUrl}/api/selection`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "/?file=screens%2Fhome%2Fworkflows%2Fadd-item.mmd&view=workflow&screen=home",
+        file: "screens/home/workflows/add-item.mmd",
+        type: "workflow",
+        name: "add-item",
+        preview: "specux://screen/home/workflows/add-item.mmd?node=saveItem",
+        selection: workflowSelection,
+        selected: ["saveItem"]
+      })
+    });
+    assert.equal(workflowStateUpdate.status, 200);
+    const workflowStateResponse = await fetch(`${baseUrl}/api/state`);
+    const workflowState = await workflowStateResponse.json();
+    assert.deepEqual(workflowState, {
+      path: "/?file=screens%2Fhome%2Fworkflows%2Fadd-item.mmd&view=workflow&screen=home",
+      file: "screens/home/workflows/add-item.mmd",
+      type: "workflow",
+      name: "add-item",
+      preview: "specux://screen/home/workflows/add-item.mmd?node=saveItem",
+      selected: ["saveItem"],
+      annotated: false
+    });
+
+    const selectedText = {
+      type: "text",
+      text: "The user can save the dialog.",
+      range: {
+        start: { line: 18, column: 5 },
+        end: { line: 18, column: 34 }
+      }
+    };
+    const specSelectionUpdate = await fetch(`${baseUrl}/api/selection`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "/?file=screens%2Fhome%2Fspecs%2Felement-dialog-save.md&view=spec&screen=home",
+        file: "screens/home/specs/element-dialog-save.md",
+        type: "spec",
+        name: "element-dialog-save",
+        preview: "specux://screen/home/screen.yml?placement=dialog-save&state=add-item-open",
+        selection: { view: "spec", screen: selection.screen },
+        selected: [selectedText]
+      })
+    });
+    assert.equal(specSelectionUpdate.status, 200);
+    const specStateResponse = await fetch(`${baseUrl}/api/state`);
+    const specState = await specStateResponse.json();
+    assert.deepEqual(specState.selected, [selectedText]);
 
     const controller = new AbortController();
     const events = await fetch(`${baseUrl}/api/events`, { signal: controller.signal });
@@ -359,7 +439,14 @@ test("serves absolute canvas annotations to the CLI and clears them by Screen", 
     await fetch(`${baseUrl}/api/selection`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ selection })
+      body: JSON.stringify({
+        path: "/?file=screens%2Fhome%2Fscreen.yml&view=screen&screen=home",
+        file: "screens/home/screen.yml",
+        type: "screen",
+        name: "Home",
+        preview: "specux://screen/home/screen.yml",
+        selection
+      })
     });
     const annotation = {
       id: "mark-1",
@@ -392,12 +479,22 @@ test("serves absolute canvas annotations to the CLI and clears them by Screen", 
     assert.equal(savedBody.saved, 1);
     assert.equal(savedBody.cached, true);
 
-    const selected = await fetch(`${baseUrl}/api/selection`);
-    const selectedBody = await selected.json();
-    assert.deepEqual(selectedBody.annotations.annotations, [annotation]);
-    assert.deepEqual(selectedBody.annotations.canvasSize, canvasSize);
-    assert.equal(selectedBody.annotations.coordinateSpace, "screen canvas pixels");
-    assert.equal(selectedBody.annotations.previewStateId, "default");
+    const currentState = await fetch(`${baseUrl}/api/state`);
+    assert.deepEqual(await currentState.json(), {
+      path: "/?file=screens%2Fhome%2Fscreen.yml&view=screen&screen=home",
+      file: "screens/home/screen.yml",
+      type: "screen",
+      name: "Home",
+      preview: "specux://screen/home/screen.yml",
+      selected: [],
+      annotated: true,
+    });
+    const currentAnnotations = await fetch(`${baseUrl}/api/annotations?screenId=home`);
+    const annotationDetails = await currentAnnotations.json();
+    assert.deepEqual(annotationDetails.annotations, [annotation]);
+    assert.deepEqual(annotationDetails.canvasSize, canvasSize);
+    assert.equal(annotationDetails.coordinateSpace, "screen canvas pixels");
+    assert.equal(annotationDetails.previewStateId, "default");
 
     const invalid = await fetch(`${baseUrl}/api/annotations`, {
       method: "POST",

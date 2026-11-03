@@ -26,7 +26,7 @@ import {
   getScreenPlacementPathById,
   isScreenGroup
 } from "../shared/ScreenGroups.mjs";
-import { SpecEditor } from "./browser/SpecEditor.mjs";
+import { getSelectedText, SpecEditor } from "./browser/SpecEditor.mjs";
 import { SplitViewLayout } from "./browser/SplitViewLayout.mjs";
 import { ThemeEditor } from "./browser/ThemeEditor.mjs";
 import { TemplateMarkupRenderer } from "./browser/TemplateMarkupRenderer.mjs";
@@ -228,7 +228,8 @@ const specEditor = new SpecEditor({
     showSpecReference,
     showSpecWorkflowReference: (reference, filePath) =>
       workflowEditor.showSpecReferencePreview(reference, filePath),
-    clearSpecWorkflowPreview: () => workflowEditor.clearSpecReferencePreview()
+    clearSpecWorkflowPreview: () => workflowEditor.clearSpecReferencePreview(),
+    publishSelection
   }
 });
 const screenMaterialController = new ScreenMaterialController({
@@ -1644,16 +1645,80 @@ function publishSelection() {
   if (isRenderOnly) return;
   const selection = currentUiSelection();
   const screenId = selection?.screen?.id;
+  const file = getSelectionFilePath(selection);
+  const type = selection?.view === "material-file" ? "material" : selection?.view;
+  const name = selection?.view === "project"
+    ? project?.name || "Project"
+    : selection?.view === "screen"
+      ? selection.screen?.name || selection.screen?.id
+      : selection?.view === "material-file"
+        ? selection.material?.name || selection.material?.id
+        : selection?.view === "workflow"
+          ? selection.workflow?.file?.split("/").at(-1)?.replace(/\.mmd$/i, "")
+          : selection?.view === "theme"
+            ? "Theme"
+            : selection?.view === "spec"
+              ? selection.spec?.file?.split("/").at(-1)?.replace(/\.md$/i, "")
+              : null;
   const publishedSelection = selection?.view === "screen"
     ? {
         ...selection,
         previewStateId: activePreviewStateIds.get(screenId) || "default"
       }
     : selection;
+  const selectedScreen = screens[activeScreenIndex];
+  let selected = [];
+  if (selection?.view === "workflow" && typeof selectedWorkflowNodeId === "string") {
+    selected = [selectedWorkflowNodeId];
+  } else if (selection?.view === "screen" && selectedScreen) {
+    selected = activeInstancePaths
+      .map((instancePath) => getInstanceAtPath(selectedScreen, instancePath)?.id)
+      .filter((id) => typeof id === "string");
+  } else if (selection?.view === "spec") {
+    const editor = byId("spec-source");
+    const textSelection = editor && getSelectedText(
+      editor.value,
+      editor.selectionStart,
+      editor.selectionEnd
+    );
+    if (textSelection) selected = [textSelection];
+  }
+  let preview = null;
+  if (selection?.view === "workflow" && selectedWorkflowNodeId && selection.screen?.id) {
+    const workflowFile = selection.workflow?.file || "";
+    const workflowName = workflowFile.split("/").at(-1);
+    if (workflowName?.endsWith(".mmd")) {
+      preview = `specux://screen/${encodeURIComponent(selection.screen.id)}` +
+        `/workflows/${encodeURIComponent(workflowName)}?node=${encodeURIComponent(selectedWorkflowNodeId)}`;
+    }
+  } else if (["screen", "spec"].includes(selection?.view) && selection.screen?.id) {
+    const parameters = new URLSearchParams();
+    const previewPlacementIds = selection.view === "spec" && selectedScreen
+      ? activeInstancePaths
+        .map((instancePath) => getInstanceAtPath(selectedScreen, instancePath)?.id)
+        .filter((id) => typeof id === "string")
+      : selected;
+    if (previewPlacementIds.length === 1) {
+      parameters.set("placement", previewPlacementIds[0]);
+    }
+    const stateId = selection.previewStateId || activePreviewStateIds.get(screenId) || "default";
+    if (stateId && stateId !== "default") parameters.set("state", stateId);
+    const query = parameters.toString();
+    preview = `specux://screen/${encodeURIComponent(selection.screen.id)}/screen.yml` +
+      (query ? `?${query}` : "");
+  }
   fetch("/api/selection", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ selection: publishedSelection })
+    body: JSON.stringify({
+      path: `${window.location.pathname}${window.location.search}`,
+      file,
+      type,
+      name,
+      preview,
+      selection: publishedSelection,
+      selected
+    })
   }).catch((error) => console.warn("Could not publish the current SpecUX selection.", error));
 }
 

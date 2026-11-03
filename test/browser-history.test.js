@@ -48,7 +48,7 @@ test("reads editor selections and nested Element paths from the URL", async () =
 });
 
 test("writes browser history while retaining unrelated history state", async () => {
-  const windowObject = createWindow("http://localhost/");
+  const windowObject = createWindow("http://localhost/?instancePath=%5B0%5D");
   const options = {
     selection: {
       view: "screen",
@@ -59,10 +59,7 @@ test("writes browser history while retaining unrelated history state", async () 
   const controller = await createController(windowObject, options);
   controller.sync();
   assert.equal(windowObject.history.calls[0].method, "replace");
-  assert.equal(
-    new URL(windowObject.history.calls[0].url).searchParams.get("instancePath"),
-    JSON.stringify(["layout", "content", 0])
-  );
+  assert.equal(new URL(windowObject.history.calls[0].url).searchParams.has("instancePath"), false);
   assert.equal(windowObject.history.calls[0].state.retained, true);
   assert.deepEqual(windowObject.history.calls[0].state.specuxEditor.selection.selectedPlacement, {
     instancePath: ["layout", "content", 0]
