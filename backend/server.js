@@ -16,6 +16,7 @@ const MAX_ANNOTATIONS_PER_SCREEN = 200;
 const MAX_POINTS_PER_ANNOTATION = 2048;
 const ANNOTATION_TOOLS = new Set(["pen", "circle", "rectangle", "arrow", "highlight", "note"]);
 const mermaidDistRoot = path.dirname(require.resolve("mermaid"));
+const yamlPackageRoot = path.dirname(require.resolve("yaml/package.json"));
 const CONTENT_TYPES = new Map([
   [".css", "text/css; charset=utf-8"],
   [".html", "text/html; charset=utf-8"],
@@ -461,6 +462,17 @@ async function serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, res
     allowedRoot = mermaidDistRoot;
     relativePath = path.join(...packagePath.split("/"));
   }
+  else if (pathname.startsWith("/vendor/yaml/")) {
+    const packagePath = pathname.slice("/vendor/yaml/".length);
+    if (!packagePath || packagePath.split("/").some((segment) =>
+      !segment || segment === "." || segment === ".." || segment.startsWith(".")
+    )) {
+      sendJson(response, 404, { error: "File not found." });
+      return;
+    }
+    allowedRoot = yamlPackageRoot;
+    relativePath = path.join(...packagePath.split("/"));
+  }
   else if ([
     "/index.html",
     "/app.mjs",
@@ -496,7 +508,6 @@ async function serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, res
   ].includes(pathname)) {
     relativePath = pathname.slice(1);
   } else if ([
-    "/shared/yaml.js",
     "/shared/validation.js",
     "/shared/ScreenLayers.mjs",
     "/shared/ScreenGroups.mjs"

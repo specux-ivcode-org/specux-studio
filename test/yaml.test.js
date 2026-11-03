@@ -2,7 +2,15 @@ const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const parseSpecuxYaml = require("../shared/yaml");
+const YAML = require("yaml");
+const parseSpecuxYaml = YAML.parse;
+
+function assertParserAgreement(source) {
+  const document = YAML.parseDocument(source);
+  assert.deepEqual(document.errors, []);
+  assert.deepEqual(YAML.parse(source), document.toJS());
+  return YAML.parse(source);
+}
 
 test("parses empty flow mappings and sequences", () => {
   assert.deepEqual(parseSpecuxYaml([
@@ -13,6 +21,24 @@ test("parses empty flow mappings and sequences", () => {
   ].join("\n")), {
     materials: [{ attributes: {}, position: {} }],
     "empty-list": []
+  });
+});
+
+test("parses inline flow mappings in block sequences", () => {
+  const source = [
+    "layers:",
+    "  - {id: content, name: Content}",
+    '  - {id: dialog, name: "Dialog, overlay"}',
+    "materials:",
+    "  - id: main",
+    "    layer: content"
+  ].join("\n");
+  assert.deepEqual(assertParserAgreement(source), {
+    layers: [
+      { id: "content", name: "Content" },
+      { id: "dialog", name: "Dialog, overlay" }
+    ],
+    materials: [{ id: "main", layer: "content" }]
   });
 });
 
@@ -57,10 +83,10 @@ test("folds indented plain scalar continuations", () => {
 });
 
 test("reports line and column for YAML syntax errors", () => {
-  assert.throws(
-    () => parseSpecuxYaml("name Example"),
-    /Expected a key followed by a colon \(line 1, column 1\)/
-  );
+  const document = YAML.parseDocument("name: [");
+  assert.equal(document.errors.length, 1);
+  assert.equal(document.errors[0].linePos[0].line, 1);
+  assert.equal(document.errors[0].linePos[0].col, 8);
 });
 
 test("parses native Material transforms in the example Screens", () => {

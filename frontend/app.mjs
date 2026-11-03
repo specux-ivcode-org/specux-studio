@@ -1,4 +1,4 @@
-import "/shared/yaml.js";
+import { parse as parseSpecuxYaml } from "/vendor/yaml/browser/index.js";
 import "/shared/validation.js";
 import { BrowserHistory } from "./browser/BrowserHistory.mjs";
 import { EditorNavigation } from "./browser/EditorNavigation.mjs";
@@ -35,7 +35,6 @@ import { WorkflowEditor } from "./browser/WorkflowEditor.mjs";
 
 const appRoot = new URL("./specux/", window.location.href);
 const sharedValidation = globalThis.SpecuxValidation;
-const parseSpecuxYaml = globalThis.SpecuxYamlParser;
 const { MATERIAL_FILE_EXTENSION, themeModeNames } = sharedValidation;
 const systemThemeQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
 const renderParameters = new URLSearchParams(window.location.search);

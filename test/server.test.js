@@ -169,7 +169,8 @@ test("serves the editor root and the example project", async () => {
     const appModule = await fetch(`${baseUrl}/app.mjs`);
     const imageCaptureLibrary = await fetch(`${baseUrl}/vendor/html-to-image.js`);
     const stylesheet = await fetch(`${baseUrl}/styles.css`);
-    const yamlModule = await fetch(`${baseUrl}/shared/yaml.js`);
+    const yamlBrowserEntry = await fetch(`${baseUrl}/vendor/yaml/browser/index.js`);
+    const yamlBrowserCore = await fetch(`${baseUrl}/vendor/yaml/browser/dist/index.js`);
     const validationModule = await fetch(`${baseUrl}/shared/validation.js`);
     const screenLayersModule = await fetch(`${baseUrl}/shared/ScreenLayers.mjs`);
     const screenGroupsModule = await fetch(`${baseUrl}/shared/ScreenGroups.mjs`);
@@ -210,7 +211,11 @@ test("serves the editor root and the example project", async () => {
     assert.match(await editor.text(), /Editor/);
     assert.equal(stylesheet.status, 200);
     assert.equal(stylesheet.headers.get("content-type"), "text/css; charset=utf-8");
-    assert.equal(yamlModule.status, 200);
+    assert.equal(yamlBrowserEntry.status, 200);
+    assert.equal(yamlBrowserEntry.headers.get("content-type"), "text/javascript; charset=utf-8");
+    assert.match(await yamlBrowserEntry.text(), /from '\.\/dist\/index\.js'/);
+    assert.equal(yamlBrowserCore.status, 200);
+    assert.equal(yamlBrowserCore.headers.get("content-type"), "text/javascript; charset=utf-8");
     assert.equal(validationModule.status, 200);
     assert.equal(screenLayersModule.status, 200);
     assert.equal(screenGroupsModule.status, 200);
