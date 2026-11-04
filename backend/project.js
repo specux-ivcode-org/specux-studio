@@ -1,6 +1,5 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const YAML = require("yaml");
 const validation = require("../shared/validation");
 
 const SPECUX_VERSION = "0.1.0-SNAPSHOT";
@@ -175,6 +174,7 @@ function addYamlErrorLocations(errors, yamlDocuments) {
 }
 
 async function validateProject(projectRoot) {
+  const YAML = await import("../shared/yaml.mjs");
   const { normalizeScreenLayers } =
     await import("../shared/ScreenLayers.mjs");
   const { isScreenGroup, isValidAffineMatrix, isValidScale } =

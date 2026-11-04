@@ -1,6 +1,6 @@
 ---
 name: specux
-description: Create, inspect, and update SpecUX projects using the version-matched SpecUX CLI reference. Use when asked to build or revise SpecUX Screens, assets, Themes, behavior specs, or project files.
+description: Create, inspect, and update SpecUX projects using the version-matched SpecUX CLI reference. Use when asked to build or revise SpecUX Screens, assets, Themes, behavior specs, workflows, or project files.
 ---
 
 # SpecUX
@@ -43,3 +43,29 @@ Keep the CLI and skill project-local, not global, so different projects on one m
 
 
 Run all SpecUX commands with `npx specux <command>` so they use the workspace-local CLI. Never silently fall back to a global or mismatched version.
+
+## Spec scope
+
+A spec defines **requirements**: what the system must do and the constraints it must satisfy. Many requirements describe how the system responds to a user action in a workflow, but a requirement does not need to correspond to an action. Specs can also define behavior such as backend communication, data validation or transformation, and text or content formatting. Requirements should have observable outcomes, but should not become a description of action order or visual composition.
+
+A spec may cover a feature that involves several Screens. Choose its project-, Screen-, or Element-level owner based on where the functional behavior belongs; ownership does not turn the spec into a UI flow. Materials are visual-only and do not have behavior specs. Treat the user's intent as authoritative, and ask rather than inventing functional rules when outcomes are unclear.
+
+Keep requirements focused on system responsibilities and constraints. For example, a spec can require submitting entered item details to a backend and formatting a returned timestamp in a defined way; it should not narrate the sequence of opening the dialog, submitting the item, and navigating to its details.
+
+## Workflow scope
+
+A workflow defines **user actions and how they connect**: what the user can do, in what order, and what choices or destinations follow. It is often focused on one Screen, but can include navigation to other Screens when that is part of the journey. It is a map of the user's actions, not a functional contract: it does not establish whether an action succeeds, define backend behavior or data rules, or set content-formatting requirements.
+
+Use a workflow when showing the actions and their relationships helps explain the experience. Most workflows can stay within one Screen; include other Screens when the user journey actually moves between them. Do not create one for every requirement or use a diagram to fill gaps in the user's intent. Follow the current schema for file ownership and supported links.
+
+## Using specs and workflows together
+
+Use both when a feature has a meaningful sequence of user actions and requirements on how the system must behave. For example, the workflow can show the user opening Add Item, submitting the form, and navigating to the new item's Screen. The spec can define the required backend request, validation and error behavior, and formatting of returned text. The workflow says **what the user does**; the spec says **what the system is required to do** in response or independently.
+
+When authoring:
+
+1. Capture the user's actions and their sequence in a workflow when a diagram helps; keep it on one Screen unless the journey calls for navigation elsewhere.
+2. Capture the user's stated requirements in a spec, including requirements tied to workflow actions and requirements that apply without a specific action.
+3. Use judgment when workflow details imply unstated behavior. If the user wants full control, ask before filling gaps. Otherwise, make conservative, conventional inferences for low-risk details; call out meaningful assumptions for review, and ask when an ambiguity could materially change behavior.
+4. Link relevant spec sections to workflow nodes where the connection helps show which requirements apply to an action.
+5. Use `npx specux schema spec` and `npx specux schema workflow` for the version-matched syntax and file conventions. Run `npx specux validate`, and open each workflow in Studio to verify it renders.

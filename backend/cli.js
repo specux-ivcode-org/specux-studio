@@ -3,7 +3,6 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
-const YAML = require("yaml");
 const { createServer } = require("./server");
 const { readBrowserAnnotationCache } = require("./browserAnnotationCache");
 const { SPECUX_VERSION, isWithin, resolveProjectPath, validateProject } = require("./project");
@@ -262,6 +261,7 @@ async function runValidateCommand(args) {
 }
 
 async function runInitCommand(args) {
+  const YAML = await import("../shared/yaml.mjs");
   const { positional, options } = parseOptions(args, new Set(["--project"]));
   if (positional.length) throw new Error(`Unexpected argument "${positional[0]}".`);
 

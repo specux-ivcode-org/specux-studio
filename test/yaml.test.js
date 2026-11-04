@@ -1,9 +1,13 @@
 const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
-const test = require("node:test");
-const YAML = require("yaml");
-const parseSpecuxYaml = YAML.parse;
+const { before, test } = require("node:test");
+let YAML;
+let parseSpecuxYaml;
+before(async () => {
+  YAML = await import("../shared/yaml.mjs");
+  parseSpecuxYaml = YAML.parse;
+});
 
 function assertParserAgreement(source) {
   const document = YAML.parseDocument(source);

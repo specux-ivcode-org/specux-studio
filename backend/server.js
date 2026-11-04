@@ -2,7 +2,6 @@ const http = require("node:http");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
-const YAML = require("yaml");
 const validation = require("../shared/validation");
 const { validateProject } = require("./project");
 const {
@@ -17,6 +16,7 @@ const MAX_POINTS_PER_ANNOTATION = 2048;
 const ANNOTATION_TOOLS = new Set(["pen", "circle", "rectangle", "arrow", "highlight", "note"]);
 const mermaidDistRoot = path.dirname(require.resolve("mermaid"));
 const yamlPackageRoot = path.dirname(require.resolve("yaml/package.json"));
+const yamlModule = import("../shared/yaml.mjs");
 const CONTENT_TYPES = new Map([
   [".css", "text/css; charset=utf-8"],
   [".html", "text/html; charset=utf-8"],
@@ -254,8 +254,9 @@ async function resolveProjectDirectory(projectRoot, relativePath, { create = fal
   return current;
 }
 
-function parseYamlMapping(source) {
+async function parseYamlMapping(source) {
   if (typeof source !== "string") throw requestError("YAML source must be text.");
+  const YAML = await yamlModule;
   const document = YAML.parseDocument(source);
   if (document.errors.length) {
     const issues = document.errors.map((error) => {
@@ -333,6 +334,7 @@ async function resolveProjectFile(projectRoot, relativePath, { create = false } 
 }
 
 async function saveProjectFiles(projectRoot, files) {
+  const YAML = await yamlModule;
   if (!Array.isArray(files) || files.length === 0 || files.length > MAX_FILES_PER_SAVE) {
     throw requestError(`Save requests must contain between 1 and ${MAX_FILES_PER_SAVE} files.`);
   }
@@ -385,7 +387,7 @@ async function saveProjectFiles(projectRoot, files) {
       }
       try {
         const { header, body } = validation.splitMaterialDocument(file.content, file.path);
-        const materialDocument = parseYamlMapping(header);
+        const materialDocument = await parseYamlMapping(header);
         validation.validateMaterialDocumentHeader(materialDocument, file.path);
         const expectedId = path.posix.basename(file.path, validation.MATERIAL_FILE_EXTENSION);
         if (materialDocument.id !== expectedId) {
@@ -398,7 +400,7 @@ async function saveProjectFiles(projectRoot, files) {
       }
       updates.push({ path: file.path, content: file.content, create });
     } else if (typeof file.content === "string" && !Object.hasOwn(file, "data")) {
-      parseYamlMapping(file.content);
+      await parseYamlMapping(file.content);
       updates.push({ path: file.path, content: file.content, create });
     } else {
       if (!Object.hasOwn(file, "data") || !file.data ||
@@ -508,6 +510,7 @@ async function serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, res
   ].includes(pathname)) {
     relativePath = pathname.slice(1);
   } else if ([
+    "/shared/yaml.mjs",
     "/shared/validation.js",
     "/shared/ScreenLayers.mjs",
     "/shared/ScreenGroups.mjs"
@@ -807,7 +810,7 @@ function createServer(options = {}) {
         if (!body || Array.isArray(body) || typeof body !== "object") {
           throw requestError("YAML parse request must be a JSON object.");
         }
-        sendJson(response, 200, { data: parseYamlMapping(body.source) });
+        sendJson(response, 200, { data: await parseYamlMapping(body.source) });
         return;
       }
       if (request.method === "POST" && pathname === "/api/yaml/stringify") {
@@ -816,6 +819,7 @@ function createServer(options = {}) {
             !body.data || Array.isArray(body.data) || typeof body.data !== "object") {
           throw requestError("YAML stringify request must contain a mapping of data.");
         }
+        const YAML = await yamlModule;
         sendJson(response, 200, { source: YAML.stringify(body.data) });
         return;
       }

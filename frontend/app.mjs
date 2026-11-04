@@ -1,5 +1,5 @@
-import { parse as parseSpecuxYaml } from "/vendor/yaml/browser/index.js";
 import "/shared/validation.js";
+import { parse as parseSpecuxYaml } from "/shared/yaml.mjs";
 import { BrowserHistory } from "./browser/BrowserHistory.mjs";
 import { EditorNavigation } from "./browser/EditorNavigation.mjs";
 import { EditorEventController } from "./browser/EditorEventController.mjs";

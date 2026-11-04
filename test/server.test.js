@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const fs = require("node:fs/promises");
+const { readFileSync } = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
@@ -13,6 +14,7 @@ const {
 } = require("../backend/browserAnnotationCache");
 const validation = require("../shared/validation");
 const cliPath = path.join(__dirname, "..", "backend", "cli.js");
+const editorHtmlPath = path.join(__dirname, "..", "frontend", "index.html");
 const execFileAsync = promisify(execFile);
 
 function materialDocument(data, body) {
@@ -169,6 +171,7 @@ test("serves the editor root and the example project", async () => {
     const appModule = await fetch(`${baseUrl}/app.mjs`);
     const imageCaptureLibrary = await fetch(`${baseUrl}/vendor/html-to-image.js`);
     const stylesheet = await fetch(`${baseUrl}/styles.css`);
+    const yamlModule = await fetch(`${baseUrl}/shared/yaml.mjs`);
     const yamlBrowserEntry = await fetch(`${baseUrl}/vendor/yaml/browser/index.js`);
     const yamlBrowserCore = await fetch(`${baseUrl}/vendor/yaml/browser/dist/index.js`);
     const validationModule = await fetch(`${baseUrl}/shared/validation.js`);
@@ -208,7 +211,9 @@ test("serves the editor root and the example project", async () => {
     const material = await fetch(`${baseUrl}/specux/materials/demo.stml`);
     const traversal = await fetch(`${baseUrl}/specux/%2e%2e%2findex.html`);
     assert.equal(editor.status, 200);
-    assert.match(await editor.text(), /Editor/);
+    const editorHtml = await editor.text();
+    assert.match(editorHtml, /Editor/);
+    assert.match(readFileSync(editorHtmlPath, "utf8"), /"yaml": "\/vendor\/yaml\/browser\/index\.js"/);
     assert.equal(stylesheet.status, 200);
     assert.equal(stylesheet.headers.get("content-type"), "text/css; charset=utf-8");
     assert.equal(yamlBrowserEntry.status, 200);
@@ -216,6 +221,8 @@ test("serves the editor root and the example project", async () => {
     assert.match(await yamlBrowserEntry.text(), /from '\.\/dist\/index\.js'/);
     assert.equal(yamlBrowserCore.status, 200);
     assert.equal(yamlBrowserCore.headers.get("content-type"), "text/javascript; charset=utf-8");
+    assert.equal(yamlModule.status, 200);
+    assert.match(await yamlModule.text(), /from "yaml"/);
     assert.equal(validationModule.status, 200);
     assert.equal(screenLayersModule.status, 200);
     assert.equal(screenGroupsModule.status, 200);
