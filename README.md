@@ -17,4 +17,6 @@ Both commands install project-locally: npm records the CLI dependency in the cur
 
 See [Editor Requirements](doc/editor.md) for the current editor behavior and prototype status.
 
+See the [Manual Regression Tests](manual-regression-tests/README.md) for browser-based regression checks.
+
 See the [CLI documentation](doc/cli.md) for the commands and AI-assisted project workflow.

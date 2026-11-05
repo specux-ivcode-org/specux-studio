@@ -253,9 +253,9 @@ const screenMaterialController = new ScreenMaterialController({
     persistStatePlacements,
     isInstanceVisible,
     setInstanceVisible: (screen, instance, visible, stateId) =>
-      previewStateController.setInstanceVisible(screen.data, instance, visible, stateId),
+      previewStateController.setInstanceVisible(screen, instance, visible, stateId),
     setPreviewLayerVisibility: (screen, layer, visible, stateId) =>
-      previewStateController.setLayerVisible(screen.data, layer, visible, stateId),
+      previewStateController.setLayerVisible(screen, layer, visible, stateId),
     removePlacementStateOverrides: (screen, placementIds, layerIds) =>
       previewStateController.removeStructuralOverrides(screen.data, placementIds, layerIds),
     confirm: (message) => window.confirm(message)
@@ -797,7 +797,7 @@ const inspectorRenderer = new InspectorRenderer({
     resolvePlacementForState,
     persistPlacementState,
     setInstanceVisible: (screen, instance, visible, stateId) =>
-      previewStateController.setInstanceVisible(screen.data, instance, visible, stateId),
+      previewStateController.setInstanceVisible(screen, instance, visible, stateId),
     listPreviewStateOverrides: (screen, stateId) =>
       previewStateController.listStateOverrides(screen, stateId),
     resetPreviewStateOverride: (screen, stateId, selectedOverride) =>

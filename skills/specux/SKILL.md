@@ -44,6 +44,20 @@ Keep the CLI and skill project-local, not global, so different projects on one m
 
 Run all SpecUX commands with `npx specux <command>` so they use the workspace-local CLI. Never silently fall back to a global or mismatched version.
 
+## Materials
+
+Treat Materials as reusable, configurable visual components. Default to small, focused components that can be composed into a Screen and reused in different contexts. When a component needs variations, expose suitable attributes rather than creating near-duplicate Materials.
+
+Use larger Materials when they represent a coherent unit that is genuinely reused, but keep the library weighted toward small components. A Material that represents an entire Screen or a major Screen region usually hides the composition that belongs in the Screen itself.
+
+Before creating or editing a Material, run `npx specux schema material` for the version-matched file-format guidance.
+
+| Guidance | Examples |
+|---|---|
+| Good: small, focused components | Button, text box, border |
+| Okay: a larger component that can be reused as a unit | Item row |
+| Avoid: a whole Screen or major Screen region as one Material | Main Screen View |
+
 ## Spec scope
 
 A spec defines **requirements**: what the system must do and the constraints it must satisfy. Many requirements describe how the system responds to a user action in a workflow, but a requirement does not need to correspond to an action. Specs can also define behavior such as backend communication, data validation or transformation, and text or content formatting. Requirements should have observable outcomes, but should not become a description of action order or visual composition.

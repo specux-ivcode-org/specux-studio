@@ -363,6 +363,14 @@ test("ungrouping preserves a named state that shows a hidden Default group", asy
     file: "screens/home/screen.yml",
     data: {
       layers: [{ id: "base", name: "Base" }],
+      "preview-states": [
+        { id: "default", name: "Default" },
+        {
+          id: "dialog",
+          name: "Dialog",
+          description: "Show the placements."
+        }
+      ],
       materials: [
         material("first", { x: 10, y: 20 }),
         material("second", { x: 120, y: 20 })
@@ -404,15 +412,13 @@ test("ungrouping preserves a named state that shows a hidden Default group", asy
 
   await screenController.group([[0], [1]]);
   screen.data.materials[0].visible = false;
-  screen.data["preview-states"] = [
-    { id: "default", name: "Default" },
-    {
-      id: "dialog",
-      name: "Dialog",
-      description: "Show the placements.",
-      placements: { group: { visible: true } }
-    }
-  ];
+  previewStates.setInstanceVisible(
+    screen,
+    screen.data.materials[0],
+    true,
+    "dialog"
+  );
+  assert.equal(screen.data["preview-states"][1].placements.group.visible, true);
 
   await screenController.ungroup([0]);
   assert.deepEqual(screen.data.materials.map((placement) =>
