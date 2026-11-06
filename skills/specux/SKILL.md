@@ -48,14 +48,15 @@ Run all SpecUX commands with `npx specux <command>` so they use the workspace-lo
 
 Treat Materials as reusable, configurable visual components. Default to small, focused components that can be composed into a Screen and reused in different contexts. When a component needs variations, expose suitable attributes rather than creating near-duplicate Materials.
 
-Use larger Materials when they represent a coherent unit that is genuinely reused, but keep the library weighted toward small components. A Material that represents an entire Screen or a major Screen region usually hides the composition that belongs in the Screen itself.
+Keep the library weighted toward small components. When a larger unit is made from multiple components, prefer composing and grouping those placements on the Screen rather than building one large Material. This is especially true for structures such as item rows: make the icon, text, border, and other parts separate placements, then group them when they should move or be managed together. Use a larger Material when the whole unit is itself a coherent, configurable component that is reused as one.
 
-Before creating or editing a Material, run `npx specux schema material` for the version-matched file-format guidance.
+Before creating or editing a Material, run `npx specux schema material` for the version-matched file-format guidance. When composing placements or using Screen groups, consult `npx specux schema screen` for the Screen format and grouping rules.
 
 | Guidance | Examples |
 |---|---|
 | Good: small, focused components | Button, text box, border |
-| Okay: a larger component that can be reused as a unit | Item row |
+| Usually better as a Screen group of smaller placements | Item row composed of an icon, text, and border |
+| Okay: a larger component that is reused and configured as one unit | A reusable, configurable item row |
 | Avoid: a whole Screen or major Screen region as one Material | Main Screen View |
 
 ## Spec scope
