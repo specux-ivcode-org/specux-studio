@@ -71,16 +71,16 @@ Keep requirements focused on system responsibilities and constraints. For exampl
 
 A workflow defines **user actions and how they connect**: what the user can do, in what order, and what choices or destinations follow. It is often focused on one Screen, but can include navigation to other Screens when that is part of the journey. It is a map of the user's actions, not a functional contract: it does not establish whether an action succeeds, define backend behavior or data rules, or set content-formatting requirements.
 
-Use a workflow when showing the actions and their relationships helps explain the experience. Most workflows can stay within one Screen; include other Screens when the user journey actually moves between them. Do not create one for every requirement or use a diagram to fill gaps in the user's intent. Follow the current schema for file ownership and supported links.
+When implementing or revising a feature, always try to create or update a workflow that captures its user actions, even when the flow seems simple. Most workflows can stay within one Screen; include other Screens when the user journey actually moves between them. Do not invent actions to fill gaps in the user's intent: use judgment for low-risk details and ask about consequential ambiguity. Follow the current schema for file ownership and supported links.
 
 ## Using specs and workflows together
 
-Use both when a feature has a meaningful sequence of user actions and requirements on how the system must behave. For example, the workflow can show the user opening Add Item, submitting the form, and navigating to the new item's Screen. The spec can define the required backend request, validation and error behavior, and formatting of returned text. The workflow says **what the user does**; the spec says **what the system is required to do** in response or independently.
+For every feature implementation or revision, always try to create or update both its workflow and spec; do not skip either just because the feature seems small or straightforward. The workflow records the user actions and how they connect. The spec records the feature's functional requirements, including behavior tied to those actions and behavior that applies independently. For example, the workflow can show the user opening Add Item, submitting the form, and navigating to the new item's Screen. The spec can define the required backend request, validation and error behavior, and formatting of returned text. If one artifact genuinely does not apply or cannot be completed from the available information, explain why rather than silently omitting it.
 
 When authoring:
 
-1. Capture the user's actions and their sequence in a workflow when a diagram helps; keep it on one Screen unless the journey calls for navigation elsewhere.
-2. Capture the user's stated requirements in a spec, including requirements tied to workflow actions and requirements that apply without a specific action.
+1. Create or update a workflow for the feature's user actions and their sequence; keep it on one Screen unless the journey calls for navigation elsewhere.
+2. Create or update a spec for the feature's stated functional requirements, including requirements tied to workflow actions and requirements that apply without a specific action.
 3. Use judgment when workflow details imply unstated behavior. If the user wants full control, ask before filling gaps. Otherwise, make conservative, conventional inferences for low-risk details; call out meaningful assumptions for review, and ask when an ambiguity could materially change behavior.
 4. Link relevant spec sections to workflow nodes where the connection helps show which requirements apply to an action.
 5. Use `npx specux schema spec` and `npx specux schema workflow` for the version-matched syntax and file conventions. Run `npx specux validate`, and open each workflow in Studio to verify it renders.
