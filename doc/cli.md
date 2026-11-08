@@ -24,13 +24,13 @@ Run the commands as `specux ...` when the package's `bin` entry is available, or
 
 `--port` selects the local server port for `server` commands. Server commands default to port `3000` or the `SPECUX_PORT` / `PORT` environment setting.
 
-## Temporary Screen annotations
+## Temporary annotations
 
-In a preview, choose **Annotate**, select a drawing tool, and mark an area. Pen, circle, rectangle, arrow, highlighter, and note marks are available. Each preview has its own annotation layer; use the mouse wheel or trackpad to scroll within a preview and mark more than one position. Undo, redo, and Clear manage the active editor's marks. Notes can carry short instructions; you can also describe marks in your AI conversation.
+In an annotatable preview or source view, choose **Annotate** and select a drawing tool. Pen, circle, rectangle, arrow, highlighter, and note marks are available. Each preview has its own annotation layer; marks use the preview's full-content pixel coordinates, so they remain aligned while scrolling. Undo, redo, and Clear manage the active editor's marks. Notes can carry short instructions; you can also describe marks in your AI conversation.
 
-Annotations are held in the running editor server's memory and are not saved to project files. They are stored as absolute Screen-canvas pixel coordinates, with Material targets where available. A project-keyed temporary cache lets the CLI render them after the editor has been closed; refreshing or reopening the editor clears the active annotations and cache. `specux server state` reports the current editor path, file, type, name, preview SpecUX URL, selected placement or workflow node IDs, or selected spec text with its source range, and whether the Screen is annotated. Use `specux server annotations [--screen <id>]` to inspect annotation details, or `specux server annotations clear [--screen <id>]` to clear them. Without `--screen`, `clear` uses the Screen currently selected in the editor.
+Annotations are transient and held in the running editor server's memory; they are never saved to project files. Screen-preview marks are structured vector data in Screen-canvas pixels, with placement and Material targets where available. A project-keyed temporary cache lets the CLI render Screen annotations after the editor closes; refreshing or reopening the editor clears the active annotations and cache. Use `specux server annotations [--screen <id>]` to inspect Screen annotations, or `specux server annotations clear [--screen <id>]` to clear them. Without `--screen`, `clear` uses the Screen currently selected in the editor.
 
-Annotations made in Markdown, source, workflow, Theme, Material, and other non-Screen-preview views are published with their preview identity and full-content coordinates in `specux server state`. They are held only in server memory for AI communication and are never written to project files.
+`specux server state` reports the current editor path, file, type, name, preview SpecUX URL, selected placement or workflow node IDs, selected spec text and source range, and whether the Screen is annotated. Annotations made in Markdown, source, workflow, Theme, Material, and other non-Screen-preview views are published there with the active editor context, preview identity, and full-content pixel coordinates. They are temporary AI context only—not Screen-render input or artifact content. `specux server annotations` reports Screen annotations only.
 
 ## Editor screenshots for AI
 
