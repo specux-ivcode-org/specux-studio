@@ -11,6 +11,9 @@ export class ScreenAnnotationController {
     this.state = state;
     this.services = services;
     this.screenId = null;
+    this.context = null;
+    this.contextAnnotations = new Map();
+    this.contextCanvasSizes = new Map();
     this.annotations = [];
     this.undoStack = [];
     this.redoStack = [];
@@ -30,10 +33,13 @@ export class ScreenAnnotationController {
   bind() {
     const { services } = this;
     const preview = services.byId("screen-preview");
+    const toolbar = services.byId("annotation-toolbar");
+    services.byId("main").append(toolbar);
     const ResizeObserverClass = services.window.ResizeObserver;
     if (ResizeObserverClass) {
       this.resizeObserver = new ResizeObserverClass(() => this.render());
       this.resizeObserver.observe(preview);
+      this.resizeObserver.observe(services.byId("main"));
     }
     services.document.querySelectorAll("[data-annotation-tool]").forEach((button) => {
       button.addEventListener("click", () => this.selectTool(button.dataset.annotationTool));
@@ -69,13 +75,39 @@ export class ScreenAnnotationController {
     this.updateControls();
   }
 
+  getEditorAnnotationContext() {
+    if (this.context?.kind !== "editor") return null;
+    return {
+      annotationContext: {
+        key: this.context.key,
+        view: this.context.view,
+        type: this.context.type,
+        file: this.context.file,
+        mode: this.context.mode,
+        coordinateSpace: "editor viewport pixels",
+        canvasSize: {
+          width: Math.ceil(this.renderWidth),
+          height: Math.ceil(this.renderHeight)
+        }
+      },
+      annotations: this.annotations
+    };
+  }
+
   async setScreen(screen) {
     const nextScreenId = screen?.id || null;
     if (nextScreenId === this.screenId) {
+      this.context = nextScreenId
+        ? { key: `screen:${nextScreenId}`, kind: "screen" }
+        : null;
       this.render();
+      this.updateControls();
       return;
     }
     this.screenId = nextScreenId;
+    this.context = nextScreenId
+      ? { key: `screen:${nextScreenId}`, kind: "screen" }
+      : null;
     this.annotationRevision += 1;
     this.annotationUpdatedAt = null;
     this.enabled = false;
@@ -91,6 +123,34 @@ export class ScreenAnnotationController {
       await this.sessionResetPromise;
       if (this.screenId === nextScreenId) await this.refresh();
     }
+  }
+
+  setEditorContext(context) {
+    const key = context?.key || null;
+    if (key === this.context?.key) return;
+    if (this.context?.kind === "editor") {
+      this.contextAnnotations.set(this.context.key, this.annotations);
+      this.contextCanvasSizes.set(this.context.key, {
+        width: this.renderWidth,
+        height: this.renderHeight
+      });
+    }
+    this.screenId = null;
+    this.context = key ? { ...context, kind: "editor" } : null;
+    this.annotations = key ? (this.contextAnnotations.get(key) || []) : [];
+    const savedSize = key ? this.contextCanvasSizes.get(key) : null;
+    const main = key ? this.services.byId?.("main") : null;
+    const rect = main?.getBoundingClientRect?.();
+    this.renderWidth = savedSize?.width ||
+      Math.max(1, Math.ceil(rect?.width || DEFAULT_CANVAS_SIZE.width));
+    this.renderHeight = savedSize?.height ||
+      Math.max(1, Math.ceil(rect?.height || DEFAULT_CANVAS_SIZE.height));
+    this.undoStack = [];
+    this.redoStack = [];
+    this.enabled = false;
+    this.drawing = null;
+    this.render();
+    this.updateControls();
   }
 
   async clearPreviousSessionAnnotations() {
@@ -117,16 +177,16 @@ export class ScreenAnnotationController {
   }
 
   setEnabled(enabled) {
-    this.enabled = Boolean(enabled && this.screenId);
+    this.enabled = Boolean(enabled && this.context);
     this.drawing = null;
     this.render();
     this.updateControls();
   }
 
   selectTool(tool) {
-    if (!ANNOTATION_TOOLS.has(tool) || !this.screenId) return;
+    if (!ANNOTATION_TOOLS.has(tool) || !this.context) return;
     this.tool = tool;
-    this.services.setSelectionTool?.("select");
+    if (this.context.kind === "screen") this.services.setSelectionTool?.("select");
     this.setEnabled(true);
   }
 
@@ -163,6 +223,15 @@ export class ScreenAnnotationController {
   }
 
   persist() {
+    if (this.context?.kind === "editor") {
+      this.contextAnnotations.set(this.context.key, this.annotations);
+      this.contextCanvasSizes.set(this.context.key, {
+        width: this.renderWidth,
+        height: this.renderHeight
+      });
+      return Promise.resolve(this.services.publishSelection?.());
+    }
+    if (!this.screenId) return Promise.resolve();
     const payload = {
       screenId: this.screenId,
       annotations: this.annotations,
@@ -201,10 +270,12 @@ export class ScreenAnnotationController {
 
   updateControls() {
     const hasAnnotations = this.annotations.length > 0;
+    const toolbar = this.services.byId("annotation-toolbar");
+    if (toolbar) toolbar.hidden = !this.context;
     const exitButton = this.services.byId("annotation-mode-exit");
-    exitButton.disabled = !this.enabled || !this.screenId;
+    exitButton.disabled = !this.enabled || !this.context;
     this.services.document.querySelectorAll("[data-annotation-tool]").forEach((button) => {
-      button.disabled = !this.screenId;
+      button.disabled = !this.context;
       button.setAttribute(
         "aria-pressed",
         String(this.enabled && button.dataset.annotationTool === this.tool)
@@ -233,12 +304,32 @@ export class ScreenAnnotationController {
   }
 
   render() {
+    if (this.context?.kind === "editor") {
+      const screenPreview = this.services.byId("screen-preview");
+      const screenOverlay = screenPreview?.querySelector?.(
+        ":scope > .form-content > .screen-annotation-overlay"
+      );
+      if (screenOverlay) {
+        screenOverlay.hidden = true;
+        screenOverlay.style.pointerEvents = "none";
+      }
+      screenPreview?.classList.remove("annotation-mode");
+      this.renderEditorOverlay();
+      return;
+    }
+    const editorOverlay = this.services.byId("main")
+      ?.querySelector?.(":scope > .editor-annotation-overlay");
+    if (editorOverlay) {
+      editorOverlay.hidden = true;
+      editorOverlay.style.pointerEvents = "none";
+    }
     const preview = this.services.byId("screen-preview");
     if (!preview) return;
     const content = preview.querySelector(":scope > .form-content");
     if (!content) return;
     this.overlay = content.querySelector(":scope > .screen-annotation-overlay") ||
       this.createOverlay(content);
+    this.overlay.hidden = false;
     const canvasSize = this.measureCanvasSize(content);
     this.renderWidth = canvasSize.width;
     this.renderHeight = canvasSize.height;
@@ -252,6 +343,30 @@ export class ScreenAnnotationController {
     this.overlay.style.zIndex = String(highestMaterialLayer + 1);
     this.overlay.style.pointerEvents = this.enabled ? "all" : "none";
     preview.classList.toggle("annotation-mode", this.enabled);
+    this.overlay.replaceChildren();
+    this.renderArrowhead();
+    for (const annotation of this.annotations) this.renderAnnotation(annotation);
+    if (this.drawing) this.renderAnnotation(this.drawing.annotation);
+  }
+
+  renderEditorOverlay() {
+    const canvas = this.services.byId("main");
+    if (!canvas) return;
+    this.overlay = canvas.querySelector(":scope > .editor-annotation-overlay");
+    if (!this.overlay) {
+      this.overlay = this.createOverlay(canvas);
+      this.overlay.classList.remove("screen-annotation-overlay");
+      this.overlay.classList.add("editor-annotation-overlay");
+    }
+    this.overlay.hidden = false;
+    this.overlay.setAttribute("viewBox", `0 0 ${this.renderWidth} ${this.renderHeight}`);
+    this.overlay.setAttribute("width", String(this.renderWidth));
+    this.overlay.setAttribute("height", String(this.renderHeight));
+    this.overlay.style.width = "100%";
+    this.overlay.style.height = "100%";
+    this.overlay.style.zIndex = "30";
+    this.overlay.style.pointerEvents = this.enabled ? "all" : "none";
+    canvas.classList.toggle("annotation-mode", this.enabled);
     this.overlay.replaceChildren();
     this.renderArrowhead();
     for (const annotation of this.annotations) this.renderAnnotation(annotation);
@@ -407,6 +522,13 @@ export class ScreenAnnotationController {
   }
 
   pointFromEvent(event) {
+    if (this.context?.kind === "editor") {
+      const rect = this.services.byId("main").getBoundingClientRect();
+      return {
+        x: clamp((event.clientX - rect.left) * this.renderWidth / (rect.width || 1), 0, this.renderWidth),
+        y: clamp((event.clientY - rect.top) * this.renderHeight / (rect.height || 1), 0, this.renderHeight)
+      };
+    }
     const content = this.services.byId("screen-preview").querySelector(":scope > .form-content");
     const rect = content.getBoundingClientRect();
     const scaleX = rect.width / (content.offsetWidth || rect.width || 1);
@@ -426,6 +548,7 @@ export class ScreenAnnotationController {
   }
 
   targetAtPoint(point) {
+    if (this.context?.kind === "editor") return null;
     const preview = this.services.byId("screen-preview");
     const content = preview.querySelector(":scope > .form-content");
     const rect = content.getBoundingClientRect();
@@ -495,7 +618,7 @@ export class ScreenAnnotationController {
   }
 
   onPointerDown(event) {
-    if (!this.enabled || !this.screenId || event.button !== 0) return;
+    if (!this.enabled || !this.context || event.button !== 0) return;
     event.preventDefault();
     const point = this.pointFromEvent(event);
     if (this.tool === "note") {
@@ -513,7 +636,7 @@ export class ScreenAnnotationController {
       this.redoStack = [];
       this.render();
       this.updateControls();
-      this.persist().catch((error) => this.reportError("Could not save annotation", error));
+      this.persist().catch((error) => this.reportError("Could not publish annotation", error));
       return;
     }
     const annotation = {
@@ -558,6 +681,6 @@ export class ScreenAnnotationController {
     this.redoStack = [];
     this.render();
     this.updateControls();
-    this.persist().catch((error) => this.reportError("Could not save annotation", error));
+    this.persist().catch((error) => this.reportError("Could not publish annotation", error));
   }
 }

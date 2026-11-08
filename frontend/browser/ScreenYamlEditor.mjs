@@ -49,7 +49,6 @@ export class ScreenYamlEditor {
     this.document.getElementById("screen-canvas-viewport").hidden = yamlSelected;
     this.document.getElementById("screen-preview").hidden = yamlSelected;
     this.document.getElementById("screen-yaml-editor-panel").hidden = !yamlSelected;
-    this.document.getElementById("annotation-toolbar").hidden = yamlSelected;
     const screen = this.getActiveScreen();
     const editor = this.document.getElementById("screen-yaml-source");
     if (!screen) {
@@ -87,7 +86,6 @@ export class ScreenYamlEditor {
     this.document.getElementById("screen-canvas-viewport").hidden = false;
     this.document.getElementById("screen-preview").hidden = false;
     this.document.getElementById("screen-yaml-editor-panel").hidden = true;
-    this.document.getElementById("annotation-toolbar").hidden = true;
     this.document.getElementById("screen-yaml-source").oninput = null;
   }
 

@@ -12,7 +12,8 @@ export class SplitViewLayout {
     headingLabels,
     resizerId,
     previewTrackProperty,
-    editorTrackProperty
+    editorTrackProperty,
+    onViewModeChanged
   }) {
     this.window = windowObject;
     this.document = documentObject;
@@ -25,6 +26,7 @@ export class SplitViewLayout {
     this.resizer = documentObject.getElementById(resizerId);
     this.previewTrackProperty = previewTrackProperty;
     this.editorTrackProperty = editorTrackProperty;
+    this.onViewModeChanged = onViewModeChanged;
     this.ratio = 40;
     this.activeDrag = null;
   }
@@ -56,6 +58,7 @@ export class SplitViewLayout {
     }
     this.applyRatio();
     this.updateAriaValue();
+    this.onViewModeChanged?.();
   }
 
   readFlexibleTracks() {

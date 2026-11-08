@@ -65,6 +65,7 @@ test("updates annotation tool buttons and actions for the active tool", async ()
     }
   });
   controller.screenId = "home";
+  controller.context = { key: "screen:home", kind: "screen" };
   controller.enabled = true;
   controller.tool = "rectangle";
   controller.annotations = [{ id: "mark-1" }];
@@ -99,6 +100,7 @@ test("selecting a tool enters annotation mode and Exit leaves it", async () => {
     }
   });
   controller.screenId = "home";
+  controller.context = { key: "screen:home", kind: "screen" };
   controller.render = () => {};
 
   controller.updateControls();
@@ -113,6 +115,54 @@ test("selecting a tool enters annotation mode and Exit leaves it", async () => {
   controller.setEnabled(false);
   assert.equal(exitButton.disabled, true);
   assert.equal(attributes.get("circle:aria-pressed"), "false");
+});
+
+test("publishes non-Screen editor annotations as transient selection context", async () => {
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
+  let published = 0;
+  const controller = new ScreenAnnotationController({
+    state: {},
+    services: {
+      publishSelection: () => { published += 1; }
+    }
+  });
+  controller.render = () => {};
+  controller.updateControls = () => {};
+  controller.setEditorContext({
+    key: "spec:screens/home/specs/overview.md:markdown",
+    view: "spec",
+    type: "spec",
+    file: "screens/home/specs/overview.md",
+    mode: "markdown"
+  });
+  controller.annotations.push({
+    id: "mark-1",
+    tool: "note",
+    points: [{ x: 120, y: 80 }],
+    text: "Change this heading"
+  });
+
+  await controller.persist();
+
+  assert.equal(published, 1);
+  assert.deepEqual(controller.getEditorAnnotationContext(), {
+    annotationContext: {
+      key: "spec:screens/home/specs/overview.md:markdown",
+      view: "spec",
+      type: "spec",
+      file: "screens/home/specs/overview.md",
+      mode: "markdown",
+      coordinateSpace: "editor viewport pixels",
+      canvasSize: { width: 1440, height: 900 }
+    },
+    annotations: [{
+      id: "mark-1",
+      tool: "note",
+      points: [{ x: 120, y: 80 }],
+      text: "Change this heading"
+    }]
+  });
+  assert.equal(controller.screenId, null);
 });
 
 test("saves absolute canvas annotations without capturing a browser image", async () => {
@@ -178,6 +228,25 @@ test("converts pointer positions to absolute canvas pixels at zoomed scale", asy
   });
 });
 
+test("maps editor viewport positions into a stable annotation canvas after resize", async () => {
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
+  const main = {
+    getBoundingClientRect: () => ({ left: 100, top: 50, width: 500, height: 400 })
+  };
+  const controller = new ScreenAnnotationController({
+    state: {},
+    services: { byId: (id) => id === "main" ? main : null }
+  });
+  controller.context = { key: "spec:overview:markdown", kind: "editor" };
+  controller.renderWidth = 1000;
+  controller.renderHeight = 800;
+
+  assert.deepEqual(controller.pointFromEvent({ clientX: 350, clientY: 250 }), {
+    x: 500,
+    y: 400
+  });
+});
+
 test("places the annotation overlay above material layers and captures the canvas", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const overlay = {
@@ -203,7 +272,7 @@ test("places the annotation overlay above material layers and captures the canva
   const controller = new ScreenAnnotationController({
     state: {},
     services: {
-      byId: () => preview,
+      byId: (id) => id === "main" ? { querySelector: () => null } : preview,
       document: {
         createElementNS: () => ({
           setAttribute() {},

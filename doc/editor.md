@@ -33,6 +33,8 @@ Screen-editor-specific behavior is maintained separately in the [Screen Editor R
 | ED-023 | Provide a searchable Screen selector at the top of the file explorer, with available Screens searchable by name or ID. Selecting a Screen opens it, expands its path, and selects its `screen.yml` file. |
 | ED-024 | Represent the active editor file in the URL and add a browser history entry when navigation changes to a different file. Back and Forward must restore the corresponding editor and selection without adding entries for edits within the same file. |
 | ED-025 | Define reusable Materials as `.stml` templates under `materials/`, each with front matter variable mappings and one HTML root element. Store a Material reference and instance-specific variable overrides, ID, absolute position, size, rotation, transform scale, and visibility in Screen YAML; store Screen State visual overrides sparsely in `preview-states`. |
+| ED-026 | Provide transient annotation tools for the active editor view, including previews and source views. Publish marks with their active file/editor context for AI communication; never write non-Screen annotations to project files or treat annotations as artifact content. |
+| ED-027 | Let the CLI capture the visible active editor surface from the connected browser for AI communication, including unsaved edits. Include visible annotation marks in the PNG and return their structured data with the editor context; do not persist captures in project files. |
 
 ## Target Page Layout (Proposed)
 

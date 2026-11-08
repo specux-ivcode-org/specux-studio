@@ -20,7 +20,7 @@ function createElement() {
   };
 }
 
-test("shows annotation toolbar only for the Screen preview", async () => {
+test("leaves annotation toolbar visibility to the annotation controller", async () => {
   const { ScreenYamlEditor } = await import("../frontend/browser/ScreenYamlEditor.mjs");
   const elements = new Map([
     ["screen-view-preview", createElement()],
@@ -48,14 +48,15 @@ test("shows annotation toolbar only for the Screen preview", async () => {
     validateScreenMaterials() {}
   });
 
+  elements.get("annotation-toolbar").hidden = true;
   editor.syncViewMode();
-  assert.equal(elements.get("annotation-toolbar").hidden, false);
+  assert.equal(elements.get("annotation-toolbar").hidden, true);
   editor.setViewMode("yaml");
   assert.equal(elements.get("screen-canvas-viewport").hidden, true);
   assert.equal(elements.get("annotation-toolbar").hidden, true);
   editor.setViewMode("preview");
   assert.equal(elements.get("screen-canvas-viewport").hidden, false);
-  assert.equal(elements.get("annotation-toolbar").hidden, false);
+  assert.equal(elements.get("annotation-toolbar").hidden, true);
   editor.hideControls();
   assert.equal(elements.get("screen-canvas-viewport").hidden, false);
   assert.equal(elements.get("annotation-toolbar").hidden, true);

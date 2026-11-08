@@ -10,11 +10,16 @@ const {
 } = require("./browserAnnotationCache");
 
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
+const MAX_EDITOR_IMAGE_BYTES = 12 * 1024 * 1024;
+const EDITOR_IMAGE_CAPTURE_TIMEOUT_MS = 20000;
 const MAX_FILES_PER_SAVE = 100;
 const MAX_ANNOTATIONS_PER_SCREEN = 200;
+const MAX_ANNOTATIONS_PER_CONTEXT = 200;
 const MAX_POINTS_PER_ANNOTATION = 2048;
 const ANNOTATION_TOOLS = new Set(["pen", "circle", "rectangle", "arrow", "highlight", "note"]);
+const EDITOR_VIEWS = new Set(["screen", "workflow", "spec", "theme", "project", "material-file"]);
 const mermaidDistRoot = path.dirname(require.resolve("mermaid"));
+const html2canvasDistRoot = path.dirname(require.resolve("html2canvas"));
 const yamlPackageRoot = path.dirname(require.resolve("yaml/package.json"));
 const yamlModule = import("../shared/yaml.mjs");
 const CONTENT_TYPES = new Map([
@@ -164,6 +169,65 @@ function validateAnnotationSet(body) {
   };
 }
 
+function validateEditorAnnotationContext(context, annotations) {
+  if (!context || Array.isArray(context) || typeof context !== "object" ||
+      typeof context.key !== "string" || !context.key || context.key.length > 2048 ||
+      !["screen", "workflow", "spec", "theme", "project", "material"].includes(context.type) ||
+      !EDITOR_VIEWS.has(context.view) ||
+      (context.file !== null &&
+        (typeof context.file !== "string" || context.file.length > 2048)) ||
+      typeof context.mode !== "string" || context.mode.length > 40 ||
+      context.coordinateSpace !== "editor viewport pixels" ||
+      !context.canvasSize ||
+      !Number.isInteger(context.canvasSize.width) || context.canvasSize.width < 1 ||
+      context.canvasSize.width > 16384 ||
+      !Number.isInteger(context.canvasSize.height) || context.canvasSize.height < 1 ||
+      context.canvasSize.height > 16384 ||
+      !Array.isArray(annotations) || annotations.length > MAX_ANNOTATIONS_PER_CONTEXT) {
+    throw requestError("Editor annotations must include a valid editor context and viewport dimensions.");
+  }
+  const ids = new Set();
+  const cleanAnnotations = annotations.map((annotation) => {
+    if (!annotation || Array.isArray(annotation) || typeof annotation !== "object" ||
+        typeof annotation.id !== "string" || !annotation.id || annotation.id.length > 100 ||
+        ids.has(annotation.id) || !ANNOTATION_TOOLS.has(annotation.tool) ||
+        !Array.isArray(annotation.points) || !annotation.points.length ||
+        annotation.points.length > MAX_POINTS_PER_ANNOTATION) {
+      throw requestError("Each editor annotation must have a unique id, supported tool, and valid points.");
+    }
+    ids.add(annotation.id);
+    const points = annotation.points.map((point) => {
+      if (!point || Array.isArray(point) || typeof point !== "object" ||
+          !Number.isFinite(point.x) || !Number.isFinite(point.y) ||
+          point.x < 0 || point.x > context.canvasSize.width ||
+          point.y < 0 || point.y > context.canvasSize.height) {
+        throw requestError("Editor annotation points must be within the viewport dimensions.");
+      }
+      return { x: point.x, y: point.y };
+    });
+    const clean = { id: annotation.id, tool: annotation.tool, points };
+    if (annotation.text !== undefined) {
+      if (typeof annotation.text !== "string" || annotation.text.length > 500) {
+        throw requestError("Editor annotation text must be at most 500 characters.");
+      }
+      clean.text = annotation.text;
+    }
+    return clean;
+  });
+  return {
+    context: {
+      key: context.key,
+      view: context.view,
+      type: context.type,
+      file: context.file,
+      mode: context.mode,
+      coordinateSpace: "editor viewport pixels",
+      canvasSize: { ...context.canvasSize }
+    },
+    annotations: cleanAnnotations
+  };
+}
+
 async function listProjectFiles(projectRoot) {
   const realProjectRoot = await fs.realpath(projectRoot);
   const files = [];
@@ -203,6 +267,19 @@ async function readJsonBody(request) {
   } catch {
     throw requestError("Request body must be valid JSON.");
   }
+}
+
+async function readBufferBody(request, maximumBytes) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > maximumBytes) {
+      throw requestError(`Request body exceeds the ${Math.floor(maximumBytes / (1024 * 1024))} MB limit.`, 413);
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
 }
 
 function isSpecPath(relativePath) {
@@ -453,6 +530,17 @@ async function serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, res
   let relativePath;
   let allowedRoot = rootDirectory;
   if (pathname === "/") relativePath = "index.html";
+  else if (pathname.startsWith("/vendor/html2canvas/")) {
+    const packagePath = pathname.slice("/vendor/html2canvas/".length);
+    if (!packagePath || packagePath.split("/").some((segment) =>
+      !segment || segment === "." || segment === ".." || segment.startsWith(".")
+    )) {
+      sendJson(response, 404, { error: "File not found." });
+      return;
+    }
+    allowedRoot = html2canvasDistRoot;
+    relativePath = path.join(...packagePath.split("/"));
+  }
   else if (pathname.startsWith("/vendor/mermaid/")) {
     const packagePath = pathname.slice("/vendor/mermaid/".length);
     if (!packagePath || packagePath.split("/").some((segment) =>
@@ -580,11 +668,15 @@ function createServer(options = {}) {
     file: null,
     type: null,
     name: null,
+    clientId: null,
     preview: null,
     selection: null,
     selected: [],
+    annotationContext: null,
+    annotations: [],
     updatedAt: null
   };
+  const pendingEditorImageCaptures = new Map();
   const annotationsByScreen = new Map();
   let annotationCacheGeneration = 0;
   let annotationCacheQueue = Promise.resolve();
@@ -608,6 +700,40 @@ function createServer(options = {}) {
       ...(entry?.previewStateId ? { previewStateId: entry.previewStateId } : {}),
       updatedAt: entry?.updatedAt || null
     };
+  }
+  function getEditorState() {
+    const screenId = selectionState.selection?.screen?.id;
+    const screenAnnotations = screenId && annotationsByScreen.has(screenId)
+      ? annotationsFor(screenId)
+      : null;
+    return {
+      path: selectionState.path,
+      file: selectionState.file,
+      type: selectionState.type,
+      name: selectionState.name,
+      preview: selectionState.preview,
+      selected: selectionState.selected,
+      ...(selectionState.annotationContext
+        ? {
+            annotationContext: selectionState.annotationContext,
+            annotations: selectionState.annotations
+          }
+        : {}),
+      ...(screenAnnotations ? { screenAnnotations } : {}),
+      annotated: Boolean(
+        (selectionState.annotationContext && selectionState.annotations.length) ||
+        (screenId && annotationsByScreen.get(screenId)?.annotations.length)
+      )
+    };
+  }
+  function finishEditorImageCapture(requestId, image, error) {
+    const capture = pendingEditorImageCaptures.get(requestId);
+    if (!capture) return false;
+    pendingEditorImageCaptures.delete(requestId);
+    clearTimeout(capture.timeout);
+    if (error) capture.reject(error);
+    else capture.resolve(image);
+    return true;
   }
   server = http.createServer(async (request, response) => {
     let pathname;
@@ -638,18 +764,7 @@ function createServer(options = {}) {
           return;
         }
         if (pathname === "/api/state") {
-          const screenId = selectionState.selection?.screen?.id;
-          sendJson(response, 200, {
-            path: selectionState.path,
-            file: selectionState.file,
-            type: selectionState.type,
-            name: selectionState.name,
-            preview: selectionState.preview,
-            selected: selectionState.selected,
-            annotated: Boolean(
-              screenId && annotationsByScreen.get(screenId)?.annotations.length
-            )
-          });
+          sendJson(response, 200, getEditorState());
           return;
         }
         if (pathname === "/api/annotations") {
@@ -682,8 +797,82 @@ function createServer(options = {}) {
         await serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, response);
         return;
       }
+      if (request.method === "POST" && pathname === "/api/editor-image/capture") {
+        if (!selectionState.path || !selectionState.clientId) {
+          throw requestError("No active editor browser has published its selection.", 409);
+        }
+        if (eventClients.size === 0) {
+          throw requestError("No editor browser is connected to capture an image.", 409);
+        }
+        const requestId = randomUUID();
+        const clientId = selectionState.clientId;
+        const image = await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            finishEditorImageCapture(
+              requestId,
+              null,
+              requestError("The active editor did not respond to the image capture request.", 504)
+            );
+          }, EDITOR_IMAGE_CAPTURE_TIMEOUT_MS);
+          pendingEditorImageCaptures.set(requestId, {
+            clientId,
+            resolve,
+            reject,
+            timeout
+          });
+          publishEvent("capture-editor-image", {
+            requestId,
+            clientId
+          });
+        });
+        if (selectionState.clientId !== clientId) {
+          throw requestError("The active editor changed during image capture. Retry the command.", 409);
+        }
+        sendJson(response, 200, {
+          image: image.toString("base64"),
+          state: getEditorState()
+        });
+        return;
+      }
+      if (request.method === "POST" && pathname === "/api/editor-image") {
+        const requestId = requestUrl.searchParams.get("requestId");
+        const clientId = requestUrl.searchParams.get("clientId");
+        const capture = pendingEditorImageCaptures.get(requestId);
+        if (!capture || capture.clientId !== clientId) {
+          throw requestError("This image capture request is no longer active.", 404);
+        }
+        if (request.headers["content-type"] !== "image/png") {
+          throw requestError("Editor image uploads must use image/png.", 415);
+        }
+        const image = await readBufferBody(request, MAX_EDITOR_IMAGE_BYTES);
+        if (image.length < 8 ||
+            !image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+          throw requestError("The editor did not provide a valid PNG image.");
+        }
+        finishEditorImageCapture(requestId, image);
+        sendJson(response, 202, { received: true });
+        return;
+      }
+      if (request.method === "POST" && pathname === "/api/editor-image/failure") {
+        const body = await readJsonBody(request);
+        const capture = pendingEditorImageCaptures.get(body?.requestId);
+        if (!capture || capture.clientId !== body?.clientId ||
+            typeof body.message !== "string" || !body.message.trim()) {
+          throw requestError("This image capture failure report is invalid or expired.");
+        }
+        finishEditorImageCapture(
+          body.requestId,
+          null,
+          requestError(`The active editor could not capture an image: ${body.message.slice(0, 500)}`, 422)
+        );
+        sendJson(response, 202, { received: true });
+        return;
+      }
       if (request.method === "POST" && pathname === "/api/selection") {
         const body = await readJsonBody(request);
+        const editorAnnotations = body && Object.hasOwn(body, "annotationContext")
+          ? validateEditorAnnotationContext(body.annotationContext, body.annotations)
+          : null;
         if (!body || Array.isArray(body) || typeof body !== "object" ||
             !Object.hasOwn(body, "selection") ||
             (body.selection !== null && (Array.isArray(body.selection) || typeof body.selection !== "object")) ||
@@ -694,6 +883,8 @@ function createServer(options = {}) {
               body.type !== null &&
               !["screen", "workflow", "spec", "theme", "project", "material"].includes(body.type)) ||
             (Object.hasOwn(body, "name") && body.name !== null && typeof body.name !== "string") ||
+            (Object.hasOwn(body, "clientId") &&
+              (typeof body.clientId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.clientId))) ||
             (Object.hasOwn(body, "preview") &&
               body.preview !== null &&
               !isSpecuxPreviewUrl(body.preview)) ||
@@ -703,6 +894,8 @@ function createServer(options = {}) {
           throw requestError("Selection updates must contain an object or null and a valid URL path.");
         }
         selectionState.selection = body.selection;
+        selectionState.annotationContext = editorAnnotations?.context || null;
+        selectionState.annotations = editorAnnotations?.annotations || [];
         selectionState.selected = body.selected ??
           (typeof body.selection?.selectedPlacement?.id === "string"
             ? [body.selection.selectedPlacement.id]
@@ -711,6 +904,7 @@ function createServer(options = {}) {
         if (body.file !== undefined) selectionState.file = body.file;
         if (body.type !== undefined) selectionState.type = body.type;
         if (body.name !== undefined) selectionState.name = body.name;
+        selectionState.clientId = body.clientId ?? null;
         if (body.preview !== undefined) selectionState.preview = body.preview;
         selectionState.updatedAt = new Date().toISOString();
         annotationCacheGeneration += 1;

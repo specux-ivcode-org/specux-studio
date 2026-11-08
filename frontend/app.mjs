@@ -43,6 +43,7 @@ const renderRequestedState = renderParameters.get("state");
 const renderRequestedAnnotations = renderParameters.get("annotations") === "true";
 const isRenderOnly = renderRequestedScreen !== null;
 const byId = (id) => document.getElementById(id);
+const editorClientId = window.crypto.randomUUID();
 
 let project;
 let screens = [];
@@ -87,6 +88,7 @@ const elementSpecOwners = new Map();
 let editVersion = 0;
 let isSaving = false;
 let historyUpdateSuppressed = false;
+let selectionPublishQueue = Promise.resolve();
 let previewTimer = null;
 let previewVersion = 0;
 let editorFieldId = 0;
@@ -138,7 +140,8 @@ const specViewLayout = new SplitViewLayout({
   headingLabels: { split: "Preview", preview: "Preview", markdown: "Markdown" },
   resizerId: "spec-split-resizer",
   previewTrackProperty: "--spec-preview-track",
-  editorTrackProperty: "--spec-markdown-track"
+  editorTrackProperty: "--spec-markdown-track",
+  onViewModeChanged: () => publishSelection()
 });
 const materialViewLayout = new SplitViewLayout({
   windowObject: window,
@@ -150,7 +153,8 @@ const materialViewLayout = new SplitViewLayout({
   headingLabels: { split: "Preview", preview: "Preview", source: "Source" },
   resizerId: "material-split-resizer",
   previewTrackProperty: "--material-preview-track",
-  editorTrackProperty: "--material-source-track"
+  editorTrackProperty: "--material-source-track",
+  onViewModeChanged: () => publishSelection()
 });
 const workflowViewLayout = new SplitViewLayout({
   windowObject: window,
@@ -162,7 +166,8 @@ const workflowViewLayout = new SplitViewLayout({
   headingLabels: { split: "Selected node", preview: "Selected node", diagram: "Workflow" },
   resizerId: "workflow-split-resizer",
   previewTrackProperty: "--workflow-preview-track",
-  editorTrackProperty: "--workflow-diagram-track"
+  editorTrackProperty: "--workflow-diagram-track",
+  onViewModeChanged: () => publishSelection()
 });
 const specEditor = new SpecEditor({
   state: {
@@ -655,7 +660,8 @@ const screenAnnotationController = new ScreenAnnotationController({
     fetcher: (url, options) => fetch(url, options),
     prompt: (message, value) => window.prompt(message, value),
     getActivePreviewStateId: (screenId) => activePreviewStateIds.get(screenId) || "default",
-    setSelectionTool: (tool) => screenSelectionController?.selectTool(tool)
+    setSelectionTool: (tool) => screenSelectionController?.selectTool(tool),
+    publishSelection: () => publishSelection()
   }
 });
 workflowEditor = new WorkflowEditor({
@@ -678,6 +684,7 @@ workflowEditor = new WorkflowEditor({
   services: {
     byId,
     setWorkflowViewMode: (mode) => workflowViewLayout.setViewMode(mode),
+    publishSelection: () => publishSelection(),
     renderNavigation,
     renderInspector,
     markEdited,
@@ -932,6 +939,8 @@ function syncScreenViewMode() {
 async function setScreenViewMode(mode) {
   screenYamlEditor.setViewMode(mode);
   if (mode === "yaml") screenAnnotationController?.setEnabled(false);
+  else await screenAnnotationController?.setScreen(screens[activeScreenIndex]);
+  publishSelection();
 }
 
 async function prepareScreenYamlSource(screen) {
@@ -1208,9 +1217,129 @@ function refreshFromExternalChanges() {
   return editorNavigation.refreshFromExternalChanges();
 }
 
+function normalizeScreenshotColors(documentClone) {
+  const srgbColor = /color\(\s*srgb\s+([+-]?(?:\d+\.?\d*|\.\d+))\s+([+-]?(?:\d+\.?\d*|\.\d+))\s+([+-]?(?:\d+\.?\d*|\.\d+))(?:\s*\/\s*([+-]?(?:\d+\.?\d*|\.\d+)))?\s*\)/gi;
+  for (const element of documentClone.querySelectorAll("*")) {
+    const computedStyle = documentClone.defaultView.getComputedStyle(element);
+    for (const property of computedStyle) {
+      const value = computedStyle.getPropertyValue(property);
+      if (!value.includes("color(srgb")) continue;
+      const compatibleValue = value.replace(
+        srgbColor,
+        (_match, red, green, blue, alpha) => {
+          const channels = [red, green, blue].map((channel) =>
+            Math.round(Math.max(0, Math.min(1, Number(channel))) * 255)
+          );
+          return `rgba(${channels.join(",")},${alpha === undefined ? 1 : Math.max(0, Math.min(1, Number(alpha)))})`;
+        }
+      );
+      if (compatibleValue !== value) {
+        element.style.setProperty(
+          property,
+          compatibleValue,
+          computedStyle.getPropertyPriority(property)
+        );
+      }
+    }
+  }
+}
+
+async function captureCurrentEditorImage(request) {
+  if (!request || request.clientId !== editorClientId ||
+      typeof request.requestId !== "string") return;
+  try {
+    await screenAnnotationController?.saveQueue;
+    if (typeof window.html2canvas !== "function") {
+      throw new Error("The editor image capture library is unavailable.");
+    }
+    await document.fonts?.ready;
+    const editorSurface = byId("main");
+    const bounds = editorSurface.getBoundingClientRect();
+    const backgroundColor = window.getComputedStyle(editorSurface).backgroundColor;
+    const scrollPositions = [editorSurface, ...editorSurface.querySelectorAll("*")]
+      .map((element, index) => ({
+        index,
+        scrollTop: element.scrollTop,
+        scrollLeft: element.scrollLeft
+      }))
+      .filter(({ scrollTop, scrollLeft }) => scrollTop || scrollLeft);
+    const canvas = await window.html2canvas(editorSurface, {
+      width: Math.ceil(bounds.width),
+      height: Math.ceil(bounds.height),
+      windowWidth: window.innerWidth,
+      windowHeight: window.innerHeight,
+      scale: 1,
+      useCORS: true,
+      logging: false,
+      backgroundColor,
+      foreignObjectRendering: true,
+      onclone: (documentClone) => {
+        const cloneSurface = documentClone.getElementById("main");
+        if (!cloneSurface) throw new Error("The editor changed during image capture.");
+        const cloneElements = [cloneSurface, ...cloneSurface.querySelectorAll("*")];
+        for (const entry of scrollPositions) {
+          const element = cloneElements[entry.index];
+          if (!element) throw new Error("The editor scroll state changed during image capture.");
+          element.scrollTop = 0;
+          element.scrollLeft = 0;
+          for (const child of element.children) {
+            const transform = documentClone.defaultView.getComputedStyle(child).transform;
+            child.style.transform =
+              `translate(${-entry.scrollLeft}px, ${-entry.scrollTop}px)` +
+              (transform === "none" ? "" : ` ${transform}`);
+          }
+        }
+        normalizeScreenshotColors(documentClone);
+      }
+    });
+    const flattenedCanvas = document.createElement("canvas");
+    flattenedCanvas.width = canvas.width;
+    flattenedCanvas.height = canvas.height;
+    const context = flattenedCanvas.getContext("2d");
+    if (!context) throw new Error("The browser could not flatten the editor image.");
+    context.fillStyle = backgroundColor;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(canvas, 0, 0);
+    const image = await new Promise((resolve) =>
+      flattenedCanvas.toBlob(resolve, "image/png")
+    );
+    if (!image) throw new Error("The browser could not encode the editor image.");
+    const response = await fetch(
+      `/api/editor-image?requestId=${encodeURIComponent(request.requestId)}` +
+        `&clientId=${encodeURIComponent(editorClientId)}`,
+      { method: "POST", headers: { "Content-Type": "image/png" }, body: image }
+    );
+    if (!response.ok) throw new Error(await response.text());
+  } catch (error) {
+    console.error("Could not capture the active editor image.", error);
+    try {
+      await fetch("/api/editor-image/failure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId: request.requestId,
+          clientId: editorClientId,
+          message: error.message || String(error)
+        })
+      });
+    } catch (reportError) {
+      console.error("Could not report the editor image capture failure.", reportError);
+    }
+  }
+}
+
 if (!isRenderOnly && typeof EventSource !== "undefined") {
   const projectEvents = new EventSource("/api/events");
   projectEvents.addEventListener("project-updated", refreshFromExternalChanges);
+  projectEvents.addEventListener("capture-editor-image", (event) => {
+    try {
+      captureCurrentEditorImage(JSON.parse(event.data)).catch((error) => {
+        console.error("Could not capture the active editor image.", error);
+      });
+    } catch (error) {
+      console.error("Could not read the editor image capture request.", error);
+    }
+  });
 }
 
 function applyTheme() {
@@ -1662,6 +1791,41 @@ function publishSelection() {
         previewStateId: activePreviewStateIds.get(screenId) || "default"
       }
     : selection;
+  const main = byId("main");
+  let viewMode = selection?.view === "screen"
+    ? screenYamlEditor.mode
+    : selection?.view === "material-file"
+      ? main.dataset.materialView || "split"
+      : selection?.view === "workflow"
+        ? main.dataset.workflowView || "split"
+        : selection?.view === "spec"
+          ? main.dataset.specView || "split"
+          : "preview";
+  if (selection?.view === "workflow") {
+    const workflowSurface = main.classList.contains("workflow-spec-preview-active")
+        ? "spec"
+        : byId("workflow-source").hidden
+          ? "diagram"
+          : "source";
+    viewMode = `${main.dataset.workflowView || "split"}:${workflowSurface}`;
+  }
+  if (selection?.view !== "screen" || screenYamlEditor.mode === "yaml") {
+    const contextType = selection?.view === "material-file" ? "material" : selection?.view;
+    const contextKey = [
+      contextType || "project",
+      file || "overview",
+      viewMode,
+      selection?.screen?.id || ""
+    ].join(":");
+    screenAnnotationController?.setEditorContext({
+      key: contextKey,
+      view: selection?.view || "project",
+      type: contextType || "project",
+      file: file || null,
+      mode: viewMode
+    });
+  }
+  const annotationContext = screenAnnotationController?.getEditorAnnotationContext();
   const selectedScreen = screens[activeScreenIndex];
   let selected = [];
   if (selection?.view === "workflow" && typeof selectedWorkflowNodeId === "string") {
@@ -1703,7 +1867,7 @@ function publishSelection() {
     preview = `specux://screen/${encodeURIComponent(selection.screen.id)}/screen.yml` +
       (query ? `?${query}` : "");
   }
-  fetch("/api/selection", {
+  const operation = selectionPublishQueue.then(() => fetch("/api/selection", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1713,9 +1877,17 @@ function publishSelection() {
       name,
       preview,
       selection: publishedSelection,
-      selected
+      selected,
+      clientId: editorClientId,
+      ...(annotationContext || {})
     })
-  }).catch((error) => console.warn("Could not publish the current SpecUX selection.", error));
+  }));
+  const published = operation.catch((error) => {
+    console.warn("Could not publish the current SpecUX selection.", error);
+    throw error;
+  });
+  selectionPublishQueue = published.catch(() => {});
+  return published;
 }
 
 function renderInspector() {

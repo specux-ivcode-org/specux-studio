@@ -66,7 +66,7 @@ When a Screen-editor requirement is added, changed, or removed, update this docu
 | ID | Requirement |
 |---|---|
 | SE-030 | Let users select named Screen States that inherit the Default Screen and apply sparse overrides to placement visibility, Material attributes, placement transforms, and layer visibility. Set placement visibility in the Placements list and layer visibility in the Layers list; do not duplicate visibility controls in Properties or Screen State details. Missing overrides inherit the corresponding Default value; switching Screen States never rewrites Default values. Allow hidden placements to be selected from the placement list. |
-| SE-031 | Keep Screen State, zoom, view-mode, and annotation controls available on the Screen editor toolbars. When a toolbar is too narrow, overflow complete control groups into its menu; do not clone controls or break their event handlers. |
+| SE-031 | Keep Screen State, zoom, and view-mode controls available on the Screen editor toolbars. Keep shared AI annotation controls available for the active editor view, including Screen preview and YAML. When a toolbar is too narrow, overflow complete control groups into its menu; do not clone controls or break their event handlers. |
 | SE-032 | Keep annotation tools and annotation actions in one toolbar group. Selecting an annotation tool enters annotation mode. Provide pen, circle, rectangle, arrow, highlight, and note tools, plus undo, redo, and clear actions. |
 | SE-033 | Keep the annotation exit control in the annotation tool group and visible at all times. It is disabled outside annotation mode, has no visible text label, retains an accessible name, and is red while enabled. |
 | SE-034 | Treat Default as the structural source of truth. Adding or deleting placements, editing layer structure, and grouping or ungrouping are available only in Default; disable those controls and reject those operations in named Screen States. |
@@ -83,16 +83,16 @@ When a Screen-editor requirement is added, changed, or removed, update this docu
 
 | ID | Requirement |
 |---|---|
-| SE-040 | Record annotations as structured vector data in Screen-canvas pixels, not as a browser-captured screenshot. Map pointer input correctly through canvas zoom and scrolling. |
+| SE-040 | In the Screen preview, record annotations as structured vector data in Screen-canvas pixels, not as a browser-captured screenshot. Map pointer input correctly through canvas zoom and scrolling. |
 | SE-041 | When an annotation targets a placement, retain its placement identity and Material reference where available so downstream tooling can associate the mark with the design. |
-| SE-042 | Keep editor annotation data separate from Screen composition and use the structured annotations for the CLI's annotated render workflow. The CLI produces the PNG; the editor does not upload a screenshot as the annotation source. |
+| SE-042 | Keep Screen-preview annotation data separate from Screen composition and use the structured annotations for the CLI's annotated render workflow. The CLI produces the PNG; the editor does not upload a screenshot as the annotation source. Other editor-view annotations are viewport-relative AI context, not Screen render input. |
 
 ## Theme context
 
 | ID | Requirement |
 |---|---|
 | SE-078 | The Theme editor lets users inspect token usage in a selected Screen or reusable Material. Screen context usage is always Screen-wide; preview input does not select placements. |
-| SE-079 | Theme-context preview input picks colors only. Do not expose placement selection or transforms, Screen-composition structural editing, annotations, or placement context-menu actions. |
+| SE-079 | Theme-context preview input picks colors only. Do not expose placement selection or transforms, Screen-composition structural editing, or placement context-menu actions. AI annotations may mark the active Theme view but must not interact with or change Screen placements. |
 | SE-080 | Show authored `var(--theme-...)` references and their Material/attribute sources. Editing a referenced token changes the selected appearance's Theme value globally; do not infer a Theme binding from a computed style or rewrite literal values as tokens. |
 | SE-081 | In Theme context, show a 35 CSS-pixel-diameter radius guide around the normal pointer in the preview. Preview pointer input lists directly mapped Theme colors within that circle, nearest first, including painted layers beneath transparent foreground Materials, never selecting a Screen placement. List each token once; allow live color editing only for values resolving to a single solid color, and do not infer Theme bindings from computed color alone. |
 

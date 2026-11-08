@@ -610,6 +610,7 @@
     .create-screen-button:hover:not(:disabled) { border-color: var(--ui-primary-hover-border); color: var(--ui-primary-strong); background: var(--ui-primary-soft-bg); }
     .create-screen-button:disabled { color: var(--ui-disabled-text); background: var(--ui-disabled-bg); cursor: default; }
     .canvas {
+      position: relative;
       min-width: 0;
       min-height: 0;
       display: flex;
@@ -919,6 +920,12 @@
     }
     .preview-state-controls[hidden] { display: none; }
     .annotation-toolbar {
+      position: absolute;
+      z-index: 40;
+      right: 12px;
+      bottom: 12px;
+      width: max-content;
+      max-width: calc(100% - 24px);
       min-height: 56px;
       display: flex;
       align-items: center;
@@ -927,7 +934,10 @@
       gap: 8px;
       padding: 8px 12px;
       border-top: 1px solid var(--line);
+      border: 1px solid var(--line);
+      border-radius: 8px;
       background: var(--panel);
+      box-shadow: 0 6px 24px rgb(15 23 42 / 20%);
     }
     .preview-state-toolbar.responsive-toolbar,
     .annotation-toolbar.responsive-toolbar { flex-wrap: nowrap; }
@@ -1800,7 +1810,8 @@
       min-height: 0;
       padding: 0;
     }
-    .screen-preview.annotation-mode { cursor: crosshair; }
+    .screen-preview.annotation-mode,
+    .canvas.annotation-mode { cursor: crosshair; }
     .screen-preview.marquee-selection-mode { cursor: crosshair; }
     .screen-selection-overlay {
       position: absolute;
@@ -1822,6 +1833,14 @@
       z-index: 20;
       top: 0;
       left: 0;
+      overflow: visible;
+      pointer-events: none;
+      touch-action: none;
+    }
+    .editor-annotation-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 30;
       overflow: visible;
       pointer-events: none;
       touch-action: none;

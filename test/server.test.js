@@ -170,6 +170,7 @@ test("serves the editor root and the example project", async () => {
     const editor = await fetch(baseUrl);
     const appModule = await fetch(`${baseUrl}/app.mjs`);
     const imageCaptureLibrary = await fetch(`${baseUrl}/vendor/html-to-image.js`);
+    const html2canvasLibrary = await fetch(`${baseUrl}/vendor/html2canvas/html2canvas.min.js`);
     const stylesheet = await fetch(`${baseUrl}/styles.css`);
     const yamlModule = await fetch(`${baseUrl}/shared/yaml.mjs`);
     const yamlBrowserEntry = await fetch(`${baseUrl}/vendor/yaml/browser/index.js`);
@@ -228,7 +229,18 @@ test("serves the editor root and the example project", async () => {
     assert.equal(screenGroupsModule.status, 200);
     assert.equal(appModule.status, 200);
     assert.equal(appModule.headers.get("content-type"), "text/javascript; charset=utf-8");
+    assert.match(
+      readFileSync(path.join(__dirname, "..", "frontend", "app.mjs"), "utf8"),
+      /foreignObjectRendering:\s*true/
+    );
+    assert.match(
+      readFileSync(path.join(__dirname, "..", "frontend", "app.mjs"), "utf8"),
+      /element\.scrollTop = 0/
+    );
     assert.equal(imageCaptureLibrary.status, 404);
+    assert.equal(html2canvasLibrary.status, 200);
+    assert.equal(html2canvasLibrary.headers.get("content-type"), "text/javascript; charset=utf-8");
+    assert.match(readFileSync(editorHtmlPath, "utf8"), /\/vendor\/html2canvas\/html2canvas\.min\.js/);
     assert.equal(retiredAssetEditorModule.status, 404);
     assert.equal(editorEventControllerModule.status, 200);
     assert.equal(browserModule.status, 200);
@@ -306,7 +318,7 @@ test("returns project validation errors with source locations", async () => {
 });
 
 test("reports server status and editor state and notifies connected browsers", async () => {
-  await withServer(async ({ baseUrl }) => {
+  await withServer(async ({ baseUrl, rootDirectory }) => {
     const status = await fetch(`${baseUrl}/api/status`);
     assert.equal(status.status, 200);
     assert.deepEqual(await status.json(), {
@@ -326,7 +338,7 @@ test("reports server status and editor state and notifies connected browsers", a
       }
     };
     const selected = ["continue-button", "cancel-button"];
-    const path = "/?file=screens/home/screen.yml&view=screen&screen=home";
+    const editorPath = "/?file=screens/home/screen.yml&view=screen&screen=home";
     const file = "screens/home/screen.yml";
     const type = "screen";
     const name = "Home";
@@ -334,13 +346,13 @@ test("reports server status and editor state and notifies connected browsers", a
     const published = await fetch(`${baseUrl}/api/selection`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path, file, type, name, preview, selection, selected })
+      body: JSON.stringify({ path: editorPath, file, type, name, preview, selection, selected })
     });
     assert.equal(published.status, 200);
     const currentState = await fetch(`${baseUrl}/api/state`);
     const state = await currentState.json();
     assert.deepEqual(state, {
-      path,
+      path: editorPath,
       file,
       type,
       name,
@@ -411,6 +423,71 @@ test("reports server status and editor state and notifies connected browsers", a
     const specState = await specStateResponse.json();
     assert.deepEqual(specState.selected, [selectedText]);
 
+    const annotationContext = {
+      key: "spec:screens/home/specs/element-dialog-save.md:markdown",
+      view: "spec",
+      type: "spec",
+      file: "screens/home/specs/element-dialog-save.md",
+      mode: "markdown",
+      coordinateSpace: "editor viewport pixels",
+      canvasSize: { width: 900, height: 700 }
+    };
+    const transientAnnotations = [{
+      id: "note-1",
+      tool: "note",
+      points: [{ x: 240, y: 180 }],
+      text: "Clarify this paragraph"
+    }];
+    const annotationsPublished = await fetch(`${baseUrl}/api/selection`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        selection: { view: "spec", screen: selection.screen },
+        annotationContext,
+        annotations: transientAnnotations
+      })
+    });
+    assert.equal(annotationsPublished.status, 200);
+    const annotationStateResponse = await fetch(`${baseUrl}/api/state`);
+    const annotationState = await annotationStateResponse.json();
+    assert.deepEqual(annotationState.annotationContext, annotationContext);
+    assert.deepEqual(annotationState.annotations, transientAnnotations);
+    assert.equal(annotationState.annotated, true);
+    assert.equal(
+      await readBrowserAnnotationCache(path.join(rootDirectory, "specux")),
+      null
+    );
+    assert.equal(
+      await fs.readFile(path.join(rootDirectory, "specux", "materials", "demo.stml"), "utf8"),
+      materialDocument({ id: "demo", name: "Demo", type: "label" }, "<p>Before</p>")
+    );
+
+    const rejectedAnnotation = await fetch(`${baseUrl}/api/selection`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        selection: { view: "spec" },
+        annotationContext,
+        annotations: [{
+          id: "outside",
+          tool: "pen",
+          points: [{ x: 901, y: 20 }]
+        }]
+      })
+    });
+    assert.equal(rejectedAnnotation.status, 400);
+    const annotationContextCleared = await fetch(`${baseUrl}/api/selection`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ selection: { view: "screen", screen: { id: "home" } } })
+    });
+    assert.equal(annotationContextCleared.status, 200);
+    const clearedAnnotationState = await fetch(`${baseUrl}/api/state`).then((response) =>
+      response.json()
+    );
+    assert.equal(Object.hasOwn(clearedAnnotationState, "annotationContext"), false);
+    assert.equal(clearedAnnotationState.annotated, false);
+
     const controller = new AbortController();
     const events = await fetch(`${baseUrl}/api/events`, { signal: controller.signal });
     const reader = events.body.getReader();
@@ -438,6 +515,106 @@ test("reports server status and editor state and notifies connected browsers", a
       body: "{}"
     });
     assert.equal(rejected.status, 403);
+  });
+});
+
+test("captures the active editor image and returns its annotation context to the CLI", async () => {
+  await withServer(async ({ baseUrl, rootDirectory }) => {
+    const clientId = "11111111-1111-4111-8111-111111111111";
+    const annotationContext = {
+      key: "spec:screens/home/specs/overview.md:markdown",
+      view: "spec",
+      type: "spec",
+      file: "screens/home/specs/overview.md",
+      mode: "markdown",
+      coordinateSpace: "editor viewport pixels",
+      canvasSize: { width: 900, height: 700 }
+    };
+    const annotations = [{
+      id: "note-1",
+      tool: "note",
+      points: [{ x: 240, y: 180 }],
+      text: "Clarify this paragraph"
+    }];
+    const screenAnnotationSet = {
+      screenId: "home",
+      annotations: [{
+        id: "screen-note",
+        tool: "note",
+        points: [{ x: 200, y: 300 }],
+        text: "Check this preview"
+      }],
+      coordinateSpace: "screen canvas pixels",
+      canvasSize: { width: 1440, height: 900 },
+      previewStateId: "default"
+    };
+    const selection = await fetch(`${baseUrl}/api/selection`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "/?file=screens%2Fhome%2Fspecs%2Foverview.md&view=spec&screen=home",
+        file: "screens/home/specs/overview.md",
+        type: "spec",
+        name: "overview",
+        clientId,
+        selection: { view: "spec", screen: { id: "home" } },
+        annotationContext,
+        annotations
+      })
+    });
+    assert.equal(selection.status, 200);
+    const screenAnnotationsSaved = await fetch(`${baseUrl}/api/annotations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(screenAnnotationSet)
+    });
+    assert.equal(screenAnnotationsSaved.status, 200);
+
+    const controller = new AbortController();
+    const events = await fetch(`${baseUrl}/api/events`, { signal: controller.signal });
+    const reader = events.body.getReader();
+    const decoder = new TextDecoder();
+    assert.match(decoder.decode((await reader.read()).value), /connected/);
+
+    const outputPath = path.join(rootDirectory, "agent-image.png");
+    const cliPort = new URL(baseUrl).port;
+    const cliCapture = execFileAsync(process.execPath, [
+      cliPath,
+      "server",
+      "screenshot",
+      "--port",
+      cliPort,
+      "--output",
+      outputPath
+    ], { encoding: "utf8" });
+    let eventText = "";
+    while (!eventText.includes("event: capture-editor-image")) {
+      const { value, done } = await reader.read();
+      assert.equal(done, false);
+      eventText += decoder.decode(value);
+    }
+    const requestData = JSON.parse(/data: (.+)/.exec(eventText)[1]);
+    assert.equal(requestData.clientId, clientId);
+
+    const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]);
+    const uploaded = await fetch(
+      `${baseUrl}/api/editor-image?requestId=${encodeURIComponent(requestData.requestId)}` +
+        `&clientId=${encodeURIComponent(clientId)}`,
+      { method: "POST", headers: { "Content-Type": "image/png" }, body: png }
+    );
+    assert.equal(uploaded.status, 202);
+
+    const cliResult = await cliCapture;
+    const metadata = JSON.parse(cliResult.stdout);
+    assert.equal(metadata.output, outputPath);
+    assert.equal(metadata.file, "screens/home/specs/overview.md");
+    assert.deepEqual(metadata.annotationContext, annotationContext);
+    assert.deepEqual(metadata.annotations, annotations);
+    assert.deepEqual(metadata.screenAnnotations.annotations, screenAnnotationSet.annotations);
+    assert.deepEqual(await fs.readFile(outputPath), png);
+
+    await reader.cancel();
+    controller.abort();
   });
 });
 
@@ -499,6 +676,14 @@ test("serves absolute canvas annotations to the CLI and clears them by Screen", 
       name: "Home",
       preview: "specux://screen/home/screen.yml",
       selected: [],
+      screenAnnotations: {
+        screenId: "home",
+        coordinateSpace: "screen canvas pixels",
+        annotations: [annotation],
+        canvasSize,
+        previewStateId: "default",
+        updatedAt: savedBody.updatedAt
+      },
       annotated: true,
     });
     const currentAnnotations = await fetch(`${baseUrl}/api/annotations?screenId=home`);

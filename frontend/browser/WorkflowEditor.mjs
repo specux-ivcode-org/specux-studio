@@ -486,6 +486,7 @@ export class WorkflowEditor {
     services.byId("workflow-source").hidden = !isSource;
     services.byId("workflow-panel-diagram").setAttribute("aria-pressed", String(!isSource));
     services.byId("workflow-panel-source").setAttribute("aria-pressed", String(isSource));
+    services.publishSelection?.();
   }
 
   handleSourceInput(filePath, source) {

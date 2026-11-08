@@ -28,6 +28,7 @@ function usage() {
     "  specux server start [--port <port>] [--project <directory>]",
     "  specux server status [--port <port>]",
     "  specux server state [--port <port>]",
+    "  specux server screenshot --output <file> [--port <port>]",
     "  specux server annotations [clear] [--port <port>] [--screen <id>]",
     "  specux server update [--port <port>]",
     "  specux init [--project <directory>]",
@@ -171,11 +172,48 @@ async function requestServer(port, pathname, options = {}) {
   return body;
 }
 
+async function runEditorScreenshot(port, output) {
+  let response;
+  try {
+    response = await fetch(`http://127.0.0.1:${port}/api/editor-image/capture`, {
+      method: "POST",
+      signal: AbortSignal.timeout(25000)
+    });
+  } catch (error) {
+    throw new Error(
+      `Could not capture an editor image from http://127.0.0.1:${port}/. ` +
+        'Make sure the editor is open in a connected browser.',
+      { cause: error }
+    );
+  }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error || `SpecUX server returned HTTP ${response.status}.`);
+  }
+  if (typeof result.image !== "string" || !result.state) {
+    throw new Error("The editor server returned an invalid image capture.");
+  }
+  const image = Buffer.from(result.image, "base64");
+  if (image.length < 8 ||
+      !image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+    throw new Error("The editor browser did not produce a valid PNG image.");
+  }
+  const outputPath = path.resolve(output);
+  await fs.mkdir(path.dirname(outputPath), { recursive: true });
+  await fs.writeFile(outputPath, image);
+  console.log(JSON.stringify({
+    output: outputPath,
+    ...result.state
+  }, null, 2));
+}
+
 async function runServerCommand(command, args) {
   const allowedFlags = command === "start"
     ? new Set(["--port", "--project"])
     : command === "annotations"
       ? new Set(["--port", "--screen"])
+      : command === "screenshot"
+        ? new Set(["--port", "--output"])
       : new Set(["--port"]);
   const { positional, options } = parseOptions(args, allowedFlags);
   if (command === "annotations") {
@@ -210,6 +248,12 @@ async function runServerCommand(command, args) {
   if (positional.length) throw new Error(`Unexpected argument "${positional[0]}".`);
   if (command === "start") return startServer(options);
   const port = resolveServerPort(options);
+  if (command === "screenshot") {
+    if (!options.output) {
+      throw new Error("Usage: specux server screenshot --output <file> [--port <port>]");
+    }
+    return runEditorScreenshot(port, options.output);
+  }
   if (command === "status") {
     try {
       const status = await requestServer(port, "/api/status");
@@ -711,7 +755,9 @@ async function main(args = process.argv.slice(2)) {
   const [command, ...rest] = args;
   if (command === "server") {
     const [subcommand, ...subArgs] = rest;
-    if (!subcommand) throw new Error("Usage: specux server <start|status|state|annotations|update>");
+    if (!subcommand) {
+      throw new Error("Usage: specux server <start|status|state|screenshot|annotations|update>");
+    }
     return runServerCommand(subcommand, subArgs);
   }
   if (command === "init") return runInitCommand(rest);

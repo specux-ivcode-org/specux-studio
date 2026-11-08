@@ -16,6 +16,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "html2canvas": "^1.4.1",
     "mermaid": "^12.2.0",
     "yaml": "^2.8.1"
   }
