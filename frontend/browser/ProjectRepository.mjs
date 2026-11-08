@@ -147,11 +147,11 @@ export class ProjectRepository {
     const validateVisibility = (placement, location) => {
       if (placement.visibility === undefined) return;
       if (!this.validation.isMapping(placement.visibility)) {
-        throw new Error(`${location}: visibility must be a mapping of preview state ids to booleans.`);
+        throw new Error(`${location}: visibility must be a mapping of Screen State IDs to booleans.`);
       }
       for (const [stateId, visible] of Object.entries(placement.visibility)) {
         if (!previewStateIds.has(stateId) || typeof visible !== "boolean") {
-          throw new Error(`${location}: visibility for "${stateId}" must reference a preview state and be a boolean.`);
+          throw new Error(`${location}: visibility for "${stateId}" must reference a Screen State and be a boolean.`);
         }
       }
     };
@@ -276,17 +276,17 @@ export class ProjectRepository {
     for (const previewState of this.validation.validatePreviewStates(screen.data, screen.file)) {
       for (const [layerId, layerOverride] of Object.entries(previewState.layers || {})) {
         if (!layerIds.has(layerId)) {
-          throw new Error(`${screen.file} preview state "${previewState.id}" references unknown layer "${layerId}".`);
+          throw new Error(`${screen.file} Screen State "${previewState.id}" references unknown layer "${layerId}".`);
         }
         if (!this.validation.isMapping(layerOverride) ||
             Object.keys(layerOverride).some((key) => key !== "visible") ||
             typeof layerOverride.visible !== "boolean") {
-          throw new Error(`${screen.file} preview state "${previewState.id}" layer "${layerId}" must contain a boolean visible value.`);
+          throw new Error(`${screen.file} Screen State "${previewState.id}" layer "${layerId}" must contain a boolean visible value.`);
         }
       }
       for (const [placementId, override] of Object.entries(previewState.placements || {})) {
         const placement = placementsById.get(placementId);
-        const location = `${screen.file} preview state "${previewState.id}" placement "${placementId}"`;
+        const location = `${screen.file} Screen State "${previewState.id}" placement "${placementId}"`;
         if (!placement) throw new Error(`${location} does not reference a placement on this Screen.`);
         if (!this.validation.isMapping(override)) {
           throw new Error(`${location} override must be a mapping.`);

@@ -96,7 +96,7 @@ export class PreviewStateController {
       return;
     }
     const previewState = this.getState(screen.data, stateId);
-    if (!previewState) throw new Error(`Unknown preview state "${stateId}".`);
+    if (!previewState) throw new Error(`Unknown Screen State "${stateId}".`);
     previewState.placements ||= {};
     this.savePlacementOverrides(previewState.placements, basePlacement, instance);
     if (Object.keys(previewState.placements).length === 0) delete previewState.placements;
@@ -165,7 +165,7 @@ export class PreviewStateController {
       return;
     }
     const previewState = this.getState(screen.data, stateId);
-    if (!previewState) throw new Error(`Unknown preview state "${stateId}".`);
+    if (!previewState) throw new Error(`Unknown Screen State "${stateId}".`);
     const baseVisible = this.isInstanceVisible(instance, "default", screen.data);
     if (visible === baseVisible) {
       if (instance.visibility) {
@@ -196,7 +196,7 @@ export class PreviewStateController {
       return;
     }
     const previewState = this.getState(screen.data, stateId);
-    if (!previewState) throw new Error(`Unknown preview state "${stateId}".`);
+    if (!previewState) throw new Error(`Unknown Screen State "${stateId}".`);
     if (visible === this.isLayerVisible(layer, "default", screen.data)) {
       if (previewState.layers) {
         delete previewState.layers[layer.id];
@@ -265,7 +265,7 @@ export class PreviewStateController {
       throw new Error("The Default state cannot contain overrides.");
     }
     const previewState = this.getState(screen.data, stateId);
-    if (!previewState) throw new Error(`Unknown preview state "${stateId}".`);
+    if (!previewState) throw new Error(`Unknown Screen State "${stateId}".`);
     if (selectedOverride?.kind === "layer") {
       const layerOverride = previewState.layers?.[selectedOverride.layerId];
       if (!layerOverride ||
@@ -364,8 +364,9 @@ export class PreviewStateController {
     const { state, services } = this;
     const toolbar = services.byId("preview-state-toolbar");
     const select = services.byId("preview-state-select");
-    const addButton = services.byId("add-preview-state");
-    const states = services.getScreenPreviewStates(screen);
+    const states = [
+      ...services.getScreenPreviewStates(screen)
+    ].sort((left, right) => Number(right.id === "default") - Number(left.id === "default"));
     const activeStateId = this.getActiveId(screen);
     state.activePreviewStateIds.set(state.screens[state.activeScreenIndex].id, activeStateId);
     toolbar.hidden = state.isRenderOnly;
@@ -377,7 +378,6 @@ export class PreviewStateController {
     }
     select.value = activeStateId;
     select.onchange = () => services.switchPreviewState(select.value).catch(services.showFatalError);
-    addButton.onclick = () => services.addPreviewState().catch(services.showFatalError);
   }
 
   rename(stateId, name) {
@@ -385,7 +385,7 @@ export class PreviewStateController {
     const screen = state.screens[state.activeScreenIndex];
     const normalizedName = name.trim();
     if (!normalizedName) {
-      services.showEditorMessage("Preview state needs a name", "Enter a name before leaving this field.");
+      services.showEditorMessage("Screen State needs a name", "Enter a name before leaving this field.");
       this.renderControls(screen.data);
       return;
     }
@@ -414,7 +414,7 @@ export class PreviewStateController {
     const screen = state.screens[state.activeScreenIndex];
     const states = services.getScreenPreviewStates(screen.data);
     if (!states.some((item) => item.id === stateId)) {
-      throw new Error(`Unknown preview state "${stateId}".`);
+      throw new Error(`Unknown Screen State "${stateId}".`);
     }
     const screenIndex = state.activeScreenIndex;
     state.activePreviewStateIds.set(screen.id, stateId);
@@ -463,7 +463,7 @@ export class PreviewStateController {
       );
       button.type = "button";
       button.style.paddingLeft = `${10 + depth * 14}px`;
-      button.setAttribute("aria-label", `Select ${label}; ${visible ? "visible" : "hidden"} in this preview state`);
+      button.setAttribute("aria-label", `Select ${label}; ${visible ? "visible" : "hidden"} in this Screen State`);
       button.addEventListener("click", () => this.services.selectInstance(path, instance.src || null));
       panel.append(button);
       for (const [slotId, children] of Object.entries(instance.slots || {})) {
@@ -480,7 +480,7 @@ export class PreviewStateController {
     const screen = state.screens[state.activeScreenIndex];
     const states = services.getScreenPreviewStates(screen.data);
     const item = states.find((candidate) => candidate.id === stateId);
-    if (!item || !services.confirm(`Delete the "${item.name}" preview state and its overrides?`)) {
+    if (!item || !services.confirm(`Delete the "${item.name}" Screen State and its overrides?`)) {
       return;
     }
     const instancePath = [...state.activeInstancePath];

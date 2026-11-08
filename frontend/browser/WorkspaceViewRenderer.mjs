@@ -273,7 +273,7 @@ export class WorkspaceViewRenderer {
       services.element(
         "p",
         "project-overview-config-note",
-        "Project-wide specs cover behavior shared across Screens. Use a Screen-level spec for page behavior and preview-state activation."
+        "Project-wide specs cover behavior shared across Screens. Use a Screen-level spec for page behavior and Screen State activation."
       )
     );
     sections.append(configuration);

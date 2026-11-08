@@ -97,7 +97,7 @@ function validateAnnotationSet(body) {
       body.canvasSize.height > 16384 ||
       !Array.isArray(body.annotations) || body.annotations.length > MAX_ANNOTATIONS_PER_SCREEN) {
     throw requestError(
-      "Annotations must include a valid screenId, preview state, canvas size, and canvas coordinate space."
+      "Annotations must include a valid screenId, Screen State, canvas size, and canvas coordinate space."
     );
   }
   const ids = new Set();

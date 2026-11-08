@@ -128,13 +128,10 @@ export class InspectorRenderer {
     if (this.screenDetailsTab === "layers") {
       panel.parentElement?.classList?.toggle("layers-details-open", true);
       this.renderLayersDetails(content, screen);
-    } else if (viewingPreviewState) {
-      this.renderPreviewStateDetails(content);
-    } else if (instance) {
-      this.renderInstanceDetails(content, instance, material);
+    } else if (viewingPreviewState || !instance) {
+      this.renderScreenProperties(content, screen);
     } else {
-      this.renderScreenDetails(content, screen);
-      this.renderReviewControls(content);
+      this.renderInstanceDetails(content, instance, material);
     }
   }
 
@@ -557,140 +554,141 @@ export class InspectorRenderer {
     }
   }
 
-  renderPreviewStateDetails(panel) {
+  renderScreenProperties(panel, screen) {
     const { state, services } = this;
-    const screen = state.screens[state.activeScreenIndex];
-    const stateId = services.getActivePreviewStateId(screen.data);
-    const previewState = services.getScreenPreviewStates(screen.data)
+    const screenEntry = state.screens[state.activeScreenIndex];
+    const stateId = services.getActivePreviewStateId(screen);
+    const screenStates = [
+      ...services.getScreenPreviewStates(screen)
+    ].sort((left, right) => Number(right.id === "default") - Number(left.id === "default"));
+    const selectedState = screenStates
       .find((candidate) => candidate.id === stateId);
-    if (!previewState) return;
-    this.appendSection(panel, "Preview state");
+    if (!selectedState) return;
+
+    const isDefault = selectedState.id === "default";
+    const name = isDefault ? screen.name : selectedState.name;
+    const description = isDefault ? screen.description : selectedState.description || "";
+    this.appendSection(panel, "Properties");
     services.appendEditableField(
       panel,
-      "State name",
-      previewState.name,
-      (value) => services.renamePreviewState(stateId, value),
+      "Name",
+      name,
+      (value) => {
+        if (isDefault) {
+          screen.name = value;
+          services.renderNavigation();
+          services.markEdited(screenEntry.file);
+          services.refreshActiveView();
+        } else {
+          services.renamePreviewState(stateId, value);
+        }
+      },
       { id: "preview-state-name-detail" }
     );
-    if (stateId !== "default") {
-      services.appendEditableField(
-        panel,
-        "Description (required)",
-        previewState.description || "",
-        (value) => services.describePreviewState(stateId, value),
-        { id: "preview-state-description-detail", multiline: true, required: true }
-      );
-    }
-    this.appendDetail(panel, "State ID", previewState.id);
-    if (stateId !== "default") {
-      const deleteButton = services.element("button", "spec-action-button", `Delete ${previewState.name}`);
-      deleteButton.type = "button";
-      deleteButton.addEventListener("click", () =>
-        services.deletePreviewState(stateId).catch(services.showFatalError)
-      );
-      panel.append(deleteButton);
-
-      if (this.selectedPreviewStateOverrideStateId !== stateId ||
-          this.selectedPreviewStateOverrideScreenFile !== screen.file) {
-        this.selectedPreviewStateOverrideKey = null;
-        this.selectedPreviewStateOverrideStateId = stateId;
-        this.selectedPreviewStateOverrideScreenFile = screen.file;
-      }
-      const overrides = services.listPreviewStateOverrides(screen.data, stateId);
-      if (!overrides.some((override) =>
-        override.key === this.selectedPreviewStateOverrideKey
-      )) {
-        this.selectedPreviewStateOverrideKey = null;
-      }
-      this.appendSection(panel, "State changes");
-      if (overrides.length === 0) {
-        panel.append(services.element(
-          "div",
-          "readonly-label",
-          "No overrides. This state inherits the Default values."
-        ));
-      } else {
-        const overrideList = services.element("div", "preview-state-override-list");
-        overrideList.setAttribute("role", "list");
-        for (const override of overrides) {
-          const findPlacement = (placements) => {
-            for (const placement of placements || []) {
-              if (placement.id === override.placementId) return placement;
-              const child = findPlacement(placement.children);
-              if (child) return child;
-            }
-            return null;
-          };
-          const placement = override.kind === "placement"
-            ? findPlacement(screen.data.materials)
-            : null;
-          const targetLabel = override.kind === "layer"
-            ? `Layer · ${screen.data.layers.find((layer) =>
-              layer.id === override.layerId
-            )?.name || override.layerId}`
-            : `Placement · ${placement
-              ? services.getElementLabel(placement)
-              : override.placementId}`;
-          const propertyLabels = {
-            visible: "Visibility",
-            position: "Position",
-            size: "Size",
-            rotation: "Rotation",
-            scale: "Transform scale",
-            affine: "Affine transform",
-            attributes: `Attribute · ${override.attributeName}`
-          };
-          const valueLabel = override.property === "visible"
-            ? override.value ? "Visible" : "Hidden"
-            : override.value === null
-              ? "Clears inherited value"
-              : typeof override.value === "object"
-                ? JSON.stringify(override.value)
-                : String(override.value);
-          const row = services.element(
-            "div",
-            `preview-state-override-row${override.key === this.selectedPreviewStateOverrideKey
-              ? " selected"
-              : ""}`
-          );
-          row.setAttribute("role", "listitem");
-          const select = services.element(
-            "button",
-            "preview-state-override-select",
-            `${targetLabel} · ${propertyLabels[override.property] || override.property}`
-          );
-          select.type = "button";
-          select.setAttribute(
-            "aria-pressed",
-            String(override.key === this.selectedPreviewStateOverrideKey)
-          );
-          select.addEventListener("click", () => {
-            this.selectedPreviewStateOverrideKey = override.key;
-            this.selectedPreviewStateOverrideStateId = stateId;
-            services.renderInspector();
-          });
-          const value = services.element("span", "preview-state-override-value", valueLabel);
-          row.append(select, value);
-          overrideList.append(row);
+    services.appendEditableField(
+      panel,
+      "Description",
+      description,
+      (value) => {
+        if (isDefault) {
+          screen.description = value;
+          services.markEdited(screenEntry.file);
+          services.refreshActiveView();
+        } else {
+          services.describePreviewState(stateId, value);
         }
-        panel.append(overrideList);
+      },
+      {
+        id: "preview-state-description-detail",
+        multiline: true,
+        required: !isDefault
       }
+    );
 
-      const selectedOverride = overrides.find((override) =>
-        override.key === this.selectedPreviewStateOverrideKey
+    const screenStatesBox = services.element("section", "screen-property-box");
+    const screenStatesHeader = services.element("div", "screen-editor-box-header");
+    screenStatesHeader.append(
+      services.element("h3", "screen-editor-box-title", "Screen States")
+    );
+    const screenStateActions = services.element("div", "screen-editor-box-actions");
+    const addButton = services.element("button", "spec-action-button", "Create");
+    addButton.type = "button";
+    addButton.setAttribute("aria-label", "Create Screen State");
+    addButton.addEventListener("click", () =>
+      services.addPreviewState().catch(services.showFatalError)
+    );
+    const deleteStateButton = services.element(
+      "button",
+      "spec-action-button screen-state-delete",
+      "Delete"
+    );
+    deleteStateButton.type = "button";
+    deleteStateButton.setAttribute("aria-label", "Delete selected Screen State");
+    deleteStateButton.disabled = isDefault;
+    deleteStateButton.title = isDefault ? "The Default Screen State cannot be deleted." : "";
+    deleteStateButton.addEventListener("click", () => {
+      if (isDefault) return;
+      services.deletePreviewState(stateId).catch(services.showFatalError);
+    });
+    screenStateActions.append(addButton, deleteStateButton);
+    screenStatesHeader.append(screenStateActions);
+    const stateList = services.element("div", "screen-state-list");
+    stateList.setAttribute("role", "list");
+    stateList.setAttribute("aria-label", "Screen States");
+    for (const screenState of screenStates) {
+      const stateLabel = screenState.id === "default" ? "Default" : screenState.name;
+      const row = services.element(
+        "div",
+        `screen-state-row${screenState.id === stateId ? " selected" : ""}`
       );
+      row.setAttribute("role", "listitem");
+      const select = services.element("button", "screen-state-select", stateLabel);
+      select.type = "button";
+      select.setAttribute("aria-pressed", String(screenState.id === stateId));
+      select.addEventListener("click", () =>
+        services.switchPreviewState(screenState.id).catch(services.showFatalError)
+      );
+      row.append(select);
+      stateList.append(row);
+    }
+    screenStatesBox.append(screenStatesHeader, stateList);
+    panel.append(screenStatesBox);
+
+    const overrides = services.listPreviewStateOverrides(screen, stateId);
+    if (this.selectedPreviewStateOverrideStateId !== stateId ||
+        this.selectedPreviewStateOverrideScreenFile !== screenEntry.file) {
+      this.selectedPreviewStateOverrideKey = null;
+      this.selectedPreviewStateOverrideStateId = stateId;
+      this.selectedPreviewStateOverrideScreenFile = screenEntry.file;
+    }
+    if (!overrides.some((override) =>
+      override.key === this.selectedPreviewStateOverrideKey
+    )) {
+      this.selectedPreviewStateOverrideKey = null;
+    }
+    const selectedOverride = overrides.find((override) =>
+      override.key === this.selectedPreviewStateOverrideKey
+    );
+    const stateChangesBox = services.element("section", "screen-property-box");
+    const stateChangesHeader = services.element("div", "screen-editor-box-header");
+    stateChangesHeader.append(
+      services.element("h3", "screen-editor-box-title", "State Changes")
+    );
+    if (!isDefault) {
       const resetButton = services.element(
         "button",
         "spec-action-button",
-        "Reset selected change"
+        "Reset"
       );
       resetButton.type = "button";
+      resetButton.setAttribute("aria-label", "Reset selected change");
+      resetButton.title = "Reset selected change";
       resetButton.disabled = !selectedOverride;
       resetButton.addEventListener("click", () => {
         if (!selectedOverride) return;
         try {
-          services.resetPreviewStateOverride(screen, stateId, selectedOverride);
-          services.markEdited(screen.file);
+          services.resetPreviewStateOverride(screenEntry, stateId, selectedOverride);
+          services.markEdited(screenEntry.file);
           this.selectedPreviewStateOverrideKey = null;
           this.selectedPreviewStateOverrideStateId = null;
           services.renderScreen(state.activeScreenIndex, { previewStateSelected: true })
@@ -699,8 +697,87 @@ export class InspectorRenderer {
           services.showFatalError(error);
         }
       });
-      panel.append(resetButton);
+      stateChangesHeader.append(resetButton);
     }
+    stateChangesBox.append(stateChangesHeader);
+
+    if (overrides.length === 0) {
+      stateChangesBox.append(services.element(
+        "div",
+        "readonly-label",
+        isDefault
+          ? "Default is the base Screen; it has no state changes."
+          : "No changes. This Screen State inherits the Default values."
+      ));
+    } else {
+      const overrideList = services.element("div", "preview-state-override-list");
+      overrideList.setAttribute("role", "list");
+      for (const override of overrides) {
+        const findPlacement = (placements) => {
+          for (const placement of placements || []) {
+            if (placement.id === override.placementId) return placement;
+            const child = findPlacement(placement.children);
+            if (child) return child;
+          }
+          return null;
+        };
+        const placement = override.kind === "placement"
+          ? findPlacement(screen.materials)
+          : null;
+        const targetLabel = override.kind === "layer"
+          ? `Layer · ${screen.layers.find((layer) =>
+            layer.id === override.layerId
+          )?.name || override.layerId}`
+          : `Placement · ${placement
+            ? services.getElementLabel(placement)
+            : override.placementId}`;
+        const propertyLabels = {
+          visible: "Visibility",
+          position: "Position",
+          size: "Size",
+          rotation: "Rotation",
+          scale: "Transform scale",
+          affine: "Affine transform",
+          attributes: `Attribute · ${override.attributeName}`
+        };
+        const valueLabel = override.property === "visible"
+          ? override.value ? "Visible" : "Hidden"
+          : override.value === null
+            ? "Clears inherited value"
+            : typeof override.value === "object"
+              ? JSON.stringify(override.value)
+              : String(override.value);
+        const row = services.element(
+          "div",
+          `preview-state-override-row${override.key === this.selectedPreviewStateOverrideKey
+            ? " selected"
+            : ""}`
+        );
+        row.setAttribute("role", "listitem");
+        const select = services.element(
+          "button",
+          "preview-state-override-select",
+          `${targetLabel} · ${propertyLabels[override.property] || override.property}`
+        );
+        select.type = "button";
+        select.setAttribute(
+          "aria-pressed",
+          String(override.key === this.selectedPreviewStateOverrideKey)
+        );
+        select.addEventListener("click", () => {
+          this.selectedPreviewStateOverrideKey = override.key;
+          this.selectedPreviewStateOverrideStateId = stateId;
+          services.renderInspector();
+        });
+        const value = services.element("span", "preview-state-override-value", valueLabel);
+        value.title = valueLabel;
+        row.append(select, value);
+        overrideList.append(row);
+      }
+      stateChangesBox.append(overrideList);
+    }
+    panel.append(stateChangesBox);
+
   }
 
   renderProjectDetails(panel) {
@@ -770,7 +847,7 @@ export class InspectorRenderer {
       this.appendDetail(
         panel,
         "Format",
-        "OpenSpec behavior contract; use SHOW <state-id> after THEN for preview states."
+        "OpenSpec behavior contract; use SHOW <state-id> after THEN for Screen States."
       );
       return;
     }
@@ -780,98 +857,6 @@ export class InspectorRenderer {
     this.appendDetail(panel, "Screen", screen?.data.name || screen?.id || "Unavailable");
     this.appendDetail(panel, "Element", instance ? services.getElementLabel(instance) : "Unavailable");
     this.appendDetail(panel, "Format", "Markdown behavior guidance; not executable.");
-  }
-
-  renderScreenDetails(panel, screen) {
-    const { state, services } = this;
-    this.appendSection(panel, "Screen");
-    services.appendEditableField(panel, "Name", screen.name, (value) => {
-      screen.name = value;
-      services.renderNavigation();
-      services.markEdited(state.screens[state.activeScreenIndex].file);
-      services.refreshActiveView();
-    });
-    services.appendEditableField(panel, "Description", screen.description, (value) => {
-      screen.description = value;
-      services.markEdited(state.screens[state.activeScreenIndex].file);
-      services.refreshActiveView();
-    }, { multiline: true });
-    services.appendEditableField(panel, "AI note (optional)", screen.note || "", (value) => {
-      if (value) screen.note = value;
-      else delete screen.note;
-      services.markEdited(state.screens[state.activeScreenIndex].file);
-      services.refreshActiveView();
-    }, { multiline: true });
-    this.appendSection(panel, "Screen behavior spec");
-    const pendingSpec = [...state.createdSpecDrafts.entries()].find(([, draft]) =>
-      draft.owner === "screen" && draft.screenFile === state.screens[state.activeScreenIndex].file
-    );
-    const screenSpecPath = screen.spec || pendingSpec?.[0];
-    if (screenSpecPath) {
-      this.appendDetail(panel, "File", screenSpecPath);
-      const openSpec = services.element(
-        "button",
-        "spec-action-button",
-        screen.spec ? "Open Screen behavior spec" : "Open Screen behavior spec draft"
-      );
-      openSpec.type = "button";
-      openSpec.addEventListener("click", () =>
-        services.renderSpecEditor(screenSpecPath, [], "screen").catch((error) =>
-          services.showEditorMessage("Could not open Screen behavior spec", error.message || String(error))
-        )
-      );
-      panel.append(openSpec);
-    } else {
-      this.appendDetail(panel, "File", "No Screen behavior spec attached.");
-      const createSpec = services.element("button", "spec-action-button", "Create Screen behavior spec");
-      createSpec.type = "button";
-      createSpec.addEventListener("click", () =>
-        services.createSpecForScreen().catch((error) =>
-          services.showEditorMessage("Could not create Screen behavior spec", error.message || String(error))
-        )
-      );
-      panel.append(createSpec);
-    }
-    this.appendSection(panel, "Other preview states");
-    const activeStateId = services.getActivePreviewStateId(screen);
-    for (const previewState of services.getScreenPreviewStates(screen)) {
-      if (previewState.id === "default" || previewState.id === activeStateId) continue;
-      const deleteButton = services.element("button", "spec-action-button", `Delete ${previewState.name}`);
-      deleteButton.type = "button";
-      deleteButton.addEventListener("click", () =>
-        services.deletePreviewState(previewState.id).catch(services.showFatalError)
-      );
-      panel.append(deleteButton);
-    }
-    this.appendSection(panel, "Materials in Screen");
-    services.renderScreenInstanceTree(panel, screen.materials || [], [], 0, activeStateId);
-  }
-
-  renderReviewControls(panel) {
-    const { state, services } = this;
-    const review = services.element("div", "readonly-label");
-    const message = services.element(
-      "div",
-      "",
-      state.reviewedInSession
-        ? "Reviewed in this session; not saved."
-        : "Review the rendered preview before accepting the design."
-    );
-    message.id = "review-message";
-    review.append(message);
-    const button = services.element(
-      "button",
-      "review-action",
-      state.reviewedInSession ? "Clear review mark" : "Mark reviewed"
-    );
-    button.type = "button";
-    button.id = "review-toggle";
-    button.addEventListener("click", () => {
-      state.reviewedInSession = !state.reviewedInSession;
-      services.renderInspector();
-    });
-    review.append(button);
-    panel.append(review);
   }
 
   renderInstanceDetails(panel, instance, _material) {

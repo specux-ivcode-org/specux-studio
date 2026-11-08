@@ -15,16 +15,16 @@ This reference is versioned with the SpecUX CLI. Read the target project's `spec
 2. A Screen ID belongs in `project.yml`, not the Screen YAML file. A Screen can be empty while it is being built. Create or reuse an STML Material template, then add an instance referencing it to the Screen's `materials` list.
 3. Define shared visual markup and YAML attribute mappings in the Material's STML file. Reference declared values as `${attributes.<name>}` in the HTML. Set instance-specific values in its `attributes` mapping and each Screen instance's absolute `position`, `size`, and optional `rotation`; instance data and transforms belong to the placement, not the shared Material.
 4. Materials are visual only: do not model inputs, actions, layout groups, or slots.
-5. Keep visual variations such as a message-visible or empty state on the same Screen. Define named `preview-states` in the Screen file; every non-default state needs a concise description. Include `- **SHOW** <state-id>` in a scenario after `THEN` in the Screen-level spec. Set a Material's `visibility` mapping for states where it should be hidden; unspecified states are visible. These are Studio preview configurations, not executable application behavior.
+5. Keep visual variations such as a message-visible or empty state on the same Screen. Define named Screen States in the Screen file's `preview-states` field; every non-default state needs a concise description. Include `- **SHOW** <state-id>` in a scenario after `THEN` in the Screen-level spec. Set a Material's `visibility` mapping for states where it should be hidden; unspecified states are visible. These are visual configurations, not executable application behavior.
 
 ## Behavior specs
 
 Materials do not accept input or trigger actions. Do not invent behavior specs for Label or Button Materials.
 
-- Use a project-level spec for behavior shared across Screens and a Screen-level spec for that Screen's behavior and preview-state activation.
+- Use a project-level spec for behavior shared across Screens and a Screen-level spec for that Screen's behavior and Screen State activation.
 - Add Markdown links such as `[Home](specux://screen/home/screen.yml)`, `[Dialog state](specux://screen/home/screen.yml?state=dialog-open)`, or `[Save button](specux://screen/home/screen.yml?placement=save-button)` to control the behavior spec editor's preview. Element specs in `screens/<screen-id>/specs/element-<placement-id>.md` must link to their owning placement; do not use `element-id` YAML front matter.
 - Keep shared Material markup and variable definitions in its STML file and instance-specific attribute values and transforms in Screen YAML; do not add individual Material behavior specs.
-- Write each spec in OpenSpec format with `## Purpose`, `## Requirements`, named `### Requirement:` headings, immediate normative statements, and named `#### Scenario:` sections. Scenario steps use bold `GIVEN` (optional), `WHEN`, `THEN`, and `AND` bullet keywords. Screen specs use `SHOW <state-id>` after `THEN` and reference every non-default preview state. Keep requirements observable and testable; do not include implementation plans or repeat visual details already shown by the mockup.
+- Write each spec in OpenSpec format with `## Purpose`, `## Requirements`, named `### Requirement:` headings, immediate normative statements, and named `#### Scenario:` sections. Scenario steps use bold `GIVEN` (optional), `WHEN`, `THEN`, and `AND` bullet keywords. Screen specs use `SHOW <state-id>` after `THEN` and reference every non-default Screen State. Keep requirements observable and testable; do not include implementation plans or repeat visual details already shown by the mockup.
 - Replace example draft content with behavior derived from the user's intent and project context. Do not save an unchanged example draft.
 
 Before finishing, inspect the complete Screen and verify every Material reference resolves to a valid STML file and each placement has intentional absolute transform values.
@@ -35,7 +35,7 @@ Before finishing, inspect the complete Screen and verify every Material referenc
 2. Render each changed Screen to inspect the complete composition:
 
    ```sh
-   specux render <screen-id> --format image [--state <preview-state-id>] --output <image-file>
+   specux render <screen-id> --format image [--state <screen-state-id>] --output <image-file>
    ```
 
    Use `--format html` to inspect generated markup. If Chromium is not found, set `SPECUX_BROWSER` to its executable path.
@@ -49,7 +49,7 @@ Use `specux server selected` when the user asks about the browser editor's curre
 
 - [ ] Does every Material reference resolve to a valid STML definition with one HTML root element?
 - [ ] Does every Material have an absolute position and a valid size and rotation?
-- [ ] Are alternate visual states represented as Screen preview states with Material visibility?
+- [ ] Are alternate visual states represented as Screen States with Material visibility?
 - [ ] Does the installed CLI version from `specux version` match the project's `specux` value?
 - [ ] Does `specux validate` succeed without errors?
 - [ ] Have changed Screens been rendered and visually inspected when rendering is available?

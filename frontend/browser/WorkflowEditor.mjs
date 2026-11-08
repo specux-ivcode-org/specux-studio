@@ -75,7 +75,7 @@ export function parseWorkflowLink(href) {
   const stateId = url.searchParams.get("state") ?? "default";
   if ((placementId !== null && !isValidId(placementId)) ||
       !isValidId(stateId)) {
-    throw new Error(`Invalid placement or preview state in workflow link "${href}".`);
+    throw new Error(`Invalid placement or Screen State in workflow link "${href}".`);
   }
 
   return {

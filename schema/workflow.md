@@ -7,7 +7,7 @@ The Studio parses and renders the Mermaid source in the workflow editor. Use **D
 Use Mermaid `click` directives to link nodes to the Screen preview. Preview links identify the Screen file and use query parameters for the optional placement and state. Node labels are display text and do not determine their link target:
 
 - `click <node-id> href "specux://screen/<screen-id>/screen.yml"` selects a Screen and shows its Default state.
-- Add `?placement=<placement-id>` to select a placement and `&state=<state-id>` to select a named preview state. For example, `specux://screen/home/screen.yml?placement=dialog-save&state=add-item-open`.
+- Add `?placement=<placement-id>` to select a placement and `&state=<state-id>` to select a named Screen State. For example, `specux://screen/home/screen.yml?placement=dialog-save&state=add-item-open`.
 
 Clicking a linked node updates the Screen preview above the diagram. Nodes without a SpecUX `click` link remain in the diagram but do not change the preview. Use node IDs as the `click` target; the visible label can be any descriptive text.
 

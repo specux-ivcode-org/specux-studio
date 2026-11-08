@@ -51,32 +51,32 @@
       if (!isMapping(state) || typeof state.id !== "string" || !/^[a-z][a-z0-9-]*$/.test(state.id)) {
         throw new Error(`${source} preview-states must have an id using lowercase letters, numbers, and hyphens.`);
       }
-      if (ids.has(state.id)) throw new Error(`${source} defines preview state "${state.id}" more than once.`);
+      if (ids.has(state.id)) throw new Error(`${source} defines Screen State "${state.id}" more than once.`);
       if (typeof state.name !== "string" || !state.name.trim()) {
-        throw new Error(`${source} preview state "${state.id}" must have a non-empty name.`);
+        throw new Error(`${source} Screen State "${state.id}" must have a non-empty name.`);
       }
       if (state.id !== "default" &&
           (typeof state.description !== "string" || !state.description.trim())) {
-        throw new Error(`${source} preview state "${state.id}" must have a non-empty description.`);
+        throw new Error(`${source} Screen State "${state.id}" must have a non-empty description.`);
       }
       if (state.description !== undefined &&
           (typeof state.description !== "string" || !state.description.trim())) {
-        throw new Error(`${source} preview state "${state.id}" description must be a non-empty string.`);
+        throw new Error(`${source} Screen State "${state.id}" description must be a non-empty string.`);
       }
       if (state.layers !== undefined && !isMapping(state.layers)) {
-        throw new Error(`${source} preview state "${state.id}" layers must be a mapping.`);
+        throw new Error(`${source} Screen State "${state.id}" layers must be a mapping.`);
       }
       if (state.placements !== undefined && !isMapping(state.placements)) {
-        throw new Error(`${source} preview state "${state.id}" placements must be a mapping.`);
+        throw new Error(`${source} Screen State "${state.id}" placements must be a mapping.`);
       }
       if (state.id === "default" &&
           (Object.keys(state.layers || {}).length || Object.keys(state.placements || {}).length)) {
-        throw new Error(`${source} default preview state cannot contain overrides.`);
+        throw new Error(`${source} default Screen State cannot contain overrides.`);
       }
       if (Object.keys(state).some((key) =>
         !["id", "name", "description", "layers", "placements"].includes(key)
       )) {
-        throw new Error(`${source} preview state "${state.id}" has an unsupported property.`);
+        throw new Error(`${source} Screen State "${state.id}" has an unsupported property.`);
       }
       ids.add(state.id);
     }
@@ -387,7 +387,7 @@
         previewState.id === reference.stateId
       )) {
         throw errorAt(
-          `${context}: preview state "${reference.stateId}" is not available on Screen "${screen.id}".`,
+          `${context}: Screen State "${reference.stateId}" is not available on Screen "${screen.id}".`,
           source,
           lineOffset(source, reference.lineIndex) + reference.columnIndex
         );
@@ -568,7 +568,7 @@
       if (!stateIds.has(stateId)) {
         const documentContext = reference.path ? `${context} (${reference.path})` : context;
         throw errorAt(
-          `${documentContext}: linked spec references unknown preview state "${stateId}".`,
+          `${documentContext}: linked spec references unknown Screen State "${stateId}".`,
           reference.source,
           reference.offset
         );
@@ -579,7 +579,7 @@
       .map((state) => state.id);
     if (missingStateIds.length) {
       throw new Error(
-        `${context}: specs linked to the Screen must reference every non-default preview state with SHOW: ${missingStateIds.join(", ")}.`
+        `${context}: specs linked to the Screen must reference every non-default Screen State with SHOW: ${missingStateIds.join(", ")}.`
       );
     }
   }

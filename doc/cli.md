@@ -19,7 +19,7 @@ Run the commands as `specux ...` when the package's `bin` entry is available, or
 | `specux validate [--project <directory>]` | Validate reusable Material STML files, Screen placements, discovered project files, local file references, and references between resources. |
 | `specux version` | Print the SpecUX format version supported by this CLI. `specux --version` is an alias. |
 | `specux schema [project\|screen\|material\|theme\|spec\|workflow\|reference]` | Print Markdown authoring guidance. Use `reference` for the version-matched authoring workflow; without a type, print all guidance. |
-| `specux render <screen> --format <html\|image> [--state <id>] [--output <file>] [--annotations] [--project <directory>]` | Render a Screen by ID, optionally using a named preview state, as HTML or a PNG image. Image output can include temporary editor annotations. |
+| `specux render <screen> --format <html\|image> [--state <id>] [--output <file>] [--annotations] [--project <directory>]` | Render a Screen by ID, optionally using a named Screen State, as HTML or a PNG image. Image output can include temporary editor annotations. |
 
 `--port` selects the local server port for `server` commands. Server commands default to port `3000` or the `SPECUX_PORT` / `PORT` environment setting.
 
@@ -53,7 +53,7 @@ specux render sign-in --format image --output sign-in.png
 specux render home --format image --state add-item-open --output home-dialog.png
 ```
 
-`--state <id>` selects a Screen's `preview-states[].id` for either output format. If omitted, the `default` state is rendered. The command reports an error when the state ID is not defined on that Screen.
+`--state <id>` selects a Screen State ID stored in `preview-states[].id` for either output format. If omitted, the `default` state is rendered. The command reports an error when the state ID is not defined on that Screen.
 
 Add `--annotations` to render the temporary annotation marks over the Screen image. The editor sends only structured annotation data to the local server; it does not capture or upload a preview image. The CLI reads the project-keyed annotation cache and draws the vector overlay during its normal Screen render, so output is independent of the editor viewport and zoom. If `--state` is supplied, it must match the state associated with the cached annotations; otherwise the CLI uses that state. Image rendering still requires Chromium. If there is no current annotation cache, the CLI reports that immediately:
 

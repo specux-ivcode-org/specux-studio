@@ -75,7 +75,6 @@ let activeSpecScreenFile = null;
 let activeSpecInstancePath = [];
 let activeSpecOwner = "instance";
 let activeProjectFilePath = null;
-let reviewedInSession = false;
 let hasEdits = false;
 const dirtyFiles = new Map();
 const invalidYamlFiles = new Map();
@@ -278,7 +277,6 @@ const projectPersistence = new ProjectPersistence({
     set editVersion(value) { editVersion = value; },
     get hasEdits() { return hasEdits; },
     set hasEdits(value) { hasEdits = value; },
-    set reviewedInSession(value) { reviewedInSession = value; },
     get specSources() { return specSources; },
     get createdSpecFiles() { return createdSpecFiles; },
     get createdScreenFiles() { return createdScreenFiles; },
@@ -776,9 +774,7 @@ const inspectorRenderer = new InspectorRenderer({
     get viewingTheme() { return viewingTheme; },
     get viewingSpec() { return viewingSpec; },
     get viewingWorkflow() { return viewingWorkflow; },
-    get viewingMaterialFile() { return viewingMaterialFile; },
-    get reviewedInSession() { return reviewedInSession; },
-    set reviewedInSession(value) { reviewedInSession = value; }
+    get viewingMaterialFile() { return viewingMaterialFile; }
   },
   services: {
     byId,
@@ -789,6 +785,8 @@ const inspectorRenderer = new InspectorRenderer({
     appendEditableField,
     renamePreviewState,
     describePreviewState,
+    switchPreviewState,
+    addPreviewState,
     deletePreviewState,
     showFatalError,
     getElementLabel,
@@ -1079,7 +1077,6 @@ async function loadProject(selectionToRestore = null) {
     invalidWorkflowFiles.clear();
     byId("create-screen").disabled = false;
     updateSaveControls();
-    reviewedInSession = false;
     applyTheme();
     renderNavigation();
     renderScreenSelector();
@@ -1090,7 +1087,7 @@ async function loadProject(selectionToRestore = null) {
         const renderScreenData = screens[renderIndex].data;
         if (!getScreenPreviewStates(renderScreenData).some((state) => state.id === renderRequestedState)) {
           throw new Error(
-            `Unknown preview state "${renderRequestedState}" for Screen "${renderRequestedScreen}".`
+            `Unknown Screen State "${renderRequestedState}" for Screen "${renderRequestedScreen}".`
           );
         }
         activePreviewStateIds.set(screens[renderIndex].id, renderRequestedState);
@@ -1330,7 +1327,7 @@ async function showSpecReference(reference, filePath) {
     previewState.id === reference.stateId
   )) {
     throw new Error(
-      `Preview State "${reference.stateId}" is not available on Screen "${screen.id}".`
+      `Screen State "${reference.stateId}" is not available on Screen "${screen.id}".`
     );
   }
 
@@ -1392,7 +1389,7 @@ async function showWorkflowNode(link, ownerScreenIndex, workflowPath) {
   if (!getScreenPreviewStates(screen.data).some((previewState) =>
     previewState.id === stateId
   )) {
-    throw new Error(`Preview State "${stateId}" is not available on Screen "${screen.id}".`);
+    throw new Error(`Screen State "${stateId}" is not available on Screen "${screen.id}".`);
   }
 
   let instancePath = [];

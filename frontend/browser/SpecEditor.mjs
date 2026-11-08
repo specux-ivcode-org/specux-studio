@@ -553,7 +553,7 @@ export class SpecEditor {
         `[${previewState.name}](specux://screen/${screen.id}/screen.yml?state=${previewState.id})`
       )
     ].join("\n");
-    const source = `# ${heading} behavior\n\n${previewLinks}\n\n## Purpose\n\nDescribe when this Screen's named visual states become active.\n\n## Requirements\n\n### Requirement: Show the matching preview state\nThe Screen SHALL show each named preview state when its activation condition is met.\n\n${scenarios}\n`;
+    const source = `# ${heading} behavior\n\n${previewLinks}\n\n## Purpose\n\nDescribe when this Screen's named visual states become active.\n\n## Requirements\n\n### Requirement: Show the matching Screen State\nThe Screen SHALL show each named Screen State when its activation condition is met.\n\n${scenarios}\n`;
     state.specSources.set(filePath, source);
     state.createdSpecDrafts.set(filePath, {
       owner: "screen",

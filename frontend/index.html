@@ -17,6 +17,22 @@
 <body>
   <a class="skip-link" href="#main">Skip to screen preview</a>
   <header class="topbar">
+    <button
+      class="panel-mode-button"
+      id="sidebar-mode"
+      type="button"
+      aria-controls="project-sidebar"
+      data-side="left"
+      data-mode="show"
+      title="Project structure: Show. Activate to switch to Hover to show."
+    >
+      <svg class="panel-mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect>
+        <path d="M8.5 5v14"></path>
+        <rect class="panel-mode-icon__show" x="4.5" y="5.5" width="3" height="13" rx=".75" fill="currentColor" stroke="none"></rect>
+        <path class="panel-mode-icon__hover" d="M4.5 6v12" stroke-dasharray="1 2" stroke-width="2"></path>
+      </svg>
+    </button>
     <div class="brand"><span class="brand-mark">S</span><span>SpecUX Studio</span></div>
     <div class="workspace-context" id="workspace-context">
       <div class="context-title">
@@ -27,10 +43,26 @@
     <div class="topbar-spacer"></div>
     <button class="save-button" id="save-project" type="button" disabled>Save</button>
     <button class="reset-button" id="reset-project" type="button">Reset from files</button>
+    <button
+      class="panel-mode-button"
+      id="inspector-mode"
+      type="button"
+      aria-controls="details-inspector"
+      data-side="right"
+      data-mode="show"
+      title="Properties: Show. Activate to switch to Hover to show."
+    >
+      <svg class="panel-mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect>
+        <path d="M8.5 5v14"></path>
+        <rect class="panel-mode-icon__show" x="4.5" y="5.5" width="3" height="13" rx=".75" fill="currentColor" stroke="none"></rect>
+        <path class="panel-mode-icon__hover" d="M4.5 6v12" stroke-dasharray="1 2" stroke-width="2"></path>
+      </svg>
+    </button>
   </header>
 
   <div class="workspace" id="workspace">
-    <aside class="sidebar" aria-label="SpecUX project files">
+    <aside class="sidebar" id="project-sidebar" aria-label="SpecUX project files">
       <div class="screen-quick-selector" id="screen-quick-selector">
         <button
           class="screen-selector-toggle"
@@ -224,11 +256,10 @@
         </div>
       </div>
       <section class="stage" id="screen-stage" aria-label="Screen canvas">
-        <div class="preview-state-toolbar responsive-toolbar" id="preview-state-toolbar" aria-label="Screen view and preview states" hidden>
-          <div class="preview-state-controls" id="preview-state-controls" role="group" aria-label="Preview state" data-overflow-group data-overflow-priority="4">
-            <label class="preview-state-label" for="preview-state-select">Preview state</label>
+        <div class="preview-state-toolbar responsive-toolbar" id="preview-state-toolbar" aria-label="Screen view and Screen States" hidden>
+          <div class="preview-state-controls" id="preview-state-controls" role="group" aria-label="Screen State" data-overflow-group data-overflow-priority="4">
+            <label class="preview-state-label" for="preview-state-select">Screen State</label>
             <select class="preview-state-select" id="preview-state-select"></select>
-            <button class="preview-state-add" id="add-preview-state" type="button">Add state</button>
           </div>
           <div class="screen-selection-tools" role="group" aria-label="Canvas selection tools" data-overflow-group data-overflow-priority="2">
             <button
@@ -601,12 +632,28 @@
       title="Drag or use the arrow keys to resize the details panel"
       tabindex="0"
     ></div>
-    <aside class="inspector" aria-label="Selected item details">
+    <aside class="inspector" id="details-inspector" aria-label="Selected item details">
       <div id="inspector-content">
         <h2 class="panel-heading">Details</h2>
         <div class="loading-message">Loading details...</div>
       </div>
     </aside>
+    <button
+      class="panel-edge-trigger sidebar-edge-trigger"
+      id="sidebar-edge-trigger"
+      type="button"
+      aria-label="Show project structure"
+      aria-controls="project-sidebar"
+      hidden
+    ></button>
+    <button
+      class="panel-edge-trigger inspector-edge-trigger"
+      id="inspector-edge-trigger"
+      type="button"
+      aria-label="Show properties"
+      aria-controls="details-inspector"
+      hidden
+    ></button>
   </div>
   <div class="context-menu screen-placement-context-menu" id="screen-placement-context-menu" role="menu" aria-label="Placement actions" hidden>
     <button id="screen-placement-context-group" type="button" role="menuitem" tabindex="-1">Group</button>

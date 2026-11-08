@@ -343,7 +343,7 @@ test("validates sparse named-state placement and layer overrides", async () => {
     await fs.writeFile(screenPath, YAML.stringify(screen));
     result = await validateProject(root);
     assert.ok(result.errors.some((error) =>
-      error.includes("default preview state cannot contain overrides")
+      error.includes("default Screen State cannot contain overrides")
     ));
   } finally {
     await fs.rm(root, { recursive: true, force: true });
@@ -518,7 +518,7 @@ test("derives Element spec ownership and preview targets from SpecUX links", asy
   assert.throws(() => validation.validateSpecScreenReferences(
     "[Missing state](specux://screen/home/screen.yml?state=unknown)",
     screens
-  ), /preview state "unknown" is not available/);
+  ), /Screen State "unknown" is not available/);
   assert.throws(() => validation.parseSpecScreenReferences(
     "[Bad query](specux://screen/home/screen.yml?state=dialog-open&extra=value)"
   ), /one placement and one state parameter/);
@@ -539,10 +539,10 @@ test("validates Screen spec references against the loaded project", async () => 
 
     const result = await validateProject(root);
     assert.ok(result.errors.some((error) =>
-      error.includes('preview state "missing" is not available on Screen "home"')
+      error.includes('Screen State "missing" is not available on Screen "home"')
     ));
     assert.ok(result.errors.some((error) =>
-      error.includes('preview state "missing" is not available on Screen "home"') &&
+      error.includes('Screen State "missing" is not available on Screen "home"') &&
       /\(line 1, column 1\)$/.test(error)
     ));
   } finally {

@@ -98,8 +98,8 @@ function getYamlErrorPath(document, source, lineOffset, detail) {
     const children = [...indexedContext[0].matchAll(/\.children\[(\d+)\]/g)];
     for (const child of children) pathSegments.push("children", Number(child[1]));
     message = detail.slice(indexedContext[0].length).replace(/^[\s:]+/, "");
-  } else if (detail.startsWith("preview state ")) {
-    const stateId = detail.match(/^preview state "([^"]+)"/)?.[1];
+  } else if (detail.startsWith("Screen State ")) {
+    const stateId = detail.match(/^Screen State "([^"]+)"/)?.[1];
     const states = document.toJS()["preview-states"];
     const stateIndex = states?.findIndex((state) => state.id === stateId) ?? -1;
     if (stateIndex >= 0) pathSegments.push("preview-states", stateIndex);
@@ -107,8 +107,8 @@ function getYamlErrorPath(document, source, lineOffset, detail) {
     const placementId = detail.match(/placement "([^"]+)"/)?.[1];
     if (layerId) pathSegments.push("layers", layerId);
     if (placementId) pathSegments.push("placements", placementId);
-    message = detail.replace(/^preview state "[^"]+"\s*/, "");
-  } else if (detail.includes("must reference every non-default preview state with SHOW:")) {
+    message = detail.replace(/^Screen State "[^"]+"\s*/, "");
+  } else if (detail.includes("must reference every non-default Screen State with SHOW:")) {
     const stateId = detail.match(/SHOW:\s*([a-z][a-z0-9-]*)/)?.[1];
     const states = document.toJS()["preview-states"];
     const stateIndex = states?.findIndex((state) => state.id === stateId) ?? -1;
@@ -536,15 +536,15 @@ async function validateProject(projectRoot) {
     function validateVisibility(placement, location) {
       if (placement.visibility === undefined) return;
       if (!validation.isMapping(placement.visibility)) {
-        errors.push(`${location}: visibility must be a mapping of preview state ids to booleans.`);
+        errors.push(`${location}: visibility must be a mapping of Screen State IDs to booleans.`);
         return;
       }
       for (const [stateId, visible] of Object.entries(placement.visibility)) {
         if (!previewStateIds.has(stateId)) {
-          errors.push(`${location}: visibility references unknown preview state "${stateId}".`);
+          errors.push(`${location}: visibility references unknown Screen State "${stateId}".`);
         }
         if (typeof visible !== "boolean") {
-          errors.push(`${location}: visibility for preview state "${stateId}" must be a boolean.`);
+          errors.push(`${location}: visibility for Screen State "${stateId}" must be a boolean.`);
         }
       }
     }
@@ -678,17 +678,17 @@ async function validateProject(projectRoot) {
     for (const previewState of previewStates) {
       for (const [layerId, layerOverride] of Object.entries(previewState.layers || {})) {
         if (!layerIds.has(layerId)) {
-          errors.push(`${screen.file} preview state "${previewState.id}" references unknown layer "${layerId}".`);
+          errors.push(`${screen.file} Screen State "${previewState.id}" references unknown layer "${layerId}".`);
         }
         if (!validation.isMapping(layerOverride) ||
             Object.keys(layerOverride).some((key) => key !== "visible") ||
             typeof layerOverride.visible !== "boolean") {
-          errors.push(`${screen.file} preview state "${previewState.id}" layer "${layerId}" must contain a boolean visible value.`);
+          errors.push(`${screen.file} Screen State "${previewState.id}" layer "${layerId}" must contain a boolean visible value.`);
         }
       }
       for (const [placementId, override] of Object.entries(previewState.placements || {})) {
         const material = placementsById.get(placementId);
-        const location = `${screen.file} preview state "${previewState.id}" placement "${placementId}"`;
+        const location = `${screen.file} Screen State "${previewState.id}" placement "${placementId}"`;
         if (!material) {
           errors.push(`${location} does not reference a placement on this Screen.`);
           continue;
@@ -821,7 +821,7 @@ async function validateProject(projectRoot) {
         screen.file
       );
     } catch (error) {
-      pushError(errors, `${screen.file} preview-state specs`, error);
+      pushError(errors, `${screen.file} Screen State specs`, error);
     }
   }
 

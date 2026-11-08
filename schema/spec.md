@@ -1,6 +1,6 @@
 # Behavior Spec File
 
-A behavior spec is a Markdown file linked from `project.yml` or a Screen YAML file through its optional `spec` property. A project-level spec covers requirements across multiple Screens or throughout the project and is saved under `specux/specs/`. A Screen-level spec covers page behavior and, when preview states exist, documents their activation conditions; save it as `specux/screens/<screen-id>/specs/screen.md`. Materials are visual only and do not have individual behavior specs. All paths are relative to `specux/`.
+A behavior spec is a Markdown file linked from `project.yml` or a Screen YAML file through its optional `spec` property. A project-level spec covers requirements across multiple Screens or throughout the project and is saved under `specux/specs/`. A Screen-level spec covers page behavior and, when Screen States exist, documents their activation conditions; save it as `specux/screens/<screen-id>/specs/screen.md`. Materials are visual only and do not have individual behavior specs. All paths are relative to `specux/`.
 
 The project may reference one project-wide spec, and each Screen may reference one Screen-level spec. Both use OpenSpec's structured behavior-spec format. Specs are declarative, testable guidance about observable behavior, not executable code or implementation plans.
 
@@ -9,7 +9,7 @@ Every spec must contain a non-empty `## Purpose` section followed by a `## Requi
 - Uses a `### Requirement: <name>` heading with a descriptive name shorter than 50 characters.
 - Is followed immediately by a normative statement using `SHALL`, `MUST`, `SHOULD`, or `MAY`.
 - Contains at least one `#### Scenario: <name>` with observable, verifiable behavior.
-- Expresses scenario steps as bullets using bold `GIVEN` (optional), `WHEN`, `THEN`, and `AND` keywords. Every scenario must include at least one `WHEN` and one `THEN`. A spec linked to a Screen or one of its Elements may also use `SHOW <state-id>` after `THEN` to identify the preview state representing that scenario's outcome.
+- Expresses scenario steps as bullets using bold `GIVEN` (optional), `WHEN`, `THEN`, and `AND` keywords. Every scenario must include at least one `WHEN` and one `THEN`. A spec linked to a Screen or one of its Elements may also use `SHOW <state-id>` after `THEN` to identify the Screen State representing that scenario's outcome.
 
 Keep requirements focused on behavior, outcomes, constraints, and edge cases. Do not repeat visual details already clear from the Screen mockup unless needed to explain behavior. Avoid implementation details such as libraries, internal functions, or step-by-step coding plans.
 
@@ -37,7 +37,7 @@ spec: specs/project-behavior.md
 spec: screens/home/specs/screen.md
 ```
 
-For a Screen with non-default preview states, reference every state from the Screen's spec:
+For a Screen with non-default Screen States, reference every state from the Screen's spec:
 
 ```markdown
 - **WHEN** the user opens the Add item dialog

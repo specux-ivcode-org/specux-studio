@@ -573,7 +573,7 @@ async function runRenderCommand(args) {
       !screen.data["preview-states"]?.some((state) => state.id === options.state)) {
     const states = screen.data["preview-states"] || [{ id: "default" }];
     throw new Error(
-      `Unknown preview state "${options.state}" for Screen "${screen.id}". Available states: ${states.map((state) => state.id).join(", ")}.`
+      `Unknown Screen State "${options.state}" for Screen "${screen.id}". Available states: ${states.map((state) => state.id).join(", ")}.`
     );
   }
   let renderState = options.state;
@@ -595,14 +595,14 @@ async function runRenderCommand(args) {
     }
     if (options.state !== undefined && annotationSet.previewStateId !== options.state) {
       throw new Error(
-        `The cached annotations are for preview state "${annotationSet.previewStateId}", not "${options.state}". Select that state and add an annotation to refresh the cache.`
+        `The cached annotations are for Screen State "${annotationSet.previewStateId}", not "${options.state}". Select that state and add an annotation to refresh the cache.`
       );
     }
     renderState = options.state || annotationSet.previewStateId;
     if (renderState !== "default" &&
         !screen.data["preview-states"]?.some((state) => state.id === renderState)) {
       throw new Error(
-        `The cached annotations reference unknown preview state "${renderState}" for Screen "${screen.id}".`
+        `The cached annotations reference unknown Screen State "${renderState}" for Screen "${screen.id}".`
       );
     }
     renderAnnotations = {

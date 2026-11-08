@@ -1204,7 +1204,7 @@ test("shows one-line layers above placements for the selected layer", async () =
   assert.equal(singleLayerDelete.title, "At least one layer must remain");
 });
 
-test("selects and resets one named-state change from Preview State details", async () => {
+test("combines Screen and Screen State properties and resets one state change", async () => {
   const { InspectorRenderer } = await import("../frontend/browser/InspectorRenderer.mjs");
   function element(tagName, className = "", textContent = "") {
     const listeners = new Map();
@@ -1228,13 +1228,14 @@ test("selects and resets one named-state change from Preview State details", asy
   const screen = {
     file: "screens/home/screen.yml",
     data: {
+      name: "Home",
+      description: "The home screen.",
       layers: [{ id: "base", name: "Base" }],
       materials: [{ id: "dialog-title", label: "Dialog title" }],
-      "preview-states": [{
-        id: "dialog",
-        name: "Dialog",
-        description: "Show a dialog."
-      }]
+      "preview-states": [
+        { id: "default", name: "Default" },
+        { id: "dialog", name: "Dialog", description: "Show a dialog." }
+      ]
     }
   };
   const override = {
@@ -1247,32 +1248,45 @@ test("selects and resets one named-state change from Preview State details", asy
   const resetCalls = [];
   const editedFiles = [];
   const renderedScreens = [];
+  const editableFields = [];
+  const switchedStates = [];
+  let addedStates = 0;
+  const deletedStates = [];
+  let activeStateId = "dialog";
   let renderer;
   const panel = element("div");
   renderer = new InspectorRenderer({
     state: { screens: [screen], activeScreenIndex: 0 },
     services: {
       element,
-      getActivePreviewStateId: () => "dialog",
+      getActivePreviewStateId: () => activeStateId,
       getScreenPreviewStates: (data) => data["preview-states"],
-      appendEditableField() {},
-      listPreviewStateOverrides: () => [override],
+      appendEditableField(...args) { editableFields.push(args); },
+      listPreviewStateOverrides: (_screen, stateId) =>
+        stateId === "default" ? [] : [override],
       getElementLabel: (placement) => placement.label,
       renderInspector() {
         panel.replaceChildren();
-        renderer.renderPreviewStateDetails(panel);
+        renderer.renderScreenProperties(panel, screen.data);
       },
       resetPreviewStateOverride: (...args) => { resetCalls.push(args); },
       markEdited: (file) => editedFiles.push(file),
       renderScreen: async (...args) => { renderedScreens.push(args); },
-      deletePreviewState: async () => {},
+      renderNavigation() {},
+      refreshActiveView() {},
+      switchPreviewState: async (stateId) => {
+        activeStateId = stateId;
+        switchedStates.push(stateId);
+      },
+      addPreviewState: async () => { addedStates += 1; },
+      deletePreviewState: async (stateId) => { deletedStates.push(stateId); },
       renamePreviewState() {},
       describePreviewState() {},
       showFatalError(error) { throw error; }
     }
   });
 
-  renderer.renderPreviewStateDetails(panel);
+  renderer.renderScreenProperties(panel, screen.data);
   const findElement = (node, predicate) => {
     if (predicate(node)) return node;
     for (const child of node.children || []) {
@@ -1281,13 +1295,19 @@ test("selects and resets one named-state change from Preview State details", asy
     }
     return null;
   };
+  assert.deepEqual(editableFields.slice(0, 2).map((field) => field.slice(1, 3)), [
+    ["Name", "Dialog"],
+    ["Description", "Show a dialog."]
+  ]);
   const select = findElement(panel, (node) =>
     node.className === "preview-state-override-select"
   );
   assert.equal(select.textContent, "Placement · Dialog title · Position");
   select.listeners.get("click")();
 
-  const reset = findElement(panel, (node) => node.textContent === "Reset selected change");
+  const reset = findElement(panel, (node) =>
+    node.attributes.get("aria-label") === "Reset selected change"
+  );
   assert.equal(reset.disabled, false);
   reset.listeners.get("click")();
   await Promise.resolve();
@@ -1298,6 +1318,35 @@ test("selects and resets one named-state change from Preview State details", asy
   assert.equal(resetCalls[0][2], override);
   assert.deepEqual(editedFiles, [screen.file]);
   assert.deepEqual(renderedScreens, [[0, { previewStateSelected: true }]]);
+  const createState = findElement(panel, (node) =>
+    node.attributes.get("aria-label") === "Create Screen State"
+  );
+  const deleteState = findElement(panel, (node) =>
+    node.attributes.get("aria-label") === "Delete selected Screen State"
+  );
+  assert.equal(deleteState.disabled, false);
+  await createState.listeners.get("click")();
+  await deleteState.listeners.get("click")();
+
+  activeStateId = "default";
+  panel.replaceChildren();
+  renderer.renderScreenProperties(panel, screen.data);
+  assert.deepEqual(editableFields.slice(-2).map((field) => field.slice(1, 3)), [
+    ["Name", "Home"],
+    ["Description", "The home screen."]
+  ]);
+  const stateList = findElement(panel, (node) => node.className === "screen-state-list");
+  assert.equal(stateList.children[0].children[0].textContent, "Default");
+  assert.equal(stateList.children[0].children.length, 1);
+  assert.equal(stateList.children[1].children.length, 1);
+  const defaultDeleteState = findElement(panel, (node) =>
+    node.attributes.get("aria-label") === "Delete selected Screen State"
+  );
+  assert.equal(defaultDeleteState.disabled, true);
+  await stateList.children[0].children[0].listeners.get("click")();
+  assert.deepEqual(switchedStates, ["default"]);
+  assert.equal(addedStates, 1);
+  assert.deepEqual(deletedStates, ["dialog"]);
 });
 
 test("reuses one Material file with independent placement transforms", async () => {

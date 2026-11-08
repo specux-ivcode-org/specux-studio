@@ -17,12 +17,7 @@ export class ProjectPersistence {
     }
     state.dirtyFiles.set(filePath, ++state.editVersion);
     state.hasEdits = true;
-    state.reviewedInSession = false;
     this.updateSaveControls();
-    const message = this.services.byId("review-message");
-    const button = this.services.byId("review-toggle");
-    if (message) message.textContent = "Changes require another review.";
-    if (button) button.textContent = "Mark reviewed";
   }
 
   clearEdited(filePath) {

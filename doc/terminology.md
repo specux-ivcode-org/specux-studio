@@ -6,7 +6,8 @@ This glossary defines terms used throughout the project, including in the [Scree
 
 | Term | Definition |
 |---|---|
-| **Screen** | A named visual composition in a SpecUX project. Its data includes ordered layers, Material placements and groups, and optional preview states. |
+| **Screen** | A named visual composition in a SpecUX project. Its data includes ordered layers, Material placements and groups, and optional Screen States. |
+| **Screen State** | A named visual configuration of a Screen that inherits Default values and stores only visual overrides. It represents a design condition and does not define executable application behavior. |
 | **Canvas** | The Screen's absolute-positioned coordinate plane. Its origin is the top-left; top-level placement positions use Screen-canvas pixels, while nested placements use their containing group's coordinate space. |
 | **Canvas viewport** | The visible editor area through which the canvas is viewed. Scrolling and zooming change the viewport, not saved canvas coordinates or placement transforms. |
 | **Layer** | A named, ordered stacking level within a Screen. Layer order and visibility determine how its placements are rendered. Each top-level placement belongs to one layer; placements inside a group inherit the group's layer. |
