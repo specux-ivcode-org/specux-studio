@@ -594,3 +594,10 @@ test("migrates saved Hide modes to Hover to show and keeps the edge trigger avai
   });
   assert.equal(harness.messages.length, 0);
 });
+
+test("keeps hover sidebars above editor annotation overlays", () => {
+  const styles = fs.readFileSync(path.join(__dirname, "../frontend/styles.css"), "utf8");
+  const canvasRule = styles.match(/\.canvas\s*\{\s*position:\s*relative;([\s\S]*?)\}/)?.[1];
+  assert.ok(canvasRule);
+  assert.match(canvasRule, /isolation:\s*isolate/);
+});

@@ -235,7 +235,19 @@ test("serves the editor root and the example project", async () => {
     );
     assert.match(
       readFileSync(path.join(__dirname, "..", "frontend", "app.mjs"), "utf8"),
-      /element\.scrollTop = 0/
+      /cloneScrollTarget\.scrollTop = 0/
+    );
+    assert.match(
+      readFileSync(path.join(__dirname, "..", "frontend", "app.mjs"), "utf8"),
+      /cloneTarget\.style\.height = `\$\{height\}px`/
+    );
+    assert.match(
+      readFileSync(path.join(__dirname, "..", "frontend", "app.mjs"), "utf8"),
+      /workflowDiagram\.getBoundingClientRect\(\)\.left - bounds\.left \+ scrollElement\.scrollLeft/
+    );
+    assert.match(
+      readFileSync(path.join(__dirname, "..", "frontend", "app.mjs"), "utf8"),
+      /cloneWorkflowDiagram\.style\.transform\s*=\s*`translateX\(\$\{workflowDiagramLeft - \(cloneDiagramLeft - cloneTargetLeft\)\}px\)`/
     );
     assert.equal(imageCaptureLibrary.status, 404);
     assert.equal(html2canvasLibrary.status, 200);
@@ -429,12 +441,19 @@ test("reports server status and editor state and notifies connected browsers", a
       type: "spec",
       file: "screens/home/specs/element-dialog-save.md",
       mode: "markdown",
-      coordinateSpace: "editor viewport pixels",
-      canvasSize: { width: 900, height: 700 }
+      coordinateSpace: "editor preview pixels",
+      canvasSize: { width: 900, height: 1200 },
+      previews: [{
+        id: "workflow-spec",
+        label: "Behavior spec preview",
+        coordinateSpace: "preview content pixels",
+        canvasSize: { width: 900, height: 1200 }
+      }]
     };
     const transientAnnotations = [{
       id: "note-1",
       tool: "note",
+      previewId: "workflow-spec",
       points: [{ x: 240, y: 180 }],
       text: "Clarify this paragraph"
     }];
@@ -471,6 +490,7 @@ test("reports server status and editor state and notifies connected browsers", a
         annotations: [{
           id: "outside",
           tool: "pen",
+          previewId: "workflow-spec",
           points: [{ x: 901, y: 20 }]
         }]
       })
@@ -527,12 +547,19 @@ test("captures the active editor image and returns its annotation context to the
       type: "spec",
       file: "screens/home/specs/overview.md",
       mode: "markdown",
-      coordinateSpace: "editor viewport pixels",
-      canvasSize: { width: 900, height: 700 }
+      coordinateSpace: "editor preview pixels",
+      canvasSize: { width: 900, height: 1200 },
+      previews: [{
+        id: "workflow-spec",
+        label: "Behavior spec preview",
+        coordinateSpace: "preview content pixels",
+        canvasSize: { width: 900, height: 1200 }
+      }]
     };
     const annotations = [{
       id: "note-1",
       tool: "note",
+      previewId: "workflow-spec",
       points: [{ x: 240, y: 180 }],
       text: "Clarify this paragraph"
     }];

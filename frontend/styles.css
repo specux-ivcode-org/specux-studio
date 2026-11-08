@@ -611,6 +611,7 @@
     .create-screen-button:disabled { color: var(--ui-disabled-text); background: var(--ui-disabled-bg); cursor: default; }
     .canvas {
       position: relative;
+      isolation: isolate;
       min-width: 0;
       min-height: 0;
       display: flex;
@@ -1240,19 +1241,58 @@
       font-size: 12px;
       font-weight: 700;
     }
-    .material-document-source {
-      width: 100%;
+    .material-source-container {
+      position: relative;
+      min-width: 0;
       min-height: 0;
       flex: 1;
+      overflow: hidden;
+      background: var(--ui-input-alt);
+    }
+    .material-source-highlight {
+      position: absolute;
+      inset: 0;
+      box-sizing: border-box;
+      overflow: auto;
+      margin: 0;
+      padding: 14px;
+      color: var(--ui-text-strong);
+      background: transparent;
+      font: 12px/1.6 Consolas, "SFMono-Regular", monospace;
+      tab-size: 2;
+      white-space: pre;
+      pointer-events: none;
+    }
+    .material-source-highlight .material-source-line {
+      display: block;
+      min-height: 1.6em;
+      white-space: pre;
+    }
+    .material-document-source {
+      position: absolute;
+      inset: 0;
+      box-sizing: border-box;
+      width: 100%;
+      height: 100%;
       resize: none;
       padding: 14px;
       border: 0;
       border-radius: 0;
-      color: var(--ui-text-strong);
-      background: var(--ui-input-alt);
+      color: transparent;
+      background: transparent;
       font: 12px/1.6 Consolas, "SFMono-Regular", monospace;
       tab-size: 2;
       white-space: pre;
+    }
+    .material-source-container:focus-within .material-source-highlight { display: none; }
+    .material-source-container:focus-within .material-document-source {
+      color: var(--ui-text-strong);
+      background: var(--ui-input-alt);
+    }
+    .material-source-text-selection {
+      color: var(--ui-text-strong);
+      background: var(--ui-primary-soft-bg);
+      box-shadow: inset 0 -1px var(--studio-focus);
     }
     .material-document-source:focus { outline: 2px solid var(--ui-primary-hover-border); border-color: var(--ui-primary-hover-border); }
     .material-document-status {
@@ -1320,6 +1360,7 @@
       box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--studio-primary) 18%, transparent);
     }
     .spec-workflow-preview {
+      position: relative;
       box-sizing: border-box;
       min-width: 0;
       min-height: 0;
@@ -1454,6 +1495,7 @@
       padding: 0;
     }
     .workflow-spec-preview {
+      position: relative;
       display: block;
       box-sizing: border-box;
       min-width: 0;
@@ -1489,6 +1531,11 @@
     }
     .workflow-spec-link-target {
       background: color-mix(in srgb, var(--studio-focus) 22%, transparent);
+    }
+    .spec-source-text-selection {
+      color: var(--ui-text-strong);
+      background: var(--ui-primary-soft-bg);
+      box-shadow: inset 0 -1px var(--studio-focus);
     }
     .workflow-view-toolbar {
       display: none;
@@ -1612,6 +1659,7 @@
       white-space: nowrap;
     }
     .workflow-diagram {
+      position: relative;
       min-height: 0;
       flex: 1;
       overflow: auto;
@@ -1735,7 +1783,7 @@
       position: absolute;
       inset: 0;
       box-sizing: border-box;
-      overflow: hidden;
+      overflow: auto;
       margin: 0;
       padding: 14px;
       color: var(--ui-text-strong);
@@ -1800,6 +1848,7 @@
       background: var(--theme-panel, #fff);
       box-shadow: none;
     }
+    .screen-preview > .form-content { position: relative; }
     .screen-preview.theme-material-preview {
       display: flex;
       align-items: center;
@@ -1811,7 +1860,9 @@
       padding: 0;
     }
     .screen-preview.annotation-mode,
-    .canvas.annotation-mode { cursor: crosshair; }
+    [data-annotation-preview].annotation-mode,
+    .spec-source-highlight.annotation-mode,
+    .material-source-highlight.annotation-mode { cursor: crosshair; }
     .screen-preview.marquee-selection-mode { cursor: crosshair; }
     .screen-selection-overlay {
       position: absolute;
@@ -1835,7 +1886,7 @@
       left: 0;
       overflow: visible;
       pointer-events: none;
-      touch-action: none;
+      touch-action: pan-x pan-y;
     }
     .editor-annotation-overlay {
       position: absolute;
@@ -1843,7 +1894,7 @@
       z-index: 30;
       overflow: visible;
       pointer-events: none;
-      touch-action: none;
+      touch-action: pan-x pan-y;
     }
     .annotation-shape,
     .annotation-pen {
@@ -1864,7 +1915,7 @@
       opacity: .38;
       vector-effect: non-scaling-stroke;
     }
-    .annotation-arrow { fill: none; marker-end: url(#annotation-arrowhead); }
+    .annotation-arrow { fill: none; }
     .annotation-note-bg {
       fill: var(--panel);
       stroke: #e11d48;

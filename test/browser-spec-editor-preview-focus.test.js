@@ -58,7 +58,11 @@ function createHighlightNode(tagName, ownerDocument) {
       add: (name) => classes.add(name),
       contains: (name) => classes.has(name)
     },
+    listeners: new Map(),
     ownerDocument,
+    addEventListener(type, listener) {
+      this.listeners.set(type, listener);
+    },
     append(child) {
       this.children.push(child);
     },
@@ -209,6 +213,66 @@ test("highlights the selected Spec link and its section in the source overlay", 
   sourceEditorListeners.get("scroll")();
   assert.equal(highlight.scrollTop, 42);
   assert.equal(highlight.scrollLeft, 18);
+});
+
+test("keeps selected source text visibly highlighted when the editor loses focus", async () => {
+  const { SpecEditor } = await import("../frontend/browser/SpecEditor.mjs");
+  const filePath = "screens/home/specs/home.md";
+  const source = "# Home behavior\r\nSelected text remains visible.\r\n";
+  const editorValue = source.replace(/\r\n/g, "\n");
+  const selectionStart = editorValue.indexOf("text");
+  const selectionEnd = selectionStart + "text remains".length;
+  let ownerDocument;
+  ownerDocument = {
+    activeElement: null,
+    createElement: (tagName) => createHighlightNode(tagName, ownerDocument)
+  };
+  const highlight = createHighlightNode("pre", ownerDocument);
+  const highlightListeners = highlight.listeners;
+  const sourceEditorListeners = new Map();
+  const sourceEditor = {
+    value: editorValue,
+    selectionStart,
+    selectionEnd,
+    scrollTop: 42,
+    scrollLeft: 18,
+    addEventListener(type, listener) {
+      sourceEditorListeners.set(type, listener);
+    }
+  };
+  const services = createEditorServices({ children: [] });
+  let published = 0;
+  services.document = ownerDocument;
+  services.publishSelection = () => { published += 1; };
+  services.elements.set("spec-source", sourceEditor);
+  services.elements.set("spec-source-container", {});
+  services.elements.set("spec-source-highlight", highlight);
+  const editor = new SpecEditor({
+    state: {
+      viewingSpec: true,
+      activeSpecPath: filePath,
+      specSources: new Map([[filePath, source]])
+    },
+    services
+  });
+
+  sourceEditorListeners.get("scroll")();
+  assert.equal(highlight.scrollTop, 42);
+  assert.equal(highlight.scrollLeft, 18);
+  highlight.scrollTop = 64;
+  highlight.scrollLeft = 24;
+  highlightListeners.get("scroll")();
+  assert.equal(sourceEditor.scrollTop, 64);
+  assert.equal(sourceEditor.scrollLeft, 24);
+  sourceEditorListeners.get("blur")();
+
+  const selectedText = highlight.children[1].children.find((child) =>
+    child.className.includes("spec-source-text-selection")
+  );
+  assert.equal(selectedText.textContent, "text remains");
+  assert.equal(highlight.scrollTop, 64);
+  assert.equal(highlight.scrollLeft, 24);
+  assert.equal(published, 1);
 });
 
 test("keeps all descendants clear when a container Element is focused", async () => {

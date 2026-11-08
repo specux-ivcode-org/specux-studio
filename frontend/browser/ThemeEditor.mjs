@@ -568,6 +568,7 @@ export class ThemeEditor {
 
   selectPreviewColor(event) {
     if (!this.state.viewingTheme || event.button !== 0) return;
+    if (event.target?.closest?.(".editor-annotation-overlay")) return;
     this.updateRadiusCursor(event);
     event.preventDefault();
     event.stopPropagation();

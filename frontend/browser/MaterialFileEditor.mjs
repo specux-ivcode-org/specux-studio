@@ -4,6 +4,39 @@ export class MaterialFileEditor {
   constructor({ state, services }) {
     this.state = state;
     this.services = services;
+    const sourceEditor = services.byId("material-document-source");
+    const sourceContainer = services.byId("material-source-container");
+    const sourceHighlight = services.byId("material-source-highlight");
+    if (sourceEditor && sourceContainer && sourceHighlight) {
+      sourceEditor.addEventListener("scroll", () => {
+        if (sourceHighlight.scrollTop !== sourceEditor.scrollTop) {
+          sourceHighlight.scrollTop = sourceEditor.scrollTop;
+        }
+        if (sourceHighlight.scrollLeft !== sourceEditor.scrollLeft) {
+          sourceHighlight.scrollLeft = sourceEditor.scrollLeft;
+        }
+      });
+      sourceHighlight.addEventListener("scroll", () => {
+        if (sourceEditor.scrollTop !== sourceHighlight.scrollTop) {
+          sourceEditor.scrollTop = sourceHighlight.scrollTop;
+        }
+        if (sourceEditor.scrollLeft !== sourceHighlight.scrollLeft) {
+          sourceEditor.scrollLeft = sourceHighlight.scrollLeft;
+        }
+      });
+      const publishTextSelection = () => {
+        if (this.state.viewingMaterialFile) this.services.publishSelection();
+      };
+      sourceEditor.addEventListener("select", publishTextSelection);
+      sourceEditor.addEventListener("keyup", publishTextSelection);
+      sourceEditor.addEventListener("mouseup", publishTextSelection);
+      sourceEditor.addEventListener("input", publishTextSelection);
+      sourceEditor.addEventListener("blur", () => {
+        if (!this.state.viewingMaterialFile) return;
+        this.renderSourceHighlight(true);
+        this.services.publishSelection();
+      });
+    }
   }
 
   async render(filePath) {
@@ -48,6 +81,7 @@ export class MaterialFileEditor {
     editor.value = material.documentSource;
     editor.setAttribute("aria-label", `${material.data.name} Material source`);
     editor.oninput = () => this.handleSourceInput(material, editor.value);
+    this.renderSourceHighlight();
     const error = state.invalidYamlFiles.get(filePath);
     this.setDocumentStatus(
       material,
@@ -56,6 +90,74 @@ export class MaterialFileEditor {
     );
     this.renderPreview(material);
     services.renderInspector();
+  }
+
+  renderSourceHighlight(preserveSelection = false) {
+    const { state, services } = this;
+    const highlight = services.byId("material-source-highlight");
+    const sourceEditor = services.byId("material-document-source");
+    if (!highlight || !sourceEditor) return;
+
+    const scrollTop = preserveSelection && Number.isFinite(sourceEditor.scrollTop)
+      ? sourceEditor.scrollTop
+      : highlight.scrollTop;
+    const scrollLeft = preserveSelection && Number.isFinite(sourceEditor.scrollLeft)
+      ? sourceEditor.scrollLeft
+      : highlight.scrollLeft;
+    const material = state.materialFiles.get(state.activeMaterialFilePath);
+    const storedSource = material?.documentSource || "";
+    const source = preserveSelection ? sourceEditor.value : storedSource;
+    const selectionStart = preserveSelection && Number.isInteger(sourceEditor.selectionStart)
+      ? sourceEditor.selectionStart
+      : -1;
+    const selectionEnd = preserveSelection && Number.isInteger(sourceEditor.selectionEnd)
+      ? sourceEditor.selectionEnd
+      : -1;
+    const hasSelection = selectionStart >= 0 &&
+      selectionEnd > selectionStart &&
+      selectionEnd <= source.length;
+    const { ownerDocument } = highlight;
+    highlight.replaceChildren();
+    let lineOffset = 0;
+    for (const text of source.split(/\r?\n/)) {
+      const line = ownerDocument.createElement("span");
+      line.className = "material-source-line";
+      const selectedOnLine = hasSelection &&
+        selectionStart < lineOffset + text.length &&
+        selectionEnd > lineOffset;
+      if (selectedOnLine) {
+        const boundaries = [0, text.length];
+        for (const offset of [selectionStart, selectionEnd]) {
+          if (offset > lineOffset && offset < lineOffset + text.length) {
+            boundaries.push(offset - lineOffset);
+          }
+        }
+        boundaries.sort((left, right) => left - right);
+        const uniqueBoundaries = [...new Set(boundaries)];
+        for (let index = 0; index < uniqueBoundaries.length - 1; index += 1) {
+          const start = uniqueBoundaries[index];
+          const end = uniqueBoundaries[index + 1];
+          const segment = ownerDocument.createElement("span");
+          if (hasSelection &&
+              selectionStart < lineOffset + end &&
+              selectionEnd > lineOffset + start) {
+            segment.className = "material-source-text-selection";
+          }
+          segment.textContent = text.slice(start, end);
+          line.append(segment);
+        }
+      } else {
+        line.textContent = text;
+      }
+      highlight.append(line);
+      const lineEnd = lineOffset + text.length;
+      const separator = source.slice(lineEnd).match(/^\r\n|^\r|\n/)?.[0] || "";
+      lineOffset = lineEnd + separator.length;
+    }
+    if (preserveSelection) {
+      highlight.scrollTop = scrollTop;
+      highlight.scrollLeft = scrollLeft;
+    }
   }
 
   handleSourceInput(material, source) {

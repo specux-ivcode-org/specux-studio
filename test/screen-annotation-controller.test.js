@@ -117,6 +117,42 @@ test("selecting a tool enters annotation mode and Exit leaves it", async () => {
   assert.equal(attributes.get("circle:aria-pressed"), "false");
 });
 
+test("arrow annotations reference the marker rendered in their overlay", async () => {
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
+  function createSvgNode(tagName) {
+    return {
+      tagName,
+      attributes: new Map(),
+      children: [],
+      append(child) {
+        this.children.push(child);
+      },
+      setAttribute(name, value) {
+        this.attributes.set(name, value);
+      }
+    };
+  }
+  const controller = new ScreenAnnotationController({
+    state: {},
+    services: {
+      document: { createElementNS: (_namespace, tagName) => createSvgNode(tagName) }
+    }
+  });
+  const overlay = createSvgNode("svg");
+  const markerId = "annotation-arrowhead-material-source";
+  controller.renderArrowhead(overlay, markerId);
+  controller.renderAnnotation({
+    id: "arrow-1",
+    tool: "arrow",
+    points: [{ x: 10, y: 20 }, { x: 80, y: 90 }]
+  }, overlay, markerId);
+
+  const marker = overlay.children[0].children[0];
+  const line = overlay.children[1].children.find((child) => child.tagName === "line");
+  assert.equal(marker.attributes.get("id"), markerId);
+  assert.equal(line.attributes.get("marker-end"), `url(#${markerId})`);
+});
+
 test("publishes non-Screen editor annotations as transient selection context", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   let published = 0;
@@ -152,8 +188,9 @@ test("publishes non-Screen editor annotations as transient selection context", a
       type: "spec",
       file: "screens/home/specs/overview.md",
       mode: "markdown",
-      coordinateSpace: "editor viewport pixels",
-      canvasSize: { width: 1440, height: 900 }
+      coordinateSpace: "editor preview pixels",
+      canvasSize: { width: 1440, height: 900 },
+      previews: []
     },
     annotations: [{
       id: "mark-1",
@@ -163,6 +200,188 @@ test("publishes non-Screen editor annotations as transient selection context", a
     }]
   });
   assert.equal(controller.screenId, null);
+});
+
+test("keeps editor annotations in each preview's full scrollable coordinate space", async () => {
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
+  const preview = {
+    id: "workflow-diagram",
+    dataset: { annotationPreview: "workflow-diagram" },
+    hidden: false,
+    scrollWidth: 720,
+    scrollHeight: 1400,
+    clientWidth: 300,
+    clientHeight: 500,
+    scrollLeft: 40,
+    scrollTop: 200,
+    offsetWidth: 300,
+    offsetHeight: 500,
+    getAttribute: () => "Workflow diagram preview",
+    getBoundingClientRect: () => ({ left: 20, top: 50, width: 300, height: 500 }),
+    closest: () => null,
+    classList: { toggle() {} }
+  };
+  const controller = new ScreenAnnotationController({
+    state: {},
+    services: {
+      document: { querySelectorAll: () => [preview] }
+    }
+  });
+  controller.context = {
+    key: "workflow:screens/home/workflows/main.mmd:home",
+    kind: "editor",
+    view: "workflow",
+    type: "workflow",
+    file: "screens/home/workflows/main.mmd",
+    mode: "split:diagram"
+  };
+  controller.editorTargets = new Map([["workflow-diagram", {
+    id: "workflow-diagram",
+    element: preview,
+    scrollElement: preview,
+    width: 720,
+    height: 1400
+  }]]);
+  controller.annotations = [{
+    id: "mark-1",
+    tool: "pen",
+    previewId: "workflow-diagram",
+    points: [{ x: 120, y: 200 }]
+  }];
+
+  assert.deepEqual(controller.pointFromEvent({ clientX: 100, clientY: 150 }, "workflow-diagram"), {
+    x: 120,
+    y: 300
+  });
+  assert.deepEqual(controller.getEditorAnnotationContext(), {
+    annotationContext: {
+      key: "workflow:screens/home/workflows/main.mmd:home",
+      view: "workflow",
+      type: "workflow",
+      file: "screens/home/workflows/main.mmd",
+      mode: "split:diagram",
+      coordinateSpace: "editor preview pixels",
+      canvasSize: { width: 1440, height: 1400 },
+      previews: [{
+        id: "workflow-diagram",
+        label: "Workflow diagram preview",
+        coordinateSpace: "preview content pixels",
+        canvasSize: { width: 720, height: 1400 }
+      }]
+    },
+    annotations: controller.annotations
+  });
+});
+
+test("maps Material source annotations through the scrolled text mirror", async () => {
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
+  const sourceCanvas = {
+    dataset: {},
+    scrollWidth: 880,
+    scrollHeight: 1200,
+    clientWidth: 360,
+    clientHeight: 480,
+    scrollLeft: 24,
+    scrollTop: 180,
+    offsetWidth: 360,
+    offsetHeight: 480,
+    getBoundingClientRect: () => ({ left: 100, top: 80, width: 360, height: 480 }),
+    classList: { remove() {}, toggle() {} }
+  };
+  const host = {
+    id: "material-source-container",
+    dataset: { annotationPreview: "material-source" },
+    hidden: false,
+    getBoundingClientRect: () => ({ left: 100, top: 80, width: 360, height: 480 }),
+    getAttribute: () => "Material source preview",
+    closest: () => null,
+    querySelector: (selector) =>
+      selector === ":scope > [data-annotation-canvas]" ? sourceCanvas : null
+  };
+  const controller = new ScreenAnnotationController({
+    state: {},
+    services: { document: { querySelectorAll: () => [host] } }
+  });
+  controller.context = { kind: "editor", key: "material:button" };
+  controller.editorTargets = new Map(
+    controller.getEditorPreviewTargets().map((target) => [target.id, target])
+  );
+
+  assert.deepEqual(
+    controller.pointFromEvent({ clientX: 140, clientY: 130 }, "material-source"),
+    { x: 64, y: 230 }
+  );
+  assert.equal(sourceCanvas.dataset.annotationCaptureScroll, "material-source");
+});
+
+test("discovers the spec source text area as an annotation preview", async () => {
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
+  const sourceCanvas = {
+    scrollWidth: 480,
+    scrollHeight: 920,
+    clientWidth: 480,
+    clientHeight: 620,
+    offsetWidth: 480,
+    offsetHeight: 620,
+    scrollLeft: 18,
+    scrollTop: 200,
+    dataset: {},
+    getBoundingClientRect: () => ({ left: 20, top: 30, width: 480, height: 620 })
+  };
+  const sourceContainer = {
+    dataset: { annotationPreview: "spec-source" },
+    hidden: false,
+    scrollWidth: 480,
+    scrollHeight: 620,
+    clientWidth: 480,
+    clientHeight: 620,
+    querySelector: (selector) =>
+      selector === ":scope > [data-annotation-canvas]" ? sourceCanvas : null,
+    getAttribute: () => "Behavior spec source preview",
+    getBoundingClientRect: () => ({ left: 20, top: 30, width: 480, height: 620 }),
+    closest: () => null,
+    classList: { toggle() {} }
+  };
+  const controller = new ScreenAnnotationController({
+    state: {},
+    services: {
+      document: { querySelectorAll: () => [sourceContainer] }
+    }
+  });
+  controller.render = () => {};
+  controller.updateControls = () => {};
+  controller.setEditorContext({
+    key: "spec:screens/home/specs/overview.md",
+    view: "spec",
+    type: "spec",
+    file: "screens/home/specs/overview.md",
+    mode: "split"
+  });
+
+  const target = controller.getEditorPreviewTargets()[0];
+  controller.editorTargets = new Map([[target.id, target]]);
+
+  assert.equal(target.id, "spec-source");
+  assert.equal(target.element, sourceCanvas);
+  assert.equal(target.scrollElement, sourceCanvas);
+  assert.equal(target.captureElement, sourceContainer);
+  assert.equal(target.width, 480);
+  assert.equal(target.height, 920);
+  assert.deepEqual(
+    controller.pointFromEvent({ clientX: 120, clientY: 150 }, "spec-source"),
+    { x: 118, y: 320 }
+  );
+  assert.equal(sourceCanvas.dataset.annotationCaptureScroll, "spec-source");
+  assert.equal(sourceContainer.dataset.annotationCaptureScroll, undefined);
+  assert.deepEqual(
+    controller.getEditorAnnotationContext().annotationContext.previews,
+    [{
+      id: "spec-source",
+      label: "Behavior spec source preview",
+      coordinateSpace: "preview content pixels",
+      canvasSize: { width: 480, height: 920 }
+    }]
+  );
 });
 
 test("saves absolute canvas annotations without capturing a browser image", async () => {

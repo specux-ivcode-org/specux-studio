@@ -170,6 +170,31 @@ function validateAnnotationSet(body) {
 }
 
 function validateEditorAnnotationContext(context, annotations) {
+  const validCanvasSize = (size) =>
+    size && Number.isInteger(size.width) && size.width >= 1 && size.width <= 16384 &&
+    Number.isInteger(size.height) && size.height >= 1 && size.height <= 16384;
+  const hasPreviewSizes = Array.isArray(context?.previews);
+  const previews = hasPreviewSizes ? context.previews : [];
+  if (previews.length > 12) {
+    throw requestError("Editor annotations may include at most 12 previews.");
+  }
+  const previewSizes = new Map();
+  for (const preview of previews) {
+    if (!preview || Array.isArray(preview) || typeof preview !== "object" ||
+        typeof preview.id !== "string" || !preview.id || preview.id.length > 100 ||
+        previewSizes.has(preview.id) ||
+        typeof preview.label !== "string" || preview.label.length > 200 ||
+        preview.coordinateSpace !== "preview content pixels" ||
+        !validCanvasSize(preview.canvasSize)) {
+      throw requestError("Editor preview annotations must include valid preview dimensions.");
+    }
+    previewSizes.set(preview.id, {
+      id: preview.id,
+      label: preview.label,
+      coordinateSpace: "preview content pixels",
+      canvasSize: { ...preview.canvasSize }
+    });
+  }
   if (!context || Array.isArray(context) || typeof context !== "object" ||
       typeof context.key !== "string" || !context.key || context.key.length > 2048 ||
       !["screen", "workflow", "spec", "theme", "project", "material"].includes(context.type) ||
@@ -177,12 +202,9 @@ function validateEditorAnnotationContext(context, annotations) {
       (context.file !== null &&
         (typeof context.file !== "string" || context.file.length > 2048)) ||
       typeof context.mode !== "string" || context.mode.length > 40 ||
-      context.coordinateSpace !== "editor viewport pixels" ||
-      !context.canvasSize ||
-      !Number.isInteger(context.canvasSize.width) || context.canvasSize.width < 1 ||
-      context.canvasSize.width > 16384 ||
-      !Number.isInteger(context.canvasSize.height) || context.canvasSize.height < 1 ||
-      context.canvasSize.height > 16384 ||
+      !["editor viewport pixels", "editor preview pixels"].includes(context.coordinateSpace) ||
+      !validCanvasSize(context.canvasSize) ||
+      (context.coordinateSpace === "editor preview pixels" && !hasPreviewSizes) ||
       !Array.isArray(annotations) || annotations.length > MAX_ANNOTATIONS_PER_CONTEXT) {
     throw requestError("Editor annotations must include a valid editor context and viewport dimensions.");
   }
@@ -196,16 +218,24 @@ function validateEditorAnnotationContext(context, annotations) {
       throw requestError("Each editor annotation must have a unique id, supported tool, and valid points.");
     }
     ids.add(annotation.id);
+    const previewId = annotation.previewId;
+    const annotationCanvasSize = context.coordinateSpace === "editor preview pixels"
+      ? previewSizes.get(previewId)?.canvasSize
+      : context.canvasSize;
+    if (!annotationCanvasSize) {
+      throw requestError("Editor annotation references an unknown preview.");
+    }
     const points = annotation.points.map((point) => {
       if (!point || Array.isArray(point) || typeof point !== "object" ||
           !Number.isFinite(point.x) || !Number.isFinite(point.y) ||
-          point.x < 0 || point.x > context.canvasSize.width ||
-          point.y < 0 || point.y > context.canvasSize.height) {
-        throw requestError("Editor annotation points must be within the viewport dimensions.");
+          point.x < 0 || point.x > annotationCanvasSize.width ||
+          point.y < 0 || point.y > annotationCanvasSize.height) {
+        throw requestError("Editor annotation points must be within their preview dimensions.");
       }
       return { x: point.x, y: point.y };
     });
     const clean = { id: annotation.id, tool: annotation.tool, points };
+    if (previewId !== undefined) clean.previewId = previewId;
     if (annotation.text !== undefined) {
       if (typeof annotation.text !== "string" || annotation.text.length > 500) {
         throw requestError("Editor annotation text must be at most 500 characters.");
@@ -221,8 +251,9 @@ function validateEditorAnnotationContext(context, annotations) {
       type: context.type,
       file: context.file,
       mode: context.mode,
-      coordinateSpace: "editor viewport pixels",
-      canvasSize: { ...context.canvasSize }
+      coordinateSpace: context.coordinateSpace,
+      canvasSize: { ...context.canvasSize },
+      ...(hasPreviewSizes ? { previews: [...previewSizes.values()] } : {})
     },
     annotations: cleanAnnotations
   };

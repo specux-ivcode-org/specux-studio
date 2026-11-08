@@ -217,6 +217,27 @@ test("Theme preview pointer handling consumes the color pick without selecting a
   assert.deepEqual(selected[0][1], candidates);
 });
 
+test("Theme preview lets annotation overlays handle pointer events", async () => {
+  const { ThemeEditor } = await import("../frontend/browser/ThemeEditor.mjs");
+  const editor = createThemeEditor(ThemeEditor);
+  editor.state.viewingTheme = true;
+  const annotationOverlay = {};
+  const eventCalls = [];
+  let pickerOpened = false;
+  editor.openColorPopup = () => { pickerOpened = true; };
+
+  editor.selectPreviewColor({
+    button: 0,
+    target: { closest: (selector) =>
+      selector === ".editor-annotation-overlay" ? annotationOverlay : null },
+    preventDefault: () => eventCalls.push("preventDefault"),
+    stopPropagation: () => eventCalls.push("stopPropagation")
+  });
+
+  assert.deepEqual(eventCalls, []);
+  assert.equal(pickerOpened, false);
+});
+
 test("Theme preview shows a 35px radius guide and retains the normal pointer", async () => {
   const { ThemeEditor } = await import("../frontend/browser/ThemeEditor.mjs");
   const editor = createThemeEditor(ThemeEditor);

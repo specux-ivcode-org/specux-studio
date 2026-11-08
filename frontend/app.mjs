@@ -440,6 +440,7 @@ const materialFileEditor = new MaterialFileEditor({
     updateScreenDomContext,
     discardUneditedActiveSpecDraft,
     updateNavigationSelection,
+    publishSelection: () => publishSelection(),
     hideEditorMessage,
     setMaterialViewMode: (mode) => materialViewLayout.setViewMode(mode),
     renderInspector,
@@ -1254,52 +1255,120 @@ async function captureCurrentEditorImage(request) {
     }
     await document.fonts?.ready;
     const editorSurface = byId("main");
-    const bounds = editorSurface.getBoundingClientRect();
-    const backgroundColor = window.getComputedStyle(editorSurface).backgroundColor;
-    const scrollPositions = [editorSurface, ...editorSurface.querySelectorAll("*")]
-      .map((element, index) => ({
-        index,
-        scrollTop: element.scrollTop,
-        scrollLeft: element.scrollLeft
-      }))
-      .filter(({ scrollTop, scrollLeft }) => scrollTop || scrollLeft);
-    const canvas = await window.html2canvas(editorSurface, {
-      width: Math.ceil(bounds.width),
-      height: Math.ceil(bounds.height),
-      windowWidth: window.innerWidth,
-      windowHeight: window.innerHeight,
-      scale: 1,
-      useCORS: true,
-      logging: false,
-      backgroundColor,
-      foreignObjectRendering: true,
-      onclone: (documentClone) => {
-        const cloneSurface = documentClone.getElementById("main");
-        if (!cloneSurface) throw new Error("The editor changed during image capture.");
-        const cloneElements = [cloneSurface, ...cloneSurface.querySelectorAll("*")];
-        for (const entry of scrollPositions) {
-          const element = cloneElements[entry.index];
-          if (!element) throw new Error("The editor scroll state changed during image capture.");
-          element.scrollTop = 0;
-          element.scrollLeft = 0;
-          for (const child of element.children) {
-            const transform = documentClone.defaultView.getComputedStyle(child).transform;
-            child.style.transform =
-              `translate(${-entry.scrollLeft}px, ${-entry.scrollTop}px)` +
-              (transform === "none" ? "" : ` ${transform}`);
+    const previews = screenAnnotationController?.getPreviewCaptureTargets() || [];
+    if (previews.length === 0) {
+      throw new Error("There are no visible preview panes to capture.");
+    }
+    const requestedWidth = Math.max(...previews.map(({ width }) => width));
+    const requestedHeight = previews.reduce((total, { height }) => total + height, 0);
+    if (previews.some(({ width, height }) =>
+      !Number.isInteger(width) || !Number.isInteger(height) ||
+      width < 1 || height < 1 || width > 16384 || height > 16384
+    ) || requestedWidth > 16384 || requestedHeight > 16384) {
+      throw new Error("The combined preview image exceeds the 16384px image limit.");
+    }
+    const mainBackground = window.getComputedStyle(editorSurface).backgroundColor;
+    const capturedPreviews = [];
+    for (const preview of previews) {
+      const { id, width, height, captureElement, scrollElement, hostElement } = preview;
+      const bounds = captureElement.getBoundingClientRect();
+      const workflowDiagram = captureElement.querySelector(":scope > svg.flowchart");
+      const workflowDiagramLeft = workflowDiagram
+        ? workflowDiagram.getBoundingClientRect().left - bounds.left + scrollElement.scrollLeft
+        : null;
+      const selector = `[data-annotation-capture-preview="${id}"]`;
+      const scrollSelector = `[data-annotation-capture-scroll="${id}"]`;
+      const surfaceBackground = window.getComputedStyle(hostElement).backgroundColor;
+      const backgroundColor = surfaceBackground === "rgba(0, 0, 0, 0)"
+        ? mainBackground
+        : surfaceBackground;
+      const canvas = await window.html2canvas(captureElement, {
+        width,
+        height,
+        windowWidth: Math.max(window.innerWidth, Math.ceil(Math.max(0, bounds.left) + width)),
+        windowHeight: Math.max(window.innerHeight, Math.ceil(Math.max(0, bounds.top) + height)),
+        scrollX: 0,
+        scrollY: 0,
+        scale: 1,
+        useCORS: true,
+        logging: false,
+        backgroundColor,
+        foreignObjectRendering: true,
+        onclone: (documentClone) => {
+          const cloneTarget = documentClone.querySelector(selector);
+          const cloneScrollTarget = documentClone.querySelector(scrollSelector);
+          if (!cloneTarget || !cloneScrollTarget) {
+            throw new Error(`The "${id}" preview changed during image capture.`);
           }
+          cloneTarget.style.position = "fixed";
+          cloneTarget.style.top = "0";
+          cloneTarget.style.left = "0";
+          cloneTarget.style.margin = "0";
+          cloneTarget.style.zIndex = "2147483647";
+          cloneTarget.style.width = `${width}px`;
+          cloneTarget.style.height = `${height}px`;
+          cloneTarget.style.minWidth = "0";
+          cloneTarget.style.minHeight = "0";
+          cloneTarget.style.maxWidth = "none";
+          cloneTarget.style.maxHeight = "none";
+          cloneTarget.style.overflow = "visible";
+          cloneTarget.style.flex = "none";
+          if (id === "screen") cloneTarget.style.zoom = "1";
+          cloneScrollTarget.scrollTop = 0;
+          cloneScrollTarget.scrollLeft = 0;
+          if (cloneScrollTarget !== cloneTarget) {
+            cloneScrollTarget.style.width = `${width}px`;
+            cloneScrollTarget.style.height = `${height}px`;
+            cloneScrollTarget.style.minWidth = "0";
+            cloneScrollTarget.style.minHeight = "0";
+            cloneScrollTarget.style.maxWidth = "none";
+            cloneScrollTarget.style.maxHeight = "none";
+            cloneScrollTarget.style.overflow = "visible";
+            cloneScrollTarget.style.flex = "none";
+          }
+          const cloneWorkflowDiagram = cloneTarget.querySelector(":scope > svg.flowchart");
+          if (cloneWorkflowDiagram && workflowDiagramLeft !== null) {
+            const cloneTargetLeft = cloneTarget.getBoundingClientRect().left;
+            const cloneDiagramLeft = cloneWorkflowDiagram.getBoundingClientRect().left;
+            cloneWorkflowDiagram.style.transform =
+              `translateX(${workflowDiagramLeft - (cloneDiagramLeft - cloneTargetLeft)}px)`;
+          }
+          let ancestor = cloneTarget.parentElement;
+          while (ancestor && ancestor.id !== "main") {
+            ancestor.style.overflow = "visible";
+            ancestor.style.contain = "none";
+            ancestor = ancestor.parentElement;
+          }
+          normalizeScreenshotColors(documentClone);
         }
-        normalizeScreenshotColors(documentClone);
-      }
-    });
+      });
+      const flattened = document.createElement("canvas");
+      flattened.width = canvas.width;
+      flattened.height = canvas.height;
+      const previewContext = flattened.getContext("2d");
+      if (!previewContext) throw new Error(`Could not flatten the "${id}" preview image.`);
+      previewContext.fillStyle = backgroundColor;
+      previewContext.fillRect(0, 0, canvas.width, canvas.height);
+      previewContext.drawImage(canvas, 0, 0);
+      capturedPreviews.push(flattened);
+    }
+    const compositeWidth = Math.max(...capturedPreviews.map((canvas) => canvas.width));
+    const compositeHeight = capturedPreviews.reduce((height, canvas) => height + canvas.height, 0);
+    if (compositeWidth > 16384 || compositeHeight > 16384) {
+      throw new Error("The combined preview image exceeds the 16384px image limit.");
+    }
     const flattenedCanvas = document.createElement("canvas");
-    flattenedCanvas.width = canvas.width;
-    flattenedCanvas.height = canvas.height;
+    flattenedCanvas.width = compositeWidth;
+    flattenedCanvas.height = compositeHeight;
     const context = flattenedCanvas.getContext("2d");
-    if (!context) throw new Error("The browser could not flatten the editor image.");
-    context.fillStyle = backgroundColor;
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(canvas, 0, 0);
+    if (!context) throw new Error("The browser could not combine the preview images.");
+    context.fillStyle = mainBackground;
+    context.fillRect(0, 0, compositeWidth, compositeHeight);
+    let verticalOffset = 0;
+    for (const canvas of capturedPreviews) {
+      context.drawImage(canvas, 0, verticalOffset);
+      verticalOffset += canvas.height;
+    }
     const image = await new Promise((resolve) =>
       flattenedCanvas.toBlob(resolve, "image/png")
     );
@@ -1814,7 +1883,6 @@ function publishSelection() {
     const contextKey = [
       contextType || "project",
       file || "overview",
-      viewMode,
       selection?.screen?.id || ""
     ].join(":");
     screenAnnotationController?.setEditorContext({
@@ -1834,8 +1902,10 @@ function publishSelection() {
     selected = activeInstancePaths
       .map((instancePath) => getInstanceAtPath(selectedScreen, instancePath)?.id)
       .filter((id) => typeof id === "string");
-  } else if (selection?.view === "spec") {
-    const editor = byId("spec-source");
+  } else if (["spec", "material-file"].includes(selection?.view)) {
+    const editor = byId(selection.view === "spec"
+      ? "spec-source"
+      : "material-document-source");
     const textSelection = editor && getSelectedText(
       editor.value,
       editor.selectionStart,

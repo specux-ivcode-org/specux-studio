@@ -13,7 +13,7 @@ Run the commands as `specux ...` when the package's `bin` entry is available, or
 | `specux server start [--port <port>] [--project <directory>]` | Start the local editor server in the foreground. The command blocks until interrupted. Defaults to port `3000` (or `SPECUX_PORT` / `PORT`) and binds to `127.0.0.1`. |
 | `specux server status [--port <port>]` | Check whether the editor server is reachable and print JSON with its URL, connected browser count, and selection availability. |
 | `specux server state [--port <port>]` | Print the current editor path, selected file, artifact type and name, preview SpecUX URL, selected placement/workflow node IDs or selected spec text with its source range, and active editor or Screen annotation data when present. |
-| `specux server screenshot --output <file> [--port <port>]` | Capture the visible editor surface from the active browser as a PNG and print its file/editor context and annotations as JSON. |
+| `specux server screenshot --output <file> [--port <port>]` | Capture every visible preview pane from the active browser, expand each to its full scrollable content, combine them into one PNG, and print its file/editor context and annotations as JSON. |
 | `specux server annotations [clear] [--port <port>] [--screen <id>]` | Read temporary Screen annotations as JSON, or clear them for the selected Screen (or the Screen named by `--screen`). |
 | `specux server update [--port <port>]` | Notify connected browser tabs after project files have changed. Tabs without unsaved edits refresh; tabs with unsaved edits are left untouched and prompted to save or reset before refreshing. |
 | `specux init [--project <directory>]` | Create a starter project under `<directory>/specux` (defaults to the current directory). Refuses to overwrite any generated file that already exists. |
@@ -26,15 +26,15 @@ Run the commands as `specux ...` when the package's `bin` entry is available, or
 
 ## Temporary Screen annotations
 
-In the Screen preview, choose **Annotate**, select a drawing tool, and mark an area. Pen, circle, rectangle, arrow, highlighter, and note marks are available. Undo, redo, and Clear manage the current Screen's marks. Notes can carry short instructions; you can also describe marks in your AI conversation.
+In a preview, choose **Annotate**, select a drawing tool, and mark an area. Pen, circle, rectangle, arrow, highlighter, and note marks are available. Each preview has its own annotation layer; use the mouse wheel or trackpad to scroll within a preview and mark more than one position. Undo, redo, and Clear manage the active editor's marks. Notes can carry short instructions; you can also describe marks in your AI conversation.
 
 Annotations are held in the running editor server's memory and are not saved to project files. They are stored as absolute Screen-canvas pixel coordinates, with Material targets where available. A project-keyed temporary cache lets the CLI render them after the editor has been closed; refreshing or reopening the editor clears the active annotations and cache. `specux server state` reports the current editor path, file, type, name, preview SpecUX URL, selected placement or workflow node IDs, or selected spec text with its source range, and whether the Screen is annotated. Use `specux server annotations [--screen <id>]` to inspect annotation details, or `specux server annotations clear [--screen <id>]` to clear them. Without `--screen`, `clear` uses the Screen currently selected in the editor.
 
-Annotations made in Markdown, source, workflow, Theme, Material, and other non-Screen-preview views are published as the active editor context in `specux server state`. They are held only in server memory for AI communication and are never written to project files.
+Annotations made in Markdown, source, workflow, Theme, Material, and other non-Screen-preview views are published with their preview identity and full-content coordinates in `specux server state`. They are held only in server memory for AI communication and are never written to project files.
 
 ## Editor screenshots for AI
 
-Run `specux server screenshot --output current-editor.png` while the editor is open in a connected browser. The command captures the visible editor surface from the active browser, including unsaved edits and visible annotation marks. It writes the PNG only to the requested output path and prints the active file/editor context and structured annotations as JSON so an agent can use both the image and the annotation details. It does not save or change project files.
+Run `specux server screenshot --output current-editor.png` while the editor is open in a connected browser. The command captures only visible preview panes from the active browser, including unsaved edits and visible annotation marks. It expands each pane to its full scrollable content and stacks the previews in editor order in one PNG, without editor toolbars or sidebars. It writes the PNG only to the requested output path and prints the active file/editor context and structured annotations as JSON so an agent can use both the image and the annotation details. It does not save or change project files.
 
 ## Initialization
 

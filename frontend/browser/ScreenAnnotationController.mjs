@@ -14,6 +14,7 @@ export class ScreenAnnotationController {
     this.context = null;
     this.contextAnnotations = new Map();
     this.contextCanvasSizes = new Map();
+    this.contextPreviewSizes = new Map();
     this.annotations = [];
     this.undoStack = [];
     this.redoStack = [];
@@ -21,6 +22,8 @@ export class ScreenAnnotationController {
     this.enabled = false;
     this.drawing = null;
     this.overlay = null;
+    this.editorOverlays = new Map();
+    this.editorTargets = new Map();
     this.renderWidth = DEFAULT_CANVAS_SIZE.width;
     this.renderHeight = DEFAULT_CANVAS_SIZE.height;
     this.loadVersion = 0;
@@ -40,6 +43,22 @@ export class ScreenAnnotationController {
       this.resizeObserver = new ResizeObserverClass(() => this.render());
       this.resizeObserver.observe(preview);
       this.resizeObserver.observe(services.byId("main"));
+    }
+    const MutationObserverClass = services.window.MutationObserver;
+    if (MutationObserverClass) {
+      this.previewMutationObserver = new MutationObserverClass(() => {
+        if (this.context?.kind !== "editor") return;
+        const targets = this.getEditorPreviewTargets();
+        if (targets.some((target) =>
+          this.editorOverlays.get(target.id)?.parentElement !== target.element
+        )) {
+          this.render();
+        }
+      });
+      this.previewMutationObserver.observe(services.byId("main"), {
+        childList: true,
+        subtree: true
+      });
     }
     services.document.querySelectorAll("[data-annotation-tool]").forEach((button) => {
       button.addEventListener("click", () => this.selectTool(button.dataset.annotationTool));
@@ -77,6 +96,24 @@ export class ScreenAnnotationController {
 
   getEditorAnnotationContext() {
     if (this.context?.kind !== "editor") return null;
+    const previewSizes = this.contextPreviewSizes.get(this.context.key) || new Map();
+    for (const target of this.getEditorPreviewTargets()) {
+      previewSizes.set(target.id, {
+        id: target.id,
+        label: target.label,
+        coordinateSpace: "preview content pixels",
+        canvasSize: { width: target.width, height: target.height }
+      });
+    }
+    this.contextPreviewSizes.set(this.context.key, previewSizes);
+    const previews = [...previewSizes.values()];
+    const canvasSize = previews.reduce((size, preview) => ({
+      width: Math.max(size.width, preview.canvasSize.width),
+      height: Math.max(size.height, preview.canvasSize.height)
+    }), {
+      width: Math.ceil(this.renderWidth),
+      height: Math.ceil(this.renderHeight)
+    });
     return {
       annotationContext: {
         key: this.context.key,
@@ -84,11 +121,9 @@ export class ScreenAnnotationController {
         type: this.context.type,
         file: this.context.file,
         mode: this.context.mode,
-        coordinateSpace: "editor viewport pixels",
-        canvasSize: {
-          width: Math.ceil(this.renderWidth),
-          height: Math.ceil(this.renderHeight)
-        }
+        coordinateSpace: "editor preview pixels",
+        canvasSize,
+        previews
       },
       annotations: this.annotations
     };
@@ -96,7 +131,7 @@ export class ScreenAnnotationController {
 
   async setScreen(screen) {
     const nextScreenId = screen?.id || null;
-    if (nextScreenId === this.screenId) {
+    if (nextScreenId === this.screenId && this.context?.kind !== "editor") {
       this.context = nextScreenId
         ? { key: `screen:${nextScreenId}`, kind: "screen" }
         : null;
@@ -104,6 +139,7 @@ export class ScreenAnnotationController {
       this.updateControls();
       return;
     }
+    this.storeEditorContext();
     this.screenId = nextScreenId;
     this.context = nextScreenId
       ? { key: `screen:${nextScreenId}`, kind: "screen" }
@@ -127,14 +163,13 @@ export class ScreenAnnotationController {
 
   setEditorContext(context) {
     const key = context?.key || null;
-    if (key === this.context?.key) return;
-    if (this.context?.kind === "editor") {
-      this.contextAnnotations.set(this.context.key, this.annotations);
-      this.contextCanvasSizes.set(this.context.key, {
-        width: this.renderWidth,
-        height: this.renderHeight
-      });
+    if (key === this.context?.key) {
+      this.context = key ? { ...this.context, ...context, kind: "editor" } : null;
+      this.render();
+      this.updateControls();
+      return;
     }
+    this.storeEditorContext();
     this.screenId = null;
     this.context = key ? { ...context, kind: "editor" } : null;
     this.annotations = key ? (this.contextAnnotations.get(key) || []) : [];
@@ -151,6 +186,15 @@ export class ScreenAnnotationController {
     this.drawing = null;
     this.render();
     this.updateControls();
+  }
+
+  storeEditorContext() {
+    if (this.context?.kind !== "editor") return;
+    this.contextAnnotations.set(this.context.key, this.annotations);
+    this.contextCanvasSizes.set(this.context.key, {
+      width: this.renderWidth,
+      height: this.renderHeight
+    });
   }
 
   async clearPreviousSessionAnnotations() {
@@ -229,7 +273,9 @@ export class ScreenAnnotationController {
         width: this.renderWidth,
         height: this.renderHeight
       });
-      return Promise.resolve(this.services.publishSelection?.());
+      const operation = Promise.resolve(this.services.publishSelection?.());
+      this.saveQueue = operation.catch(() => {});
+      return operation;
     }
     if (!this.screenId) return Promise.resolve();
     const payload = {
@@ -286,12 +332,13 @@ export class ScreenAnnotationController {
     this.services.byId("annotation-clear").disabled = !hasAnnotations;
   }
 
-  createOverlay(content) {
+  createOverlay(content, { previewId = null, className = "screen-annotation-overlay" } = {}) {
     const overlay = this.services.document.createElementNS(SVG_NAMESPACE, "svg");
-    overlay.classList.add("screen-annotation-overlay");
+    overlay.classList.add(className);
     overlay.setAttribute("aria-hidden", "true");
     overlay.setAttribute("preserveAspectRatio", "none");
-    overlay.addEventListener("pointerdown", (event) => this.onPointerDown(event));
+    if (previewId) overlay.setAttribute("data-annotation-preview-id", previewId);
+    overlay.addEventListener("pointerdown", (event) => this.onPointerDown(event, overlay));
     overlay.addEventListener("pointermove", (event) => this.onPointerMove(event));
     overlay.addEventListener("pointerup", (event) => this.onPointerUp(event));
     overlay.addEventListener("pointercancel", () => {
@@ -317,6 +364,7 @@ export class ScreenAnnotationController {
       this.renderEditorOverlay();
       return;
     }
+    this.hideEditorOverlays();
     const editorOverlay = this.services.byId("main")
       ?.querySelector?.(":scope > .editor-annotation-overlay");
     if (editorOverlay) {
@@ -344,33 +392,143 @@ export class ScreenAnnotationController {
     this.overlay.style.pointerEvents = this.enabled ? "all" : "none";
     preview.classList.toggle("annotation-mode", this.enabled);
     this.overlay.replaceChildren();
-    this.renderArrowhead();
-    for (const annotation of this.annotations) this.renderAnnotation(annotation);
-    if (this.drawing) this.renderAnnotation(this.drawing.annotation);
+    this.renderArrowhead(this.overlay, "annotation-arrowhead");
+    for (const annotation of this.annotations) {
+      this.renderAnnotation(annotation, this.overlay, "annotation-arrowhead");
+    }
+    if (this.drawing) {
+      this.renderAnnotation(this.drawing.annotation, this.overlay, "annotation-arrowhead");
+    }
   }
 
   renderEditorOverlay() {
-    const canvas = this.services.byId("main");
-    if (!canvas) return;
-    this.overlay = canvas.querySelector(":scope > .editor-annotation-overlay");
-    if (!this.overlay) {
-      this.overlay = this.createOverlay(canvas);
-      this.overlay.classList.remove("screen-annotation-overlay");
-      this.overlay.classList.add("editor-annotation-overlay");
+    const previewSizes = this.contextPreviewSizes.get(this.context.key) || new Map();
+    const targets = this.getEditorPreviewTargets();
+    const activeIds = new Set(targets.map((target) => target.id));
+    for (const [id, overlay] of this.editorOverlays) {
+      if (activeIds.has(id)) continue;
+      overlay.hidden = true;
+      overlay.style.pointerEvents = "none";
     }
-    this.overlay.hidden = false;
-    this.overlay.setAttribute("viewBox", `0 0 ${this.renderWidth} ${this.renderHeight}`);
-    this.overlay.setAttribute("width", String(this.renderWidth));
-    this.overlay.setAttribute("height", String(this.renderHeight));
-    this.overlay.style.width = "100%";
-    this.overlay.style.height = "100%";
-    this.overlay.style.zIndex = "30";
-    this.overlay.style.pointerEvents = this.enabled ? "all" : "none";
-    canvas.classList.toggle("annotation-mode", this.enabled);
-    this.overlay.replaceChildren();
-    this.renderArrowhead();
-    for (const annotation of this.annotations) this.renderAnnotation(annotation);
-    if (this.drawing) this.renderAnnotation(this.drawing.annotation);
+    for (const [id, target] of this.editorTargets) {
+      if (!activeIds.has(id)) target.scrollElement?.classList?.remove("annotation-mode");
+    }
+    this.editorTargets = new Map(targets.map((target) => [target.id, target]));
+    const main = this.services.byId("main");
+    main?.classList?.remove("annotation-mode");
+    const legacyOverlay = main?.querySelector?.(":scope > .editor-annotation-overlay");
+    if (legacyOverlay) {
+      legacyOverlay.hidden = true;
+      legacyOverlay.style.pointerEvents = "none";
+    }
+    for (const target of targets) {
+      const { id, element, width, height } = target;
+      let overlay = this.editorOverlays.get(id);
+      if (!overlay || overlay.parentElement !== element) {
+        overlay = this.createOverlay(element, {
+          previewId: id,
+          className: "editor-annotation-overlay"
+        });
+      }
+      this.editorOverlays.set(id, overlay);
+      previewSizes.set(id, {
+        id,
+        label: target.label,
+        coordinateSpace: "preview content pixels",
+        canvasSize: { width, height }
+      });
+      overlay.hidden = false;
+      overlay.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      overlay.setAttribute("width", String(width));
+      overlay.setAttribute("height", String(height));
+      overlay.style.width = `${width}px`;
+      overlay.style.height = `${height}px`;
+      const highestMaterialLayer = id === "screen"
+        ? [...element.querySelectorAll(":scope > .material-frame")]
+          .reduce((highest, frame) => Math.max(highest, Number(frame.style.zIndex) || 0), 20)
+        : 29;
+      overlay.style.zIndex = String(highestMaterialLayer + 1);
+      overlay.style.pointerEvents = this.enabled ? "all" : "none";
+      target.scrollElement?.classList?.toggle("annotation-mode", this.enabled);
+      overlay.replaceChildren();
+      const markerId = `annotation-arrowhead-${id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+      this.renderArrowhead(overlay, markerId);
+      for (const annotation of this.annotations) {
+        if (annotation.previewId === id ||
+            (!annotation.previewId && targets[0]?.id === id)) {
+          this.renderAnnotation(annotation, overlay, markerId);
+        }
+      }
+      if (this.drawing?.previewId === id) {
+        this.renderAnnotation(this.drawing.annotation, overlay, markerId);
+      }
+    }
+    this.contextPreviewSizes.set(this.context.key, previewSizes);
+  }
+
+  hideEditorOverlays() {
+    for (const overlay of this.editorOverlays.values()) {
+      overlay.hidden = true;
+      overlay.style.pointerEvents = "none";
+    }
+    for (const target of this.editorTargets.values()) {
+      target.scrollElement?.classList?.remove("annotation-mode");
+    }
+    this.editorTargets.clear();
+    const main = this.services.byId("main");
+    main?.classList?.remove("annotation-mode");
+    const legacyOverlay = main?.querySelector?.(":scope > .editor-annotation-overlay");
+    if (legacyOverlay) {
+      legacyOverlay.hidden = true;
+      legacyOverlay.style.pointerEvents = "none";
+    }
+  }
+
+  getEditorPreviewTargets() {
+    const document = this.services.document;
+    if (!document?.querySelectorAll) return [];
+    const targets = [];
+    for (const element of document.querySelectorAll("[data-annotation-preview]")) {
+      if (element.hidden || element.closest?.("[hidden]")) continue;
+      const bounds = element.getBoundingClientRect?.();
+      if (bounds && bounds.width <= 0 && bounds.height <= 0) continue;
+      const id = element.dataset?.annotationPreview;
+      if (!id) continue;
+      const isScreenPreview = element.id === "screen-preview";
+      const formContent = isScreenPreview
+        ? element.querySelector(":scope > .form-content")
+        : null;
+      const captureElement = formContent || element;
+      const annotationElement = formContent ||
+        element.querySelector?.(":scope > [data-annotation-canvas]") ||
+        element;
+      const scrollElement = isScreenPreview ? element : annotationElement;
+      captureElement.dataset.annotationCapturePreview = id;
+      const size = formContent
+        ? this.measureCanvasSize(captureElement)
+        : {
+            width: Math.max(1, annotationElement.scrollWidth ||
+              annotationElement.clientWidth || bounds?.width || 1),
+            height: Math.max(1, annotationElement.scrollHeight ||
+              annotationElement.clientHeight || bounds?.height || 1)
+          };
+      targets.push({
+        id,
+        label: element.getAttribute("aria-label") || id,
+        element: annotationElement,
+        scrollElement,
+        captureElement,
+        hostElement: element,
+        width: size.width,
+        height: size.height
+      });
+      scrollElement.dataset.annotationCaptureScroll = id;
+    }
+    return targets;
+  }
+
+  getPreviewCaptureTargets() {
+    return this.getEditorPreviewTargets();
   }
 
   measureCanvasSize(content) {
@@ -387,10 +545,10 @@ export class ScreenAnnotationController {
     return { width: Math.ceil(width), height: Math.ceil(height) };
   }
 
-  renderArrowhead() {
+  renderArrowhead(overlay = this.overlay, markerId = "annotation-arrowhead") {
     const defs = this.services.document.createElementNS(SVG_NAMESPACE, "defs");
     const marker = this.svgElement("marker", {
-      id: "annotation-arrowhead",
+      id: markerId,
       markerWidth: "10",
       markerHeight: "10",
       refX: "8",
@@ -403,10 +561,10 @@ export class ScreenAnnotationController {
       fill: "#e11d48"
     }));
     defs.append(marker);
-    this.overlay.append(defs);
+    overlay.append(defs);
   }
 
-  renderAnnotation(annotation) {
+  renderAnnotation(annotation, overlay = this.overlay, markerId = "annotation-arrowhead") {
     const points = annotation.points;
     const group = this.svgElement("g", { "data-annotation-id": annotation.id });
     const title = this.svgElement("title");
@@ -458,7 +616,7 @@ export class ScreenAnnotationController {
         "stroke-width": "3",
         "stroke-linecap": "round",
         "stroke-linejoin": "round",
-        "marker-end": "url(#annotation-arrowhead)",
+        "marker-end": `url(#${markerId})`,
         "vector-effect": "non-scaling-stroke"
       }));
     } else if (annotation.tool === "note") {
@@ -480,7 +638,7 @@ export class ScreenAnnotationController {
         "vector-effect": "non-scaling-stroke"
       }));
     }
-    this.overlay.append(group);
+    overlay.append(group);
   }
 
   renderNote(group, point, text) {
@@ -521,8 +679,24 @@ export class ScreenAnnotationController {
     return element;
   }
 
-  pointFromEvent(event) {
+  pointFromEvent(event, previewId = null) {
     if (this.context?.kind === "editor") {
+      const target = previewId ? this.editorTargets.get(previewId) : null;
+      if (target) {
+        const rect = target.element.getBoundingClientRect();
+        const scaleX = rect.width / (target.element.offsetWidth || rect.width || 1);
+        const scaleY = rect.height / (target.element.offsetHeight || rect.height || 1);
+        const scrollLeft = target.element === target.scrollElement
+          ? target.scrollElement.scrollLeft
+          : 0;
+        const scrollTop = target.element === target.scrollElement
+          ? target.scrollElement.scrollTop
+          : 0;
+        return {
+          x: clamp((event.clientX - rect.left) / (scaleX || 1) + scrollLeft, 0, target.width),
+          y: clamp((event.clientY - rect.top) / (scaleY || 1) + scrollTop, 0, target.height)
+        };
+      }
       const rect = this.services.byId("main").getBoundingClientRect();
       return {
         x: clamp((event.clientX - rect.left) * this.renderWidth / (rect.width || 1), 0, this.renderWidth),
@@ -617,10 +791,13 @@ export class ScreenAnnotationController {
       `annotation-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
-  onPointerDown(event) {
+  onPointerDown(event, overlay = event.currentTarget || this.overlay) {
     if (!this.enabled || !this.context || event.button !== 0) return;
     event.preventDefault();
-    const point = this.pointFromEvent(event);
+    const previewId = this.context.kind === "editor"
+      ? overlay?.getAttribute?.("data-annotation-preview-id")
+      : null;
+    const point = this.pointFromEvent(event, previewId);
     if (this.tool === "note") {
       const text = this.services.prompt("Annotation note for the AI:", "");
       if (!text?.trim()) return;
@@ -629,6 +806,7 @@ export class ScreenAnnotationController {
         id: this.createId(),
         tool: this.tool,
         points: [point],
+        ...(previewId ? { previewId } : {}),
         text: text.trim(),
         ...(target ? { target } : {})
       });
@@ -642,17 +820,18 @@ export class ScreenAnnotationController {
     const annotation = {
       id: this.createId(),
       tool: this.tool,
-      points: [point]
+      points: [point],
+      ...(previewId ? { previewId } : {})
     };
-    this.drawing = { pointerId: event.pointerId, annotation };
-    this.overlay.setPointerCapture?.(event.pointerId);
+    this.drawing = { pointerId: event.pointerId, annotation, previewId };
+    overlay?.setPointerCapture?.(event.pointerId);
     this.render();
   }
 
   onPointerMove(event) {
     if (!this.drawing || event.pointerId !== this.drawing.pointerId) return;
     const points = this.drawing.annotation.points;
-    const point = this.pointFromEvent(event);
+    const point = this.pointFromEvent(event, this.drawing.previewId);
     const last = points[points.length - 1];
     if (this.drawing.annotation.tool === "pen" || this.drawing.annotation.tool === "highlight") {
       const distance = Math.hypot(point.x - last.x, point.y - last.y);
@@ -668,7 +847,7 @@ export class ScreenAnnotationController {
   onPointerUp(event) {
     if (!this.drawing || event.pointerId !== this.drawing.pointerId) return;
     const points = this.drawing.annotation.points;
-    const end = this.pointFromEvent(event);
+    const end = this.pointFromEvent(event, this.drawing.previewId);
     if (points.length === 1) points.push(end);
     else if (this.drawing.annotation.tool !== "pen" && this.drawing.annotation.tool !== "highlight") {
       points[1] = end;

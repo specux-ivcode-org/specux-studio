@@ -402,19 +402,21 @@
             role="img"
             aria-label="Screen canvas Y ruler in pixels"
           ></canvas>
-          <article class="screen-preview loading" id="screen-preview" aria-label="Rendered Screen preview">
+          <article class="screen-preview loading" id="screen-preview" data-annotation-preview="screen" aria-label="Rendered Screen preview">
             <div class="loading-message">Reading project files...</div>
           </article>
         </div>
         <article
           class="spec-workflow-preview workflow-diagram"
           id="spec-workflow-preview"
+          data-annotation-preview="spec-workflow"
           aria-label="Workflow diagram preview"
           hidden
         ></article>
         <article
           class="workflow-spec-preview"
           id="workflow-spec-preview"
+          data-annotation-preview="workflow-spec"
           aria-label="Behavior spec preview"
           hidden
         ></article>
@@ -566,7 +568,7 @@
             <button class="screen-view-button" id="workflow-panel-source" type="button" aria-pressed="false">Source</button>
           </div>
         </div>
-        <div class="workflow-diagram" id="workflow-diagram" aria-label="Mermaid workflow diagram"></div>
+        <div class="workflow-diagram" id="workflow-diagram" data-annotation-preview="workflow-diagram" aria-label="Mermaid workflow diagram"></div>
         <textarea class="workflow-source" id="workflow-source" aria-label="Mermaid workflow source" spellcheck="false" hidden></textarea>
         <div class="workflow-status" id="workflow-status" role="status" aria-live="polite"></div>
       </section>
@@ -604,15 +606,28 @@
             >↓</button>
           </div>
         </div>
-        <div class="spec-source-container" id="spec-source-container">
-          <pre class="spec-source-highlight" id="spec-source-highlight" aria-hidden="true"></pre>
+        <div
+          class="spec-source-container"
+          id="spec-source-container"
+          data-annotation-preview="spec-source"
+          aria-label="Behavior spec source preview"
+        >
+          <pre class="spec-source-highlight" id="spec-source-highlight" data-annotation-canvas aria-hidden="true"></pre>
           <textarea class="spec-source" id="spec-source" aria-label="Behavior spec Markdown source" spellcheck="false"></textarea>
         </div>
       </section>
 
       <section class="material-document-editor-panel" id="material-document-editor-panel" aria-label="Material source editor" hidden>
         <h2 class="material-document-editor-heading" id="material-document-editor-heading">Material source</h2>
-        <textarea class="material-document-source" id="material-document-source" aria-label="Material source" spellcheck="false"></textarea>
+        <div
+          class="material-source-container"
+          id="material-source-container"
+          data-annotation-preview="material-source"
+          aria-label="Material source preview"
+        >
+          <pre class="material-source-highlight" id="material-source-highlight" data-annotation-canvas aria-hidden="true"></pre>
+          <textarea class="material-document-source" id="material-document-source" aria-label="Material source" spellcheck="false"></textarea>
+        </div>
         <div class="material-document-status" id="material-document-status" role="status" aria-live="polite"></div>
       </section>
 

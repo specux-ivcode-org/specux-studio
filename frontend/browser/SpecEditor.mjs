@@ -50,8 +50,20 @@ export class SpecEditor {
     const sourceHighlight = services.byId("spec-source-highlight");
     if (sourceEditor && sourceContainer && sourceHighlight) {
       sourceEditor.addEventListener("scroll", () => {
-        sourceHighlight.scrollTop = sourceEditor.scrollTop;
-        sourceHighlight.scrollLeft = sourceEditor.scrollLeft;
+        if (sourceHighlight.scrollTop !== sourceEditor.scrollTop) {
+          sourceHighlight.scrollTop = sourceEditor.scrollTop;
+        }
+        if (sourceHighlight.scrollLeft !== sourceEditor.scrollLeft) {
+          sourceHighlight.scrollLeft = sourceEditor.scrollLeft;
+        }
+      });
+      sourceHighlight.addEventListener("scroll", () => {
+        if (sourceEditor.scrollTop !== sourceHighlight.scrollTop) {
+          sourceEditor.scrollTop = sourceHighlight.scrollTop;
+        }
+        if (sourceEditor.scrollLeft !== sourceHighlight.scrollLeft) {
+          sourceEditor.scrollLeft = sourceHighlight.scrollLeft;
+        }
       });
     }
     if (sourceEditor) {
@@ -62,6 +74,14 @@ export class SpecEditor {
       sourceEditor.addEventListener("keyup", publishTextSelection);
       sourceEditor.addEventListener("mouseup", publishTextSelection);
       sourceEditor.addEventListener("input", publishTextSelection);
+      sourceEditor.addEventListener("blur", () => {
+        if (!this.state.viewingSpec) return;
+        this.renderSourceHighlight(
+          this.previewReferences[this.previewReferenceIndex] || null,
+          true
+        );
+        this.services.publishSelection();
+      });
     }
     services.byId("spec-reference-previous").addEventListener("click", () =>
       this.movePreviewReference(-1)
@@ -232,47 +252,109 @@ export class SpecEditor {
     return this.previewQueue;
   }
 
-  renderSourceHighlight(reference) {
+  renderSourceHighlight(reference, preserveSelection = false) {
     const { state, services } = this;
     const highlight = services.byId("spec-source-highlight");
     if (!highlight) return;
+    const sourceEditor = services.byId("spec-source");
+    const scrollTop = preserveSelection && Number.isFinite(sourceEditor?.scrollTop)
+      ? sourceEditor.scrollTop
+      : highlight.scrollTop;
+    const scrollLeft = preserveSelection && Number.isFinite(sourceEditor?.scrollLeft)
+      ? sourceEditor.scrollLeft
+      : highlight.scrollLeft;
     highlight.replaceChildren();
-    if (!reference) return;
-
-    const source = state.specSources.get(state.activeSpecPath) || "";
+    const storedSource = state.specSources.get(state.activeSpecPath) || "";
+    const source = preserveSelection && sourceEditor
+      ? sourceEditor.value
+      : storedSource;
+    const selectionStart = preserveSelection && Number.isInteger(sourceEditor?.selectionStart)
+      ? sourceEditor.selectionStart
+      : -1;
+    const selectionEnd = preserveSelection && Number.isInteger(sourceEditor?.selectionEnd)
+      ? sourceEditor.selectionEnd
+      : -1;
+    const hasSelection = selectionStart >= 0 &&
+      selectionEnd > selectionStart &&
+      selectionEnd <= source.length;
     const lines = source.split(/\r?\n/);
-    const linkLine = lines[reference.lineIndex] || "";
-    const link = findMarkdownSpecLink(linkLine, reference.columnIndex);
-    const { start: sectionStart, end: sectionEnd } = getMarkdownSectionRange(
-      source,
-      reference.sectionLineIndex,
-      reference.lineIndex
-    );
+    const linkLine = reference ? lines[reference.lineIndex] || "" : "";
+    const link = reference && findMarkdownSpecLink(linkLine, reference.columnIndex);
+    const sectionRange = reference
+      ? getMarkdownSectionRange(source, reference.sectionLineIndex, reference.lineIndex)
+      : null;
     const { ownerDocument } = highlight;
+    const appendTextSegments = (line, text, lineOffset, linkRange) => {
+      const boundaries = [0, text.length];
+      if (hasSelection) {
+        for (const offset of [selectionStart, selectionEnd]) {
+          if (offset > lineOffset && offset < lineOffset + text.length) {
+            boundaries.push(offset - lineOffset);
+          }
+        }
+      }
+      if (linkRange) boundaries.push(linkRange.start, linkRange.end);
+      boundaries.sort((left, right) => left - right);
+      const uniqueBoundaries = [...new Set(boundaries)];
+      for (let index = 0; index < uniqueBoundaries.length - 1; index += 1) {
+        const start = uniqueBoundaries[index];
+        const end = uniqueBoundaries[index + 1];
+        const classes = [];
+        if (linkRange && start >= linkRange.start && end <= linkRange.end) {
+          classes.push("workflow-spec-link-target");
+        }
+        if (hasSelection &&
+            selectionStart < lineOffset + end &&
+            selectionEnd > lineOffset + start) {
+          classes.push("spec-source-text-selection");
+        }
+        const segment = ownerDocument.createElement("span");
+        segment.className = classes.join(" ");
+        segment.textContent = text.slice(start, end);
+        line.append(segment);
+      }
+    };
 
+    let lineOffset = 0;
     lines.forEach((text, lineIndex) => {
       const line = ownerDocument.createElement("span");
       line.className = "workflow-spec-line";
-      if (lineIndex >= sectionStart && lineIndex <= sectionEnd) {
+      if (sectionRange &&
+          lineIndex >= sectionRange.start && lineIndex <= sectionRange.end) {
         line.classList.add("workflow-spec-section-target");
       }
 
-      if (lineIndex === reference.lineIndex && link) {
+      const linkRange = lineIndex === reference?.lineIndex && link
+        ? { start: link.index, end: link.index + link[0].length }
+        : null;
+      const selectedOnLine = hasSelection &&
+        selectionStart < lineOffset + text.length &&
+        selectionEnd > lineOffset;
+      if (selectedOnLine) {
+        appendTextSegments(line, text, lineOffset, linkRange);
+      } else if (linkRange) {
         const before = ownerDocument.createElement("span");
-        before.textContent = text.slice(0, link.index);
+        before.textContent = text.slice(0, linkRange.start);
         line.append(before);
         const target = ownerDocument.createElement("span");
         target.className = "workflow-spec-link-target";
-        target.textContent = link[0];
+        target.textContent = text.slice(linkRange.start, linkRange.end);
         line.append(target);
         const after = ownerDocument.createElement("span");
-        after.textContent = text.slice(link.index + link[0].length);
+        after.textContent = text.slice(linkRange.end);
         line.append(after);
       } else {
         line.textContent = text;
       }
       highlight.append(line);
+      const lineEnd = lineOffset + text.length;
+      const separator = source.slice(lineEnd).match(/^\r\n|^\r|\n/)?.[0] || "";
+      lineOffset = lineEnd + separator.length;
     });
+    if (preserveSelection) {
+      highlight.scrollTop = scrollTop;
+      highlight.scrollLeft = scrollLeft;
+    }
   }
 
   updatePreviewFocus(instancePath) {
