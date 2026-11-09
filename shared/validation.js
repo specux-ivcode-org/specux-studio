@@ -131,7 +131,9 @@
 
   function validateMaterialDocumentHeader(data, source) {
     if (!isMapping(data)) throw new Error(`${source} front matter must contain a YAML mapping.`);
-    const supportedProperties = new Set(["id", "name", "description", "type", "attributes"]);
+    const supportedProperties = new Set([
+      "id", "name", "description", "type", "attributes", "preview-size"
+    ]);
     for (const property of Object.keys(data)) {
       if (!supportedProperties.has(property)) {
         throw new Error(`${source} front matter has unsupported property "${property}".`);
@@ -146,6 +148,17 @@
     }
     if (!materialTypes.includes(data.type)) {
       throw new Error(`${source} front matter type must be one of: ${materialTypes.join(", ")}.`);
+    }
+    if (data["preview-size"] !== undefined) {
+      const size = data["preview-size"];
+      if (!isMapping(size) ||
+          Object.keys(size).some((property) => !["width", "height"].includes(property))) {
+        throw new Error(`${source} front matter preview-size must contain only width and height.`);
+      }
+      if (!Number.isInteger(size.width) || size.width < 24 ||
+          !Number.isInteger(size.height) || size.height < 24) {
+        throw new Error(`${source} front matter preview-size width and height must be integers of at least 24 pixels.`);
+      }
     }
     validateAttributeDefinitions(data, `${source} front matter`);
   }

@@ -202,6 +202,127 @@ test("publishes non-Screen editor annotations as transient selection context", a
   assert.equal(controller.screenId, null);
 });
 
+test("clears editor annotations when returning to a previously selected file", async () => {
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
+  const controller = new ScreenAnnotationController({
+    state: {},
+    services: {
+      fetcher: async () => ({
+        ok: true,
+        json: async () => ({ screenId: "home", annotations: [], updatedAt: null })
+      })
+    }
+  });
+  controller.render = () => {};
+  controller.updateControls = () => {};
+  const workflow = {
+    key: "workflow:screens/home/workflows/add-item.mmd:home",
+    view: "workflow",
+    type: "workflow",
+    file: "screens/home/workflows/add-item.mmd",
+    mode: "split:diagram"
+  };
+  controller.setEditorContext(workflow);
+  controller.annotations.push({
+    id: "workflow-mark",
+    tool: "note",
+    points: [{ x: 30, y: 40 }],
+    text: "Review this step"
+  });
+  controller.undoStack.push({ id: "undone-mark" });
+
+  await controller.setScreen({ id: "home" });
+  controller.setEditorContext(workflow);
+
+  assert.deepEqual(controller.annotations, []);
+  assert.deepEqual(controller.undoStack, []);
+  assert.deepEqual(controller.redoStack, []);
+});
+
+test("resets transient annotations when the active file path changes", async () => {
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
+  let deletes = 0;
+  const controller = new ScreenAnnotationController({
+    state: {},
+    services: {
+      fetcher: async () => {
+        deletes += 1;
+        return { ok: true, json: async () => ({ cleared: 1 }) };
+      }
+    }
+  });
+  controller.render = () => {};
+  controller.updateControls = () => {};
+  controller.setEditorContext({
+    key: "workflow:screens/home/workflows/add-item.mmd:home",
+    view: "workflow",
+    type: "workflow",
+    file: "screens/home/workflows/add-item.mmd",
+    mode: "split:diagram"
+  });
+  controller.annotations.push({
+    id: "workflow-mark",
+    tool: "note",
+    points: [{ x: 30, y: 40 }],
+    text: "Review this step"
+  });
+  controller.undoStack.push({ id: "undone-mark" });
+
+  await controller.fileLoaded("screens/home/workflows/add-item.mmd");
+  assert.equal(controller.annotations.length, 1);
+  await controller.fileLoaded("materials/label.stml");
+
+  assert.deepEqual(controller.annotations, []);
+  assert.deepEqual(controller.undoStack, []);
+  assert.deepEqual(controller.redoStack, []);
+  assert.equal(controller.enabled, false);
+  assert.equal(deletes, 1);
+});
+
+test("clears stored Screen annotations when leaving their file", async () => {
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
+  const requests = [];
+  const savedAnnotation = {
+    id: "screen-mark",
+    tool: "note",
+    points: [{ x: 10, y: 20 }],
+    text: "Screen note"
+  };
+  const controller = new ScreenAnnotationController({
+    state: {},
+    services: {
+      fetcher: async (url, options = {}) => {
+        requests.push({ url, method: options.method || "GET" });
+        if (options.method === "DELETE") {
+          return { ok: true, json: async () => ({ cleared: 1 }) };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            screenId: "home",
+            annotations: [savedAnnotation],
+            updatedAt: "2026-11-08T00:00:00.000Z"
+          })
+        };
+      }
+    }
+  });
+  controller.render = () => {};
+  controller.updateControls = () => {};
+
+  await controller.setScreen({ id: "home", file: "screens/home/screen.yml" });
+  assert.deepEqual(controller.annotations, [savedAnnotation]);
+
+  await controller.fileLoaded("materials/label.stml");
+
+  assert.deepEqual(controller.annotations, []);
+  assert.deepEqual(requests, [
+    { url: "/api/annotations", method: "DELETE" },
+    { url: "/api/annotations?screenId=home", method: "GET" },
+    { url: "/api/annotations", method: "DELETE" }
+  ]);
+});
+
 test("keeps editor annotations in each preview's full scrollable coordinate space", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const preview = {
@@ -312,6 +433,132 @@ test("maps Material source annotations through the scrolled text mirror", async 
     { x: 64, y: 230 }
   );
   assert.equal(sourceCanvas.dataset.annotationCaptureScroll, "material-source");
+});
+
+test("places workflow annotations on the Screen canvas above its Material layers", async () => {
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
+  const formContent = {
+    dataset: {},
+    offsetWidth: 800,
+    offsetHeight: 500,
+    getBoundingClientRect: () => ({ left: 10, top: 20, width: 800, height: 500 }),
+    querySelectorAll: () => []
+  };
+  const preview = {
+    id: "screen-preview",
+    dataset: { annotationPreview: "screen" },
+    hidden: false,
+    clientWidth: 800,
+    clientHeight: 500,
+    getBoundingClientRect: () => ({ left: 10, top: 20, width: 800, height: 500 }),
+    getAttribute: () => "Workflow Screen preview",
+    closest: () => null,
+    querySelector: (selector) =>
+      selector === ":scope > .form-content" ? formContent : null,
+    classList: { toggle() {} }
+  };
+  const controller = new ScreenAnnotationController({
+    state: {},
+    services: { document: { querySelectorAll: () => [preview] } }
+  });
+  controller.context = {
+    kind: "editor",
+    key: "workflow:screens/home/workflows/add-item.mmd",
+    view: "workflow"
+  };
+
+  const [target] = controller.getEditorPreviewTargets();
+
+  assert.equal(target.id, "screen");
+  assert.equal(target.element, formContent);
+  assert.equal(target.captureElement, formContent);
+  assert.equal(target.scrollElement, preview);
+  assert.equal(target.width, 1440);
+  assert.equal(target.height, 900);
+});
+
+test("sizes editor annotation overlays to the larger of the preview and its content", async () => {
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
+  for (const expected of [
+    {
+      contentWidth: 120,
+      contentHeight: 24,
+      width: 854,
+      height: 532,
+      contentOverflowsX: false,
+      contentOverflowsY: false
+    },
+    {
+      contentWidth: 1600,
+      contentHeight: 1000,
+      width: 1600,
+      height: 1000,
+      contentOverflowsX: true,
+      contentOverflowsY: true
+    },
+    {
+      contentWidth: 1600,
+      contentHeight: 24,
+      width: 1600,
+      height: 532,
+      contentOverflowsX: true,
+      contentOverflowsY: false
+    }
+  ]) {
+    const overlay = { hidden: false, style: {} };
+    const viewport = {
+      clientWidth: 854,
+      clientHeight: 532,
+      getBoundingClientRect: () => ({ width: 854, height: 532 })
+    };
+    const preview = {
+      id: "screen-preview",
+      dataset: { annotationPreview: "material-preview" },
+      hidden: false,
+      clientWidth: 854,
+      clientHeight: 532,
+      get scrollWidth() {
+        return overlay.style.display === "none" ? expected.contentWidth : 1440;
+      },
+      get scrollHeight() {
+        return overlay.style.display === "none" ? expected.contentHeight : 900;
+      },
+      getBoundingClientRect: () => ({
+        left: 100,
+        top: 80,
+        width: expected.contentWidth,
+        height: expected.contentHeight
+      }),
+      getAttribute: () => "Material preview",
+      closest: (selector) => selector === ".screen-preview" ? viewport : null,
+      querySelector: (selector) => selector === ":scope > .form-content"
+        ? {
+            scrollWidth: expected.contentWidth,
+            scrollHeight: expected.contentHeight,
+            getBoundingClientRect: () => ({
+              width: expected.contentWidth,
+              height: expected.contentHeight
+            }),
+            querySelectorAll: () => []
+          }
+        : selector === ":scope > .editor-annotation-overlay" ? overlay : null,
+      classList: { toggle() {} }
+    };
+    const controller = new ScreenAnnotationController({
+      state: {},
+      services: { document: { querySelectorAll: () => [preview] } }
+    });
+    controller.context = { kind: "editor", view: "material-file", key: "material:divider" };
+
+    const [target] = controller.getEditorPreviewTargets();
+
+    assert.equal(target.width, expected.width);
+    assert.equal(target.height, expected.height);
+    assert.equal(target.contentOverflowsX, expected.contentOverflowsX);
+    assert.equal(target.contentOverflowsY, expected.contentOverflowsY);
+    assert.equal(overlay.hidden, false);
+    assert.equal(overlay.style.display, undefined);
+  }
 });
 
 test("discovers the spec source text area as an annotation preview", async () => {

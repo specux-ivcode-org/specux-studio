@@ -95,3 +95,86 @@ test("Material source retains a visible text selection and its scroll position o
   assert.equal(published, 1);
   assert.equal(typeof editor.renderSourceHighlight, "function");
 });
+
+test("resizing a Material preview updates only its STML preview-size block", async () => {
+  const { MaterialFileEditor } = await import("../frontend/browser/MaterialFileEditor.mjs");
+  const validation = require("../shared/validation");
+  const editor = new MaterialFileEditor({
+    state: {},
+    services: { validation, byId: () => null }
+  });
+  const source = [
+    "---",
+    "id: navigation-item",
+    "name: Navigation Item",
+    "type: navigation-item",
+    "attributes:",
+    "  text:",
+    "    type: string",
+    "    default: Dashboard",
+    "    overridable: true",
+    "---",
+    "<div>${attributes.text}</div>",
+    ""
+  ].join("\n");
+  const updated = editor.updatePreviewSizeSource(
+    source,
+    "materials/navigation-item.stml",
+    { width: 280, height: 64 }
+  );
+
+  assert.match(updated, /preview-size:\n  width: 280\n  height: 64\n---/);
+  assert.match(updated, /<div>\$\{attributes\.text\}<\/div>\n$/);
+
+  const inline = source.replace(
+    "attributes:",
+    "preview-size: { width: 160, height: 40 }\nattributes:"
+  );
+  const resizedInline = editor.updatePreviewSizeSource(
+    inline,
+    "materials/navigation-item.stml",
+    { width: 300, height: 48 }
+  );
+  assert.match(resizedInline, /preview-size: \{ width: 300, height: 48 \}/);
+  assert.match(resizedInline, /    default: Dashboard/);
+
+  const block = source.replace(
+    "attributes:",
+    [
+      "preview-size:",
+      "  # Keep the sizing note.",
+      "  width: 160 # Keep the width note.",
+      "  height: 40",
+      "attributes:"
+    ].join("\n")
+  );
+  const resizedBlock = editor.updatePreviewSizeSource(
+    block,
+    "materials/navigation-item.stml",
+    { width: 320, height: 72 }
+  );
+  assert.match(resizedBlock, /  # Keep the sizing note\./);
+  assert.match(resizedBlock, /  width: 320 # Keep the width note\./);
+  assert.match(resizedBlock, /  height: 72/);
+});
+
+test("Material preview resizing dispatches the overlay resize event", async () => {
+  const { MaterialFileEditor } = await import("../frontend/browser/MaterialFileEditor.mjs");
+  const eventTypes = [];
+  const preview = {
+    addEventListener() {},
+    dispatchEvent(event) {
+      eventTypes.push(event.type);
+    }
+  };
+  const editor = new MaterialFileEditor({
+    state: {},
+    services: {
+      byId: (id) => id === "screen-preview" ? preview : null
+    }
+  });
+
+  editor.dispatchPreviewResizeEvent();
+
+  assert.deepEqual(eventTypes, ["material-preview-resized"]);
+});

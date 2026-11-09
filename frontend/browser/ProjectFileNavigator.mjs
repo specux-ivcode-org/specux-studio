@@ -177,11 +177,11 @@ export class ProjectFileNavigator {
     state.historyUpdateSuppressed = true;
     try {
       if (action.kind === "project") {
-        services.renderProjectOverview();
+        await services.renderProjectOverview();
       } else if (action.kind === "screen") {
         await services.renderScreen(action.screenIndex);
       } else if (action.kind === "theme") {
-        services.renderThemeView(filePath);
+        await services.renderThemeView(filePath);
       } else if (action.kind === "material") {
         await services.renderMaterialFile(filePath);
       } else if (action.kind === "spec") {
@@ -189,7 +189,7 @@ export class ProjectFileNavigator {
         if (state.viewingSpec && state.activeSpecPath === filePath) {
           await services.renderSpecEditor(filePath, action.instancePath, action.owner);
         } else {
-          if (action.owner === "project") services.renderProjectOverview();
+          if (action.owner === "project") await services.renderProjectOverview();
           else await services.renderScreen(state.activeScreenIndex);
           await services.renderSpecEditor(filePath, action.instancePath, action.owner);
         }

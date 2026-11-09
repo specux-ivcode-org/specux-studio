@@ -401,6 +401,29 @@ test("validates recursive Screen placement groups and inherited layers", async (
 });
 
 test("validates reusable Material front matter and single-root markup", async () => {
+  const validMaterialHeader = {
+    id: "brand",
+    name: "Brand",
+    type: "surface",
+    "preview-size": { width: 320, height: 120 }
+  };
+  assert.doesNotThrow(() =>
+    validation.validateMaterialDocumentHeader(validMaterialHeader, "brand.stml")
+  );
+  for (const previewSize of [
+    { width: 23, height: 120 },
+    { width: 320, height: 0 },
+    { width: 320.5, height: 120 },
+    { width: 320, depth: 120 }
+  ]) {
+    assert.throws(
+      () => validation.validateMaterialDocumentHeader({
+        ...validMaterialHeader,
+        "preview-size": previewSize
+      }, "brand.stml"),
+      /preview-size/
+    );
+  }
   assert.throws(
     () => validation.validateMaterialMarkup('<div style="color:red;z-index:2"></div>', "brand.stml"),
     /cannot set the CSS "z-index" property/

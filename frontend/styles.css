@@ -1849,6 +1849,22 @@
       box-shadow: none;
     }
     .screen-preview > .form-content { position: relative; }
+    .material-file-preview-selection {
+      position: absolute;
+      z-index: 20;
+      inset: 0;
+      pointer-events: none;
+    }
+    .material-file-preview-selection-outline {
+      position: absolute;
+      inset: 0;
+      border: 1px solid var(--studio-focus);
+      pointer-events: none;
+    }
+    .material-file-preview-selection .material-file-preview-resize-control {
+      display: block;
+      pointer-events: auto;
+    }
     .screen-preview.theme-material-preview {
       display: flex;
       align-items: center;
@@ -1896,6 +1912,8 @@
       pointer-events: none;
       touch-action: pan-x pan-y;
     }
+    .editor-annotation-no-overflow-x { overflow-x: clip !important; }
+    .editor-annotation-no-overflow-y { overflow-y: clip !important; }
     .annotation-shape,
     .annotation-pen {
       fill: color-mix(in srgb, #e11d48 10%, transparent);

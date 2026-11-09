@@ -434,6 +434,7 @@ const materialFileEditor = new MaterialFileEditor({
   services: {
     byId,
     element,
+    document,
     validation: sharedValidation,
     parseYamlSource,
     hidePreviewStateControls,
@@ -494,10 +495,7 @@ const editorNavigation = new EditorNavigation({
     renderThemeView,
     renderMaterialFile,
     sameInstancePath,
-    renderWorkflowEditor: (filePath, screenIndex) => {
-      screenAnnotationController?.setEnabled(false);
-      return workflowEditor.render(filePath, screenIndex);
-    },
+    renderWorkflowEditor,
     showEditorMessage,
     loadProject
   },
@@ -541,10 +539,7 @@ const projectFileNavigator = new ProjectFileNavigator({
     renderThemeView,
     renderMaterialFile,
     renderSpecEditor,
-    renderWorkflowEditor: (filePath, screenIndex) => {
-      screenAnnotationController?.setEnabled(false);
-      return workflowEditor.render(filePath, screenIndex);
-    },
+    renderWorkflowEditor,
     syncBrowserHistory,
     closeScreenPlacementContextMenu,
     showEditorMessage
@@ -1475,6 +1470,10 @@ function selectInstanceInPreview(path) {
 }
 
 async function renderScreen(index, options = {}) {
+  const filePath = options.preserveWorkflow
+    ? activeWorkflowPath
+    : screens[index]?.file;
+  await screenAnnotationController?.fileLoaded(filePath);
   if (!options.preserveWorkflow) workflowEditor?.deactivate();
   await workspaceViewRenderer.renderScreen(index, options);
   if (!isRenderOnly) {
@@ -1486,6 +1485,12 @@ async function renderScreen(index, options = {}) {
     }
     publishSelection();
   }
+}
+
+async function renderWorkflowEditor(filePath, screenIndex) {
+  await screenAnnotationController?.fileLoaded(filePath);
+  screenAnnotationController?.setEnabled(false);
+  return workflowEditor.render(filePath, screenIndex);
 }
 
 async function renderThemeScreen(index) {
@@ -1658,6 +1663,7 @@ async function scrollPreviewToPlacement(instancePath) {
 }
 
 async function renderSpecEditor(filePath, instancePath = activeInstancePath, owner = "instance") {
+  await screenAnnotationController?.fileLoaded(filePath);
   workflowEditor?.deactivate();
   screenAnnotationController?.setEnabled(false);
   return specEditor.render(filePath, instancePath, owner);
@@ -1678,13 +1684,15 @@ async function createProjectSpec() {
 async function createSpecForScreen() {
   return specEditor.createForScreen();
 }
-function renderProjectOverview() {
+async function renderProjectOverview() {
+  await screenAnnotationController?.fileLoaded("project.yml");
   workflowEditor?.deactivate();
   screenAnnotationController?.setEnabled(false);
   return workspaceViewRenderer.renderProjectOverview();
 }
 
 async function renderMaterialFile(filePath) {
+  await screenAnnotationController?.fileLoaded(filePath);
   workflowEditor?.deactivate();
   screenAnnotationController?.setEnabled(false);
   return materialFileEditor.render(filePath);
@@ -2099,7 +2107,8 @@ const editorEventController = new EditorEventController({
 editorEventController.bind();
 bindScreenPlacementContextMenu();
 
-function renderThemeView(filePath = project?.theme) {
+async function renderThemeView(filePath = project?.theme) {
+  await screenAnnotationController?.fileLoaded(filePath);
   workflowEditor?.deactivate();
   screenAnnotationController?.setEnabled(false);
   themeEditor.render(filePath);

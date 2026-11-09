@@ -119,7 +119,7 @@ export class EditorNavigation {
       return;
     }
     if (selection.owner === "project") {
-      services.renderProjectOverview();
+      await services.renderProjectOverview();
       await services.createProjectSpec();
       return;
     }
@@ -154,11 +154,11 @@ export class EditorNavigation {
     const screenIndex = state.screens.findIndex((screen) => screen.id === selection.screen?.id);
     state.activeScreenIndex = screenIndex >= 0 ? screenIndex : 0;
     if (selection.view === "project") {
-      services.renderProjectOverview();
+      await services.renderProjectOverview();
       return;
     }
     if (selection.view === "theme") {
-      services.renderThemeView(selection.file || state.project?.theme);
+      await services.renderThemeView(selection.file || state.project?.theme);
       return;
     }
     if (selection.view === "material-file" && state.materialFiles.has(selection.material?.file)) {
@@ -179,7 +179,7 @@ export class EditorNavigation {
       }
     }
     if (selection.view === "spec" && selection.spec?.owner === "project") {
-      services.renderProjectOverview();
+      await services.renderProjectOverview();
       const draft = state.createdSpecDrafts.get(selection.spec.file);
       if (state.project.spec === selection.spec.file || draft?.owner === "project") {
         await services.renderSpecEditor(selection.spec.file, [], "project");
