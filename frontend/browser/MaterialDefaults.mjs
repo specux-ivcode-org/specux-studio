@@ -10,6 +10,7 @@ export const MATERIAL_DEFAULT_SIZES = Object.freeze({
   checkbox: Object.freeze({ width: 24, height: 24 })
 });
 
+/** Returns the default dimensions for the specified Material type. */
 export function getMaterialDefaultSize(type) {
   const size = MATERIAL_DEFAULT_SIZES[type];
   return size ? { ...size } : null;

@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { getSelectedText } = require("../frontend/browser/SpecEditor.mjs");
 
+/** The helper returns the exact selected substring with 1-based line and column coordinates. */
 test("reports exact selected spec text and 1-based multiline source ranges", () => {
   const source = "Alpha\nBeta\nGamma";
 
@@ -15,6 +16,7 @@ test("reports exact selected spec text and 1-based multiline source ranges", () 
   });
 });
 
+/** Empty selections and invalid ranges return no selected-text result. */
 test("does not report an empty or invalid spec text selection", () => {
   assert.equal(getSelectedText("Example", 3, 3), null);
   assert.equal(getSelectedText("Example", -1, 3), null);

@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+/** Builds an HTTP-style response object for a controller test. */
 function response(body, status = 200) {
   return {
     ok: status >= 200 && status < 300,
@@ -9,6 +10,7 @@ function response(body, status = 200) {
   };
 }
 
+/** Checks that the intended state is removed while unrelated data remains intact. */
 test("clears prior-session annotations before loading a Screen", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const requests = [];
@@ -39,9 +41,12 @@ test("clears prior-session annotations before loading a Screen", async () => {
   ]);
 });
 
+/** Checks that the edit produces the expected project and preview state. */
 test("updates annotation tool buttons and actions for the active tool", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const attributes = new Map();
+
+  /** Creates a button fixture for the requested annotation tool. */
   const makeButton = (tool) => ({
     dataset: { annotationTool: tool },
     disabled: false,
@@ -81,6 +86,7 @@ test("updates annotation tool buttons and actions for the active tool", async ()
   assert.equal(controls.get("annotation-clear").disabled, false);
 });
 
+/** Choosing an annotation tool enables drawing mode, while Exit restores ordinary preview interaction. */
 test("selecting a tool enters annotation mode and Exit leaves it", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const attributes = new Map();
@@ -117,8 +123,11 @@ test("selecting a tool enters annotation mode and Exit leaves it", async () => {
   assert.equal(attributes.get("circle:aria-pressed"), "false");
 });
 
+/** The arrow SVG references a marker definition available in its own overlay. */
 test("arrow annotations reference the marker rendered in their overlay", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
+
+  /** Creates a namespace-aware SVG node fixture for annotation rendering tests. */
   function createSvgNode(tagName) {
     return {
       tagName,
@@ -153,6 +162,7 @@ test("arrow annotations reference the marker rendered in their overlay", async (
   assert.equal(line.attributes.get("marker-end"), `url(#${markerId})`);
 });
 
+/** Non-Screen annotations are sent with editor selection context without being persisted as Screen data. */
 test("publishes non-Screen editor annotations as transient selection context", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   let published = 0;
@@ -202,6 +212,7 @@ test("publishes non-Screen editor annotations as transient selection context", a
   assert.equal(controller.screenId, null);
 });
 
+/** Checks that the intended state is removed while unrelated data remains intact. */
 test("clears editor annotations when returning to a previously selected file", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const controller = new ScreenAnnotationController({
@@ -239,6 +250,7 @@ test("clears editor annotations when returning to a previously selected file", a
   assert.deepEqual(controller.redoStack, []);
 });
 
+/** Changing the active file clears annotations associated with the previous editor context. */
 test("resets transient annotations when the active file path changes", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   let deletes = 0;
@@ -279,6 +291,7 @@ test("resets transient annotations when the active file path changes", async () 
   assert.equal(deletes, 1);
 });
 
+/** Checks that the intended state is removed while unrelated data remains intact. */
 test("clears stored Screen annotations when leaving their file", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const requests = [];
@@ -323,6 +336,7 @@ test("clears stored Screen annotations when leaving their file", async () => {
   ]);
 });
 
+/** Checks that selection and preview state remain consistent through the interaction. */
 test("keeps editor annotations in each preview's full scrollable coordinate space", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const preview = {
@@ -394,6 +408,7 @@ test("keeps editor annotations in each preview's full scrollable coordinate spac
   });
 });
 
+/** Text-mirror scroll offsets are included when mapping Material source annotation coordinates. */
 test("maps Material source annotations through the scrolled text mirror", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const sourceCanvas = {
@@ -435,6 +450,7 @@ test("maps Material source annotations through the scrolled text mirror", async 
   assert.equal(sourceCanvas.dataset.annotationCaptureScroll, "material-source");
 });
 
+/** Workflow annotations use Screen-canvas coordinates and render above Material layers. */
 test("places workflow annotations on the Screen canvas above its Material layers", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const formContent = {
@@ -477,6 +493,7 @@ test("places workflow annotations on the Screen canvas above its Material layers
   assert.equal(target.height, 900);
 });
 
+/** The overlay covers overflowing preview content as well as the visible viewport. */
 test("sizes editor annotation overlays to the larger of the preview and its content", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   for (const expected of [
@@ -561,6 +578,7 @@ test("sizes editor annotation overlays to the larger of the preview and its cont
   }
 });
 
+/** The Spec source textarea is registered as a preview target for annotation placement. */
 test("discovers the spec source text area as an annotation preview", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const sourceCanvas = {
@@ -631,6 +649,7 @@ test("discovers the spec source text area as an annotation preview", async () =>
   );
 });
 
+/** Annotations persist as absolute canvas coordinates without requiring a screenshot. */
 test("saves absolute canvas annotations without capturing a browser image", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const annotationUpdatedAt = "2026-10-25T12:00:00.000Z";
@@ -673,6 +692,7 @@ test("saves absolute canvas annotations without capturing a browser image", asyn
   });
 });
 
+/** Pointer coordinates are converted to canvas pixels using the current preview zoom. */
 test("converts pointer positions to absolute canvas pixels at zoomed scale", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const content = {
@@ -694,6 +714,7 @@ test("converts pointer positions to absolute canvas pixels at zoomed scale", asy
   });
 });
 
+/** Annotation positions remain in a stable canvas coordinate system when the preview resizes. */
 test("maps editor viewport positions into a stable annotation canvas after resize", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const main = {
@@ -713,6 +734,7 @@ test("maps editor viewport positions into a stable annotation canvas after resiz
   });
 });
 
+/** The overlay stacks above Material layers and capture dimensions cover the full canvas. */
 test("places the annotation overlay above material layers and captures the canvas", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const overlay = {
@@ -755,6 +777,7 @@ test("places the annotation overlay above material layers and captures the canva
   assert.equal(overlay.style.pointerEvents, "all");
 });
 
+/** Annotation target metadata identifies the Material instance under the pointer. */
 test("records Material identity as the target of an annotation", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
   const content = {

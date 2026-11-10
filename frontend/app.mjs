@@ -16,6 +16,7 @@ import { ScreenController } from "./browser/ScreenController.mjs";
 import { ScreenAnnotationController } from "./browser/ScreenAnnotationController.mjs";
 import { ScreenSelectionController } from "./browser/ScreenSelectionController.mjs";
 import { ScreenRulerController } from "./browser/ScreenRulerController.mjs";
+import { ScreenCanvasViewportController } from "./browser/ScreenCanvasViewportController.mjs";
 import { ScreenYamlEditor } from "./browser/ScreenYamlEditor.mjs";
 import { MaterialCanvas } from "./browser/MaterialCanvas.mjs";
 import { ScreenMaterialController } from "./browser/ScreenMaterialController.mjs";
@@ -33,6 +34,7 @@ import { TemplateMarkupRenderer } from "./browser/TemplateMarkupRenderer.mjs";
 import { WorkspaceViewRenderer } from "./browser/WorkspaceViewRenderer.mjs";
 import { WorkflowEditor } from "./browser/WorkflowEditor.mjs";
 
+// Read launch parameters and environment settings before creating the editor views.
 const appRoot = new URL("./specux/", window.location.href);
 const sharedValidation = globalThis.SpecuxValidation;
 const { MATERIAL_FILE_EXTENSION, themeModeNames } = sharedValidation;
@@ -42,9 +44,12 @@ const renderRequestedScreen = renderParameters.get("render");
 const renderRequestedState = renderParameters.get("state");
 const renderRequestedAnnotations = renderParameters.get("annotations") === "true";
 const isRenderOnly = renderRequestedScreen !== null;
+
+/** Looks up a DOM element by its ID. */
 const byId = (id) => document.getElementById(id);
 const editorClientId = window.crypto.randomUUID();
 
+// Share the project model, active selection, and pending edits with focused controllers.
 let project;
 let screens = [];
 let materialFiles = new Map();
@@ -93,6 +98,8 @@ let previewTimer = null;
 let previewVersion = 0;
 let editorFieldId = 0;
 let workflowEditor;
+
+// Wire repositories, editors, and renderers to shared state and cross-view services.
 const browserHistory = new BrowserHistory({
   windowObject: window,
   getCurrentSelection: currentUiSelection,
@@ -721,7 +728,8 @@ const screenSelectionController = new ScreenSelectionController({
   state: {
     get isRenderOnly() { return isRenderOnly; },
     get viewingWorkflow() { return viewingWorkflow; },
-    get viewingTheme() { return viewingTheme; }
+    get viewingTheme() { return viewingTheme; },
+    get viewingSpec() { return viewingSpec; }
   },
   services: {
     byId,
@@ -735,6 +743,12 @@ const screenSelectionController = new ScreenSelectionController({
 const screenRulerController = new ScreenRulerController({
   documentObject: document,
   windowObject: window
+});
+const screenCanvasViewportController = new ScreenCanvasViewportController({
+  documentObject: document,
+  windowObject: window,
+  renderRulers: () => screenRulerController.render(),
+  isRenderOnly
 });
 const responsiveToolbarController = new ResponsiveToolbarController({
   documentObject: document,
@@ -753,6 +767,7 @@ const responsiveToolbarController = new ResponsiveToolbarController({
   ]
 });
 if (!isRenderOnly) screenRulerController.bind();
+if (!isRenderOnly) screenCanvasViewportController.bind();
 if (!isRenderOnly) responsiveToolbarController.bind();
 if (!isRenderOnly) screenAnnotationController.bind();
 if (!isRenderOnly) screenSelectionController.bind();
@@ -842,6 +857,7 @@ const inspectorRenderer = new InspectorRenderer({
 
 if (isRenderOnly) document.body.classList.add("render-only");
 
+/** Creates a DOM element with the supplied content and attributes. */
 function element(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -849,14 +865,17 @@ function element(tag, className, text) {
   return node;
 }
 
+/** Returns the named preview states configured for a Screen. */
 function getScreenPreviewStates(screen) {
   return sharedValidation.getPreviewStates(screen);
 }
 
+/** Returns the active preview state id. */
 function getActivePreviewStateId(screen) {
   return previewStateController.getActiveId(screen);
 }
 
+/** Checks whether the instance is visible in the selected preview state. */
 function isInstanceVisible(instance, stateId, screen = screens[activeScreenIndex]?.data) {
   return previewStateController.isInstanceVisible(
     instance,
@@ -865,14 +884,17 @@ function isInstanceVisible(instance, stateId, screen = screens[activeScreenIndex
   );
 }
 
+/** Checks whether the layer is visible in the selected preview state. */
 function isLayerVisible(layer, stateId, screen = screens[activeScreenIndex]?.data) {
   return previewStateController.isLayerVisible(layer, stateId, screen);
 }
 
+/** Resolves one placement using the selected Screen preview state. */
 function resolvePlacementForState(instance, stateId, screen = screens[activeScreenIndex]?.data) {
   return previewStateController.resolvePlacement(instance, stateId, screen);
 }
 
+/** Updates the placement state for the current editor state. */
 function persistPlacementState(instance) {
   const screen = screens[activeScreenIndex];
   if (!screen) throw new Error("Select a Screen before editing a placement.");
@@ -883,30 +905,40 @@ function persistPlacementState(instance) {
   );
 }
 
+/** Updates the state placements for the current editor state. */
 function persistStatePlacements(screen, placements, stateId) {
   for (const placement of placements) {
     previewStateController.savePlacement(screen, placement, stateId);
   }
 }
 
+/** Returns the element label. */
 function getElementLabel(instance) {
   const definition = typeof instance.src === "string" ? materialFiles.get(instance.src) : null;
-  const instanceLabel = Object.entries(definition?.data.attributes || {})
+  return getMaterialInstanceLabel(instance, definition) || getFallbackElementLabel(instance, definition);
+}
+
+/** Returns the material instance label. */
+function getMaterialInstanceLabel(instance, definition) {
+  return Object.entries(definition?.data.attributes || {})
     .map(([name, attribute]) => instance.attributes?.[name] ?? attribute.default)
     .find((value) => typeof value === "string" && value.trim());
-  if (instanceLabel) {
-    return instanceLabel;
-  }
+}
+
+/** Returns the fallback element label. */
+function getFallbackElementLabel(instance, definition) {
   if (definition) return definition.data.name || definition.id;
   return instance.type === "text"
     ? instance.content || instance.id || "Text"
     : instance.label || instance.id || "Button";
 }
 
+/** Renders the preview state controls from the current editor data. */
 function renderPreviewStateControls(screen) {
   previewStateController.renderControls(screen);
 }
 
+/** Opens the screen preview in the editor. */
 function openScreenPreview() {
   const screen = screens[activeScreenIndex];
   if (!screen) return;
@@ -919,19 +951,23 @@ function openScreenPreview() {
   window.open(url.href, "_blank", "noopener,noreferrer");
 }
 
+/** Hides the preview state controls for the current editor state. */
 function hidePreviewStateControls() {
   screenYamlEditor.hideControls();
-  byId("main").classList.remove("screen-editing");
+  if (!viewingSpec) byId("main").classList.remove("screen-editing");
 }
 
+/** Sets the screen yaml status from the supplied data. */
 function setScreenYamlStatus(screen, message, isError = false) {
   screenYamlEditor.setStatus(screen, message, isError);
 }
 
+/** Synchronizes the screen view mode with the current editor state. */
 function syncScreenViewMode() {
   screenYamlEditor.syncViewMode();
 }
 
+/** Sets the screen view mode from the supplied data. */
 async function setScreenViewMode(mode) {
   screenYamlEditor.setViewMode(mode);
   if (mode === "yaml") screenAnnotationController?.setEnabled(false);
@@ -939,70 +975,87 @@ async function setScreenViewMode(mode) {
   publishSelection();
 }
 
+/** Updates the screen yaml source for the current editor state. */
 async function prepareScreenYamlSource(screen) {
   return screenYamlEditor.prepareSource(screen);
 }
 
+/** Updates the screen yaml editor for the current editor state. */
 function configureScreenYamlEditor(screen) {
   screenYamlEditor.configure(screen);
 }
 
+/** Parses the screen yaml into structured editor data. */
 async function parseScreenYaml(screen, source, version) {
   return screenYamlEditor.parse(screen, source, version);
 }
 
+/** Renames a state and updates references to its former ID. */
 function renamePreviewState(stateId, name) {
   previewStateController.rename(stateId, name);
 }
 
+/** Updates the selected state description and persists the Screen edit. */
 function describePreviewState(stateId, description) {
   previewStateController.describe(stateId, description);
 }
 
+/** Updates the preview state for the current editor state. */
 async function switchPreviewState(stateId) {
   return previewStateController.switchTo(stateId);
 }
 
+/** Creates a named state based on the current Screen defaults. */
 async function addPreviewState() {
   return previewStateController.add();
 }
 
+/** Renders the screen instance tree from the current editor data. */
 function renderScreenInstanceTree(panel, instances, parentPath = [], depth = 0, stateId = "default") {
   previewStateController.renderInstanceTree(panel, instances, parentPath, depth, stateId);
 }
 
+/** Deletes the selected named state and clears its active selection if necessary. */
 async function deletePreviewState(stateId) {
   return previewStateController.delete(stateId);
 }
 
+/** Validates a project-relative path and resolves it below the project URL root. */
 function safeProjectUrl(filePath, base = appRoot) {
   return projectRepository.safeProjectUrl(filePath, base);
 }
 
+/** Loads the text into the editor state. */
 function loadText(filePath, base = appRoot) {
   return projectRepository.loadText(filePath, base);
 }
 
+/** Loads the yaml into the editor state. */
 function loadYaml(filePath) {
   return projectRepository.loadYaml(filePath);
 }
 
+/** Parses the yaml source into structured editor data. */
 function parseYamlSource(source, context) {
   return projectRepository.parseYamlSource(source, context);
 }
 
+/** Validates the screen materials before it is applied or saved. */
 function validateScreenMaterials(screen) {
   projectRepository.validateScreenMaterials(screen);
 }
 
+/** Returns the nested path for the placement with the supplied ID. */
 function findInstancePathById(instances, elementId, parentPath = []) {
   return projectRepository.findInstancePathById(instances, elementId, parentPath);
 }
 
+/** Updates the element spec owner for the current editor state. */
 function refreshElementSpecOwner(filePath, source) {
   return projectRepository.refreshElementSpecOwner(filePath, source, screens, elementSpecOwners);
 }
 
+/** Returns the element spec path. */
 function getElementSpecPath(screen, instance) {
   for (const [filePath, owner] of elementSpecOwners) {
     if (owner.screenFile === screen.file && owner.elementId === instance.id) return filePath;
@@ -1010,23 +1063,28 @@ function getElementSpecPath(screen, instance) {
   return null;
 }
 
+/** Returns the defined theme modes. */
 function getDefinedThemeModes() {
   return themeEditor.getDefinedModes();
 }
 
+/** Returns the active theme mode. */
 function getActiveThemeMode() {
   return themeEditor.getActiveMode();
 }
 
+/** Returns the theme tokens. */
 function getThemeTokens(mode) {
   return themeEditor.getTokens(mode);
 }
 
+/** Updates the mode label for the current editor state. */
 function themeModeLabel(mode) {
   return themeEditor.modeLabel(mode);
 }
 
-async function loadProject(selectionToRestore = null) {
+/** Resets the project before load for the current editor state. */
+function resetProjectBeforeLoad() {
   clearTimeout(previewTimer);
   previewTimer = null;
   previewVersion += 1;
@@ -1047,99 +1105,137 @@ async function loadProject(selectionToRestore = null) {
   elementSpecOwners.clear();
   activeProjectFilePath = null;
   activeMaterialFilePath = null;
+}
+
+/** Applies the loaded project to the current editor state. */
+function applyLoadedProject(loaded) {
+  project = loaded.project;
+  projectFilePaths = loaded.projectFilePaths;
+  screens = loaded.screens;
+  materialFiles = loaded.materialFiles;
+  activePreviewStateIds.clear();
+  specSources = loaded.specSources;
+  workflowSources = loaded.workflowSources;
+  elementSpecOwners.clear();
+  for (const [filePath, owner] of loaded.elementSpecOwners) {
+    elementSpecOwners.set(filePath, owner);
+  }
+  theme = loaded.theme;
+  viewingTheme = false;
+  viewingMaterialFile = false;
+  viewingProject = false;
+  viewingSpec = false;
+  viewingPreviewState = false;
+  viewingWorkflow = false;
+  activeWorkflowPath = null;
+  workflowScreenIndex = 0;
+  selectedWorkflowNodeId = null;
+  workflowViewMode = "split";
+  activeSpecPath = null;
+  activeSpecScreenFile = null;
+  activeSpecInstancePath = [];
+  activeSpecOwner = "instance";
+  hasEdits = false;
+  dirtyFiles.clear();
+  invalidYamlFiles.clear();
+  invalidWorkflowFiles.clear();
+  byId("create-screen").disabled = false;
+  updateSaveControls();
+  applyTheme();
+  renderNavigation();
+  renderScreenSelector();
+}
+
+/** Selects the render only screen and updates the related editor state. */
+function selectRenderOnlyScreen() {
+  const renderIndex = screens.findIndex((screen) => screen.id === renderRequestedScreen);
+  if (renderIndex < 0) throw new Error(`Unknown Screen "${renderRequestedScreen}".`);
+  if (renderRequestedState !== null) {
+    const renderScreenData = screens[renderIndex].data;
+    const stateExists = getScreenPreviewStates(renderScreenData)
+      .some((state) => state.id === renderRequestedState);
+    if (!stateExists) {
+      throw new Error(
+        `Unknown Screen State "${renderRequestedState}" for Screen "${renderRequestedScreen}".`
+      );
+    }
+    activePreviewStateIds.set(screens[renderIndex].id, renderRequestedState);
+  }
+  return renderIndex;
+}
+
+/** Loads the render annotations into the editor state. */
+async function loadRenderAnnotations() {
+  const annotationResponse = await fetch(
+    `/api/render-annotations?screenId=${encodeURIComponent(renderRequestedScreen)}`
+  );
+  const annotationSet = await annotationResponse.json();
+  if (!annotationResponse.ok) {
+    throw new Error(annotationSet.error || `HTTP ${annotationResponse.status}`);
+  }
+  screenAnnotationController.renderStaticAnnotations(annotationSet);
+}
+
+/** Marks the render only page ready for the current editor state. */
+function markRenderOnlyPageReady() {
+  if (!document.body.dataset.specuxRenderHeight) {
+    document.body.dataset.specuxRenderHeight = String(Math.ceil(Math.max(
+      document.documentElement.scrollHeight,
+      document.body.scrollHeight,
+      byId("screen-preview").scrollHeight
+    )));
+  }
+  document.body.dataset.specuxRenderReady = "true";
+}
+
+/** Renders the only project from the current editor data. */
+async function renderOnlyProject() {
+  const renderIndex = selectRenderOnlyScreen();
+  await renderScreen(renderIndex);
+  if (byId("screen-preview").classList.contains("error")) {
+    throw new Error(byId("screen-preview").textContent.trim() || "Screen render failed.");
+  }
+  if (renderRequestedAnnotations) await loadRenderAnnotations();
+  markRenderOnlyPageReady();
+  if (new URLSearchParams(window.location.search).get("format") === "html") {
+    document.body.dataset.specuxRenderHtml = encodeBase64(await standaloneScreenHtml());
+  }
+}
+
+/** Opens the project overview and restores its navigation state. */
+async function restoreProjectSelection(selectionToRestore) {
+  const wasHistoryUpdateSuppressed = historyUpdateSuppressed;
+  const restoringUrl = selectionToRestore.view === "url";
+  if (restoringUrl) historyUpdateSuppressed = true;
+  try {
+    await restoreUiSelection(selectionToRestore);
+  } finally {
+    historyUpdateSuppressed = wasHistoryUpdateSuppressed;
+    if (restoringUrl && !wasHistoryUpdateSuppressed) syncBrowserHistory(true);
+  }
+}
+
+/** Renders the loaded project from the current editor data. */
+async function renderLoadedProject(selectionToRestore) {
+  if (isRenderOnly) return renderOnlyProject();
+  if (selectionToRestore) return restoreProjectSelection(selectionToRestore);
+  return renderScreen(0);
+}
+
+/** Loads the project into the editor state. */
+async function loadProject(selectionToRestore = null) {
+  resetProjectBeforeLoad();
   setPreviewMessage("loading", "Reading project files...");
   try {
     const loaded = await projectRepository.load();
-    project = loaded.project;
-    projectFilePaths = loaded.projectFilePaths;
-    screens = loaded.screens;
-    materialFiles = loaded.materialFiles;
-    activePreviewStateIds.clear();
-    specSources = loaded.specSources;
-    workflowSources = loaded.workflowSources;
-    elementSpecOwners.clear();
-    for (const [filePath, owner] of loaded.elementSpecOwners) {
-      elementSpecOwners.set(filePath, owner);
-    }
-    theme = loaded.theme;
-    viewingTheme = false;
-    viewingMaterialFile = false;
-    viewingProject = false;
-    viewingSpec = false;
-    viewingPreviewState = false;
-    viewingWorkflow = false;
-    activeWorkflowPath = null;
-    workflowScreenIndex = 0;
-    selectedWorkflowNodeId = null;
-    workflowViewMode = "split";
-    activeSpecPath = null;
-    activeSpecScreenFile = null;
-    activeSpecInstancePath = [];
-    activeSpecOwner = "instance";
-    hasEdits = false;
-    dirtyFiles.clear();
-    invalidYamlFiles.clear();
-    invalidWorkflowFiles.clear();
-    byId("create-screen").disabled = false;
-    updateSaveControls();
-    applyTheme();
-    renderNavigation();
-    renderScreenSelector();
-    if (isRenderOnly) {
-      const renderIndex = screens.findIndex((screen) => screen.id === renderRequestedScreen);
-      if (renderIndex < 0) throw new Error(`Unknown Screen "${renderRequestedScreen}".`);
-      if (renderRequestedState !== null) {
-        const renderScreenData = screens[renderIndex].data;
-        if (!getScreenPreviewStates(renderScreenData).some((state) => state.id === renderRequestedState)) {
-          throw new Error(
-            `Unknown Screen State "${renderRequestedState}" for Screen "${renderRequestedScreen}".`
-          );
-        }
-        activePreviewStateIds.set(screens[renderIndex].id, renderRequestedState);
-      }
-      await renderScreen(renderIndex);
-      if (byId("screen-preview").classList.contains("error")) {
-        throw new Error(byId("screen-preview").textContent.trim() || "Screen render failed.");
-      }
-      if (renderRequestedAnnotations) {
-        const annotationResponse = await fetch(
-          `/api/render-annotations?screenId=${encodeURIComponent(renderRequestedScreen)}`
-        );
-        const annotationSet = await annotationResponse.json();
-        if (!annotationResponse.ok) {
-          throw new Error(annotationSet.error || `HTTP ${annotationResponse.status}`);
-        }
-        screenAnnotationController.renderStaticAnnotations(annotationSet);
-      }
-      if (!document.body.dataset.specuxRenderHeight) {
-        document.body.dataset.specuxRenderHeight = String(Math.ceil(Math.max(
-          document.documentElement.scrollHeight,
-          document.body.scrollHeight,
-          byId("screen-preview").scrollHeight
-        )));
-      }
-      document.body.dataset.specuxRenderReady = "true";
-      if (new URLSearchParams(window.location.search).get("format") === "html") {
-        document.body.dataset.specuxRenderHtml = encodeBase64(await standaloneScreenHtml());
-      }
-    } else if (selectionToRestore) {
-      const wasHistoryUpdateSuppressed = historyUpdateSuppressed;
-      const restoringUrl = selectionToRestore.view === "url";
-      if (restoringUrl) historyUpdateSuppressed = true;
-      try {
-        await restoreUiSelection(selectionToRestore);
-      } finally {
-        historyUpdateSuppressed = wasHistoryUpdateSuppressed;
-        if (restoringUrl && !wasHistoryUpdateSuppressed) syncBrowserHistory(true);
-      }
-    } else {
-      await renderScreen(0);
-    }
+    applyLoadedProject(loaded);
+    await renderLoadedProject(selectionToRestore);
   } catch (error) {
     showFatalError(error);
   }
 }
 
+/** Updates the base64 for the current editor state. */
 function encodeBase64(value) {
   const bytes = new TextEncoder().encode(value);
   let binary = "";
@@ -1147,6 +1243,7 @@ function encodeBase64(value) {
   return btoa(binary);
 }
 
+/** Updates the rendered node for the current editor state. */
 function cloneRenderedNode(node) {
   if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent);
   if (node.nodeType !== Node.ELEMENT_NODE) return node.cloneNode(false);
@@ -1163,6 +1260,7 @@ function cloneRenderedNode(node) {
   return copy;
 }
 
+/** Updates the screen html for the current editor state. */
 async function standaloneScreenHtml() {
   const outputDocument = document.implementation.createHTMLDocument("");
   outputDocument.documentElement.lang = "en";
@@ -1189,30 +1287,37 @@ async function standaloneScreenHtml() {
   return `<!doctype html>\n${outputDocument.documentElement.outerHTML}\n`;
 }
 
+/** Returns the selection represented by the currently visible editor view. */
 function currentUiSelection() {
   return editorNavigation.currentSelection();
 }
 
+/** Returns the project file represented by the supplied editor selection. */
 function getSelectionFilePath(selection) {
   return editorNavigation.getSelectionFilePath(selection);
 }
 
+/** Builds an editor selection from the URL file, view, owner, and nested-path parameters. */
 function selectionFromLocation() {
   return editorNavigation.selectionFromLocation();
 }
 
+/** Synchronizes the browser history with the current editor state. */
 function syncBrowserHistory(forceReplace = false) {
   editorNavigation.syncHistory(forceReplace);
 }
 
+/** Restores the ui selection for the current editor state. */
 async function restoreUiSelection(selection) {
   return editorNavigation.restoreSelection(selection);
 }
 
+/** Reloads the active editor view after project files change externally. */
 function refreshFromExternalChanges() {
   return editorNavigation.refreshFromExternalChanges();
 }
 
+/** Normalizes the screenshot colors for the current editor state. */
 function normalizeScreenshotColors(documentClone) {
   const srgbColor = /color\(\s*srgb\s+([+-]?(?:\d+\.?\d*|\.\d+))\s+([+-]?(?:\d+\.?\d*|\.\d+))\s+([+-]?(?:\d+\.?\d*|\.\d+))(?:\s*\/\s*([+-]?(?:\d+\.?\d*|\.\d+)))?\s*\)/gi;
   for (const element of documentClone.querySelectorAll("*")) {
@@ -1240,6 +1345,176 @@ function normalizeScreenshotColors(documentClone) {
   }
 }
 
+/** Validates the preview capture dimensions before it is applied or saved. */
+function validatePreviewCaptureDimensions(previews) {
+  if (previews.length === 0) {
+    throw new Error("There are no visible preview panes to capture.");
+  }
+  const requestedWidth = Math.max(...previews.map(({ width }) => width));
+  const requestedHeight = previews.reduce((total, { height }) => total + height, 0);
+  const invalidPreview = previews.some(({ width, height }) =>
+    !Number.isInteger(width) || !Number.isInteger(height) ||
+    width < 1 || height < 1 || width > 16384 || height > 16384
+  );
+  if (invalidPreview || requestedWidth > 16384 || requestedHeight > 16384) {
+    throw new Error("The combined preview image exceeds the 16384px image limit.");
+  }
+}
+
+/** Sets the capture element bounds from the supplied data. */
+function setCaptureElementBounds(element, width, height) {
+  element.style.width = `${width}px`;
+  element.style.height = `${height}px`;
+  element.style.minWidth = "0";
+  element.style.minHeight = "0";
+  element.style.maxWidth = "none";
+  element.style.maxHeight = "none";
+  element.style.overflow = "visible";
+  element.style.flex = "none";
+}
+
+/** Updates the captured workflow diagram for the current editor state. */
+function positionCapturedWorkflowDiagram(cloneTarget, workflowDiagramLeft) {
+  const cloneWorkflowDiagram = cloneTarget.querySelector(":scope > svg.flowchart");
+  if (!cloneWorkflowDiagram || workflowDiagramLeft === null) return;
+  const cloneTargetLeft = cloneTarget.getBoundingClientRect().left;
+  const cloneDiagramLeft = cloneWorkflowDiagram.getBoundingClientRect().left;
+  cloneWorkflowDiagram.style.transform =
+    `translateX(${workflowDiagramLeft - (cloneDiagramLeft - cloneTargetLeft)}px)`;
+}
+
+/** Updates the preview clone for the current editor state. */
+function preparePreviewClone(documentClone, preview, workflowDiagramLeft) {
+  const { id, width, height } = preview;
+  const cloneTarget = documentClone.querySelector(
+    `[data-annotation-capture-preview="${id}"]`
+  );
+  const cloneScrollTarget = documentClone.querySelector(
+    `[data-annotation-capture-scroll="${id}"]`
+  );
+  if (!cloneTarget || !cloneScrollTarget) {
+    throw new Error(`The "${id}" preview changed during image capture.`);
+  }
+  Object.assign(cloneTarget.style, {
+    position: "fixed",
+    top: "0",
+    left: "0",
+    margin: "0",
+    zIndex: "2147483647"
+  });
+  setCaptureElementBounds(cloneTarget, width, height);
+  if (id === "screen") cloneTarget.style.zoom = "1";
+  cloneScrollTarget.scrollTop = 0;
+  cloneScrollTarget.scrollLeft = 0;
+  if (cloneScrollTarget !== cloneTarget) {
+    setCaptureElementBounds(cloneScrollTarget, width, height);
+  }
+  positionCapturedWorkflowDiagram(cloneTarget, workflowDiagramLeft);
+  let ancestor = cloneTarget.parentElement;
+  while (ancestor && ancestor.id !== "main") {
+    ancestor.style.overflow = "visible";
+    ancestor.style.contain = "none";
+    ancestor = ancestor.parentElement;
+  }
+  normalizeScreenshotColors(documentClone);
+}
+
+/** Updates the preview canvas for the current editor state. */
+function flattenPreviewCanvas(canvas, backgroundColor, previewId) {
+  const flattened = document.createElement("canvas");
+  flattened.width = canvas.width;
+  flattened.height = canvas.height;
+  const context = flattened.getContext("2d");
+  if (!context) throw new Error(`Could not flatten the "${previewId}" preview image.`);
+  context.fillStyle = backgroundColor;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(canvas, 0, 0);
+  return flattened;
+}
+
+/** Captures the preview canvas for the current editor state. */
+async function capturePreviewCanvas(preview, mainBackground) {
+  const { id, width, height, captureElement, scrollElement, hostElement } = preview;
+  const bounds = captureElement.getBoundingClientRect();
+  const workflowDiagram = captureElement.querySelector(":scope > svg.flowchart");
+  const workflowDiagramLeft = workflowDiagram
+    ? workflowDiagram.getBoundingClientRect().left - bounds.left + scrollElement.scrollLeft
+    : null;
+  const surfaceBackground = window.getComputedStyle(hostElement).backgroundColor;
+  const backgroundColor = surfaceBackground === "rgba(0, 0, 0, 0)"
+    ? mainBackground
+    : surfaceBackground;
+  const canvas = await window.html2canvas(captureElement, {
+    width,
+    height,
+    windowWidth: Math.max(window.innerWidth, Math.ceil(Math.max(0, bounds.left) + width)),
+    windowHeight: Math.max(window.innerHeight, Math.ceil(Math.max(0, bounds.top) + height)),
+    scrollX: 0,
+    scrollY: 0,
+    scale: 1,
+    useCORS: true,
+    logging: false,
+    backgroundColor,
+    foreignObjectRendering: true,
+    onclone: (documentClone) => preparePreviewClone(documentClone, preview, workflowDiagramLeft)
+  });
+  return flattenPreviewCanvas(canvas, backgroundColor, id);
+}
+
+/** Updates the preview canvases for the current editor state. */
+async function combinePreviewCanvases(canvases, mainBackground) {
+  const compositeWidth = Math.max(...canvases.map((canvas) => canvas.width));
+  const compositeHeight = canvases.reduce((height, canvas) => height + canvas.height, 0);
+  if (compositeWidth > 16384 || compositeHeight > 16384) {
+    throw new Error("The combined preview image exceeds the 16384px image limit.");
+  }
+  const flattenedCanvas = document.createElement("canvas");
+  flattenedCanvas.width = compositeWidth;
+  flattenedCanvas.height = compositeHeight;
+  const context = flattenedCanvas.getContext("2d");
+  if (!context) throw new Error("The browser could not combine the preview images.");
+  context.fillStyle = mainBackground;
+  context.fillRect(0, 0, compositeWidth, compositeHeight);
+  let verticalOffset = 0;
+  for (const canvas of canvases) {
+    context.drawImage(canvas, 0, verticalOffset);
+    verticalOffset += canvas.height;
+  }
+  const image = await new Promise((resolve) =>
+    flattenedCanvas.toBlob(resolve, "image/png")
+  );
+  if (!image) throw new Error("The browser could not encode the editor image.");
+  return image;
+}
+
+/** Updates the captured image for the current editor state. */
+async function uploadCapturedImage(request, image) {
+  const response = await fetch(
+    `/api/editor-image?requestId=${encodeURIComponent(request.requestId)}` +
+      `&clientId=${encodeURIComponent(editorClientId)}`,
+    { method: "POST", headers: { "Content-Type": "image/png" }, body: image }
+  );
+  if (!response.ok) throw new Error(await response.text());
+}
+
+/** Updates the editor image capture failure for the current editor state. */
+async function reportEditorImageCaptureFailure(request, error) {
+  try {
+    await fetch("/api/editor-image/failure", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requestId: request.requestId,
+        clientId: editorClientId,
+        message: error.message || String(error)
+      })
+    });
+  } catch (reportError) {
+    console.error("Could not report the editor image capture failure.", reportError);
+  }
+}
+
+/** Captures the current editor image for the current editor state. */
 async function captureCurrentEditorImage(request) {
   if (!request || request.clientId !== editorClientId ||
       typeof request.requestId !== "string") return;
@@ -1249,146 +1524,18 @@ async function captureCurrentEditorImage(request) {
       throw new Error("The editor image capture library is unavailable.");
     }
     await document.fonts?.ready;
-    const editorSurface = byId("main");
     const previews = screenAnnotationController?.getPreviewCaptureTargets() || [];
-    if (previews.length === 0) {
-      throw new Error("There are no visible preview panes to capture.");
-    }
-    const requestedWidth = Math.max(...previews.map(({ width }) => width));
-    const requestedHeight = previews.reduce((total, { height }) => total + height, 0);
-    if (previews.some(({ width, height }) =>
-      !Number.isInteger(width) || !Number.isInteger(height) ||
-      width < 1 || height < 1 || width > 16384 || height > 16384
-    ) || requestedWidth > 16384 || requestedHeight > 16384) {
-      throw new Error("The combined preview image exceeds the 16384px image limit.");
-    }
-    const mainBackground = window.getComputedStyle(editorSurface).backgroundColor;
+    validatePreviewCaptureDimensions(previews);
+    const mainBackground = window.getComputedStyle(byId("main")).backgroundColor;
     const capturedPreviews = [];
     for (const preview of previews) {
-      const { id, width, height, captureElement, scrollElement, hostElement } = preview;
-      const bounds = captureElement.getBoundingClientRect();
-      const workflowDiagram = captureElement.querySelector(":scope > svg.flowchart");
-      const workflowDiagramLeft = workflowDiagram
-        ? workflowDiagram.getBoundingClientRect().left - bounds.left + scrollElement.scrollLeft
-        : null;
-      const selector = `[data-annotation-capture-preview="${id}"]`;
-      const scrollSelector = `[data-annotation-capture-scroll="${id}"]`;
-      const surfaceBackground = window.getComputedStyle(hostElement).backgroundColor;
-      const backgroundColor = surfaceBackground === "rgba(0, 0, 0, 0)"
-        ? mainBackground
-        : surfaceBackground;
-      const canvas = await window.html2canvas(captureElement, {
-        width,
-        height,
-        windowWidth: Math.max(window.innerWidth, Math.ceil(Math.max(0, bounds.left) + width)),
-        windowHeight: Math.max(window.innerHeight, Math.ceil(Math.max(0, bounds.top) + height)),
-        scrollX: 0,
-        scrollY: 0,
-        scale: 1,
-        useCORS: true,
-        logging: false,
-        backgroundColor,
-        foreignObjectRendering: true,
-        onclone: (documentClone) => {
-          const cloneTarget = documentClone.querySelector(selector);
-          const cloneScrollTarget = documentClone.querySelector(scrollSelector);
-          if (!cloneTarget || !cloneScrollTarget) {
-            throw new Error(`The "${id}" preview changed during image capture.`);
-          }
-          cloneTarget.style.position = "fixed";
-          cloneTarget.style.top = "0";
-          cloneTarget.style.left = "0";
-          cloneTarget.style.margin = "0";
-          cloneTarget.style.zIndex = "2147483647";
-          cloneTarget.style.width = `${width}px`;
-          cloneTarget.style.height = `${height}px`;
-          cloneTarget.style.minWidth = "0";
-          cloneTarget.style.minHeight = "0";
-          cloneTarget.style.maxWidth = "none";
-          cloneTarget.style.maxHeight = "none";
-          cloneTarget.style.overflow = "visible";
-          cloneTarget.style.flex = "none";
-          if (id === "screen") cloneTarget.style.zoom = "1";
-          cloneScrollTarget.scrollTop = 0;
-          cloneScrollTarget.scrollLeft = 0;
-          if (cloneScrollTarget !== cloneTarget) {
-            cloneScrollTarget.style.width = `${width}px`;
-            cloneScrollTarget.style.height = `${height}px`;
-            cloneScrollTarget.style.minWidth = "0";
-            cloneScrollTarget.style.minHeight = "0";
-            cloneScrollTarget.style.maxWidth = "none";
-            cloneScrollTarget.style.maxHeight = "none";
-            cloneScrollTarget.style.overflow = "visible";
-            cloneScrollTarget.style.flex = "none";
-          }
-          const cloneWorkflowDiagram = cloneTarget.querySelector(":scope > svg.flowchart");
-          if (cloneWorkflowDiagram && workflowDiagramLeft !== null) {
-            const cloneTargetLeft = cloneTarget.getBoundingClientRect().left;
-            const cloneDiagramLeft = cloneWorkflowDiagram.getBoundingClientRect().left;
-            cloneWorkflowDiagram.style.transform =
-              `translateX(${workflowDiagramLeft - (cloneDiagramLeft - cloneTargetLeft)}px)`;
-          }
-          let ancestor = cloneTarget.parentElement;
-          while (ancestor && ancestor.id !== "main") {
-            ancestor.style.overflow = "visible";
-            ancestor.style.contain = "none";
-            ancestor = ancestor.parentElement;
-          }
-          normalizeScreenshotColors(documentClone);
-        }
-      });
-      const flattened = document.createElement("canvas");
-      flattened.width = canvas.width;
-      flattened.height = canvas.height;
-      const previewContext = flattened.getContext("2d");
-      if (!previewContext) throw new Error(`Could not flatten the "${id}" preview image.`);
-      previewContext.fillStyle = backgroundColor;
-      previewContext.fillRect(0, 0, canvas.width, canvas.height);
-      previewContext.drawImage(canvas, 0, 0);
-      capturedPreviews.push(flattened);
+      capturedPreviews.push(await capturePreviewCanvas(preview, mainBackground));
     }
-    const compositeWidth = Math.max(...capturedPreviews.map((canvas) => canvas.width));
-    const compositeHeight = capturedPreviews.reduce((height, canvas) => height + canvas.height, 0);
-    if (compositeWidth > 16384 || compositeHeight > 16384) {
-      throw new Error("The combined preview image exceeds the 16384px image limit.");
-    }
-    const flattenedCanvas = document.createElement("canvas");
-    flattenedCanvas.width = compositeWidth;
-    flattenedCanvas.height = compositeHeight;
-    const context = flattenedCanvas.getContext("2d");
-    if (!context) throw new Error("The browser could not combine the preview images.");
-    context.fillStyle = mainBackground;
-    context.fillRect(0, 0, compositeWidth, compositeHeight);
-    let verticalOffset = 0;
-    for (const canvas of capturedPreviews) {
-      context.drawImage(canvas, 0, verticalOffset);
-      verticalOffset += canvas.height;
-    }
-    const image = await new Promise((resolve) =>
-      flattenedCanvas.toBlob(resolve, "image/png")
-    );
-    if (!image) throw new Error("The browser could not encode the editor image.");
-    const response = await fetch(
-      `/api/editor-image?requestId=${encodeURIComponent(request.requestId)}` +
-        `&clientId=${encodeURIComponent(editorClientId)}`,
-      { method: "POST", headers: { "Content-Type": "image/png" }, body: image }
-    );
-    if (!response.ok) throw new Error(await response.text());
+    const image = await combinePreviewCanvases(capturedPreviews, mainBackground);
+    await uploadCapturedImage(request, image);
   } catch (error) {
     console.error("Could not capture the active editor image.", error);
-    try {
-      await fetch("/api/editor-image/failure", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requestId: request.requestId,
-          clientId: editorClientId,
-          message: error.message || String(error)
-        })
-      });
-    } catch (reportError) {
-      console.error("Could not report the editor image capture failure.", reportError);
-    }
+    await reportEditorImageCaptureFailure(request, error);
   }
 }
 
@@ -1406,6 +1553,7 @@ if (!isRenderOnly && typeof EventSource !== "undefined") {
   });
 }
 
+/** Applies the theme to the current editor state. */
 function applyTheme() {
   const tokens = getThemeTokens();
   const tokenNames = new Set(Object.keys(tokens));
@@ -1420,43 +1568,53 @@ function applyTheme() {
   byId("screen-preview").style.colorScheme = getActiveThemeMode();
 }
 
+/** Renders the navigation from the current editor data. */
 function renderNavigation() {
   return projectFileNavigator.renderNavigation();
 }
 
+/** Renders the screen selector from the current editor data. */
 function renderScreenSelector() {
   return projectFileNavigator.renderScreenSelector();
 }
 
+/** Sets the screen selector open from the supplied data. */
 function setScreenSelectorOpen(open, restoreFocus = false) {
   return projectFileNavigator.setScreenSelectorOpen(open, restoreFocus);
 }
 
+/** Collects project files and generated drafts for the navigation tree. */
 function getProjectTreeFilePaths() {
   return projectFileNavigator.getProjectTreeFilePaths();
 }
 
+/** Renders the project file from the current editor data. */
 function renderProjectFile(file) {
   return projectFileNavigator.renderProjectFile(file);
 }
 
+/** Returns the project file action. */
 function getProjectFileAction(filePath) {
   return projectFileNavigator.getProjectFileAction(filePath);
 }
 
+/** Opens the project file in the editor. */
 async function openProjectFile(filePath) {
   return projectFileNavigator.openProjectFile(filePath);
 }
 
+/** Validates the proposed name, creates the Screen file, and updates the project manifest. */
 async function createScreen() {
   return screenController.createScreen();
 }
 
+/** Walks a nested instance path and returns its target placement. */
 function getInstanceAtPath(screen, path) {
   const materials = screen.data?.materials || screen.materials || [];
   return getScreenPlacementAtPath(materials, path);
 }
 
+/** Selects the instance in preview and updates the related editor state. */
 function selectInstanceInPreview(path) {
   const selectedPaths = (Array.isArray(path?.[0]) ? path : [path])
     .map((selectedPath) => JSON.stringify(selectedPath));
@@ -1469,7 +1627,9 @@ function selectInstanceInPreview(path) {
   return selectedNode;
 }
 
+/** Renders the screen from the current editor data. */
 async function renderScreen(index, options = {}) {
+  const previousScreenIndex = activeScreenIndex;
   const filePath = options.preserveWorkflow
     ? activeWorkflowPath
     : screens[index]?.file;
@@ -1483,16 +1643,25 @@ async function renderScreen(index, options = {}) {
       screenAnnotationController.setEnabled(false);
       hidePreviewStateControls();
     }
+    if (!options.preserveWorkflow &&
+        (index !== previousScreenIndex || options.previewStateSelected)) {
+      const stateTargets = options.previewStateSelected
+        ? getNewlyVisibleStatePlacementPaths(screens[index])
+        : [];
+      await centerPreviewTarget(null, stateTargets);
+    }
     publishSelection();
   }
 }
 
+/** Renders the workflow editor from the current editor data. */
 async function renderWorkflowEditor(filePath, screenIndex) {
   await screenAnnotationController?.fileLoaded(filePath);
   screenAnnotationController?.setEnabled(false);
   return workflowEditor.render(filePath, screenIndex);
 }
 
+/** Renders the theme screen from the current editor data. */
 async function renderThemeScreen(index) {
   const preview = byId("screen-preview");
   preview.classList.remove("theme-material-preview");
@@ -1501,6 +1670,7 @@ async function renderThemeScreen(index) {
   hidePreviewStateControls();
 }
 
+/** Renders the theme material from the current editor data. */
 function renderThemeMaterial(filePath) {
   const material = materialFiles.get(filePath);
   if (!material) throw new Error(`Material file "${filePath}" is not available.`);
@@ -1508,52 +1678,62 @@ function renderThemeMaterial(filePath) {
   byId("screen-preview").classList.add("theme-material-preview");
 }
 
-async function showSpecReference(reference, filePath) {
-  workflowEditor.clearSpecReferencePreview();
-  if (!reference) {
+/** Resolves the spec reference against the current project state. */
+function resolveSpecReference(reference) {
+  let selectedReference = reference;
+  if (!selectedReference) {
     const ownerScreenIndex = screens.findIndex((screen) =>
       screen.file === activeSpecScreenFile
     );
-    if (ownerScreenIndex < 0) return [];
-    reference = {
+    if (ownerScreenIndex < 0) return null;
+    selectedReference = {
       screenId: screens[ownerScreenIndex].id,
       placementId: null,
       stateId: "default"
     };
   }
-  const screenIndex = screens.findIndex((screen) => screen.id === reference.screenId);
+  const screenIndex = screens.findIndex((screen) => screen.id === selectedReference.screenId);
   const screen = screens[screenIndex];
   if (!screen) {
-    throw new Error(`Spec Screen "${reference.screenId}" is not available.`);
+    throw new Error(`Spec Screen "${selectedReference.screenId}" is not available.`);
   }
-  if (!getScreenPreviewStates(screen.data).some((previewState) =>
-    previewState.id === reference.stateId
-  )) {
+  const stateAvailable = getScreenPreviewStates(screen.data)
+    .some((previewState) => previewState.id === selectedReference.stateId);
+  if (!stateAvailable) {
     throw new Error(
-      `Screen State "${reference.stateId}" is not available on Screen "${screen.id}".`
+      `Screen State "${selectedReference.stateId}" is not available on Screen "${screen.id}".`
     );
   }
 
   let instancePath = [];
-  if (reference.placementId) {
+  if (selectedReference.placementId) {
     instancePath = getScreenPlacementPathById(
       screen.data.materials || [],
-      reference.placementId
+      selectedReference.placementId
     ) || [];
     if (instancePath.length === 0) {
       throw new Error(
-        `Element "${reference.placementId}" is not available on Screen "${screen.id}".`
+        `Element "${selectedReference.placementId}" is not available on Screen "${screen.id}".`
       );
     }
   }
 
-  activePreviewStateIds.set(screen.id, reference.stateId);
+  return { reference: selectedReference, screen, screenIndex, instancePath };
+}
+
+/** Shows the spec reference for the current editor state. */
+async function showSpecReference(reference, filePath) {
+  workflowEditor.clearSpecReferencePreview();
+  const resolved = resolveSpecReference(reference);
+  if (!resolved) return [];
+  const { reference: selectedReference, screen, screenIndex, instancePath } = resolved;
+
+  activePreviewStateIds.set(screen.id, selectedReference.stateId);
   activeScreenIndex = screenIndex;
   activeInstancePath = instancePath;
   activeInstancePaths = instancePath.length ? [[...instancePath]] : [];
   await renderScreen(screenIndex, {
-    preserveSpec: true,
-    previewStateSelected: reference.stateId !== "default"
+    preserveSpec: true
   });
   screenAnnotationController.setEnabled(false);
   viewingSpec = true;
@@ -1569,18 +1749,11 @@ async function showSpecReference(reference, filePath) {
   byId("spec-view-heading").textContent = "Screen preview";
   updateNavigationSelection();
   renderInspector();
-  if (instancePath.length) {
-    await scrollPreviewToPlacement(instancePath);
-  } else {
-    byId("screen-preview").scrollTo({
-      left: 0,
-      top: 0,
-      behavior: "smooth"
-    });
-  }
+  await centerPreviewTarget(instancePath.length ? instancePath : null);
   return instancePath;
 }
 
+/** Shows the workflow node for the current editor state. */
 async function showWorkflowNode(link, ownerScreenIndex, workflowPath) {
   const screenIndex = screens.findIndex((screen) => screen.id === link.screenId);
   const screen = screens[screenIndex];
@@ -1627,41 +1800,99 @@ async function showWorkflowNode(link, ownerScreenIndex, workflowPath) {
   workflowEditor.setViewMode(workflowViewMode);
   updateNavigationSelection();
   renderInspector();
-  if (link.placementId) {
-    await scrollPreviewToPlacement(instancePath);
-  }
+  await centerPreviewTarget(link.placementId ? instancePath : null);
 }
 
-async function scrollPreviewToPlacement(instancePath) {
+/** Centers the selected placement or Screen in the preview. */
+async function centerPreviewTarget(instancePath, stateTargetPaths = []) {
   const preview = byId("screen-preview");
-  const host = byId(`specux-material-${instancePath.join("-")}`);
-  const frame = host?.closest(".material-frame");
-  if (!frame) return;
-
   await new Promise((resolve) => window.requestAnimationFrame(resolve));
-  const previewRect = preview.getBoundingClientRect();
-  const frameRect = frame.getBoundingClientRect();
   const content = preview.querySelector(":scope > .form-content");
-  const contentRect = content?.getBoundingClientRect();
-  const scaleX = contentRect && content.offsetWidth
-    ? contentRect.width / content.offsetWidth
-    : 1;
-  const scaleY = contentRect && content.offsetHeight
-    ? contentRect.height / content.offsetHeight
-    : 1;
-  const viewportLeft = previewRect.left + preview.clientLeft;
-  const viewportTop = previewRect.top + preview.clientTop;
-  const horizontalOffset = (frameRect.left + frameRect.width / 2 -
-    (viewportLeft + preview.clientWidth / 2)) / scaleX;
-  const verticalOffset = (frameRect.top + frameRect.height / 2 -
-    (viewportTop + preview.clientHeight / 2)) / scaleY;
-  preview.scrollTo({
-    left: preview.scrollLeft + horizontalOffset,
-    top: preview.scrollTop + verticalOffset,
-    behavior: "smooth"
-  });
+  const host = instancePath
+    ? byId(`specux-material-${instancePath.join("-")}`)
+    : null;
+  if (instancePath) {
+    screenCanvasViewportController.centerOnTarget(
+      host?.closest(".material-frame") || content
+    );
+    return;
+  }
+  if (stateTargetPaths.length) {
+    const targetPaths = new Set(stateTargetPaths.map((path) => JSON.stringify(path)));
+    const stateTargets = [...(content?.querySelectorAll(".material-frame") || [])]
+      .filter((frame) => targetPaths.has(frame.dataset.instancePath));
+    if (stateTargets.length) {
+      screenCanvasViewportController.centerOnTargets(stateTargets, {
+        preferLargestTarget: true
+      });
+      return;
+    }
+  }
+  const placements = [...(content?.querySelectorAll(":scope > .material-frame") || [])];
+  if (placements.length) screenCanvasViewportController.centerOnTargets(placements);
+  else screenCanvasViewportController.centerOnTarget(content);
 }
 
+/** Returns visible placements introduced by the selected Screen State. */
+function getNewlyVisibleStatePlacementPaths(screen) {
+  const screenData = screen?.data;
+  const stateId = (screen && activePreviewStateIds.get(screen.id)) || "default";
+  if (!screenData || stateId === "default") return [];
+  const statePaths = [];
+  const visit = (placements, parentPath, stateParentVisible, defaultParentVisible) => {
+    placements.forEach((placement, index) => {
+      const path = [...parentPath, index];
+      const layer = parentPath.length
+        ? null
+        : screenData.layers?.find((candidate) => candidate.id === placement.layer);
+      const { isVisibleInState, isVisibleByDefault } = getStatePlacementVisibility(
+        placement,
+        layer,
+        stateId,
+        screenData,
+        stateParentVisible,
+        defaultParentVisible,
+        parentPath.length > 0
+      );
+      if (isVisibleInState && !isVisibleByDefault) {
+        statePaths.push(path);
+        return;
+      }
+      if (isScreenGroup(placement)) {
+        visit(
+          placement.children,
+          path,
+          isVisibleInState,
+          isVisibleByDefault
+        );
+      }
+    });
+  };
+  visit(screenData.materials || [], [], true, true);
+  return statePaths;
+}
+
+/** Compares a placement's effective visibility in a state with its Default visibility. */
+function getStatePlacementVisibility(
+  placement,
+  layer,
+  stateId,
+  screenData,
+  stateParentVisible,
+  defaultParentVisible,
+  isNested
+) {
+  return {
+    isVisibleInState: stateParentVisible &&
+      isInstanceVisible(placement, stateId, screenData) &&
+      (isNested || isLayerVisible(layer, stateId, screenData)),
+    isVisibleByDefault: defaultParentVisible &&
+      isInstanceVisible(placement, "default", screenData) &&
+      (isNested || isLayerVisible(layer, "default", screenData))
+  };
+}
+
+/** Renders the spec editor from the current editor data. */
 async function renderSpecEditor(filePath, instancePath = activeInstancePath, owner = "instance") {
   await screenAnnotationController?.fileLoaded(filePath);
   workflowEditor?.deactivate();
@@ -1669,21 +1900,27 @@ async function renderSpecEditor(filePath, instancePath = activeInstancePath, own
   return specEditor.render(filePath, instancePath, owner);
 }
 
+/** Updates the unedited active spec draft for the current editor state. */
 function discardUneditedActiveSpecDraft() {
   specEditor.discardUneditedActiveDraft();
 }
 
+/** Creates an Element spec for the selected instance path. */
 async function createSpecForInstance(instancePath) {
   return specEditor.createForInstance(instancePath);
 }
 
+/** Creates the project-level behavior spec and registers its pending file path. */
 async function createProjectSpec() {
   return specEditor.createForProject();
 }
 
+/** Creates a behavior spec owned by the selected Screen. */
 async function createSpecForScreen() {
   return specEditor.createForScreen();
 }
+
+/** Renders the project overview from the current editor data. */
 async function renderProjectOverview() {
   await screenAnnotationController?.fileLoaded("project.yml");
   workflowEditor?.deactivate();
@@ -1691,6 +1928,7 @@ async function renderProjectOverview() {
   return workspaceViewRenderer.renderProjectOverview();
 }
 
+/** Renders the material file from the current editor data. */
 async function renderMaterialFile(filePath) {
   await screenAnnotationController?.fileLoaded(filePath);
   workflowEditor?.deactivate();
@@ -1698,11 +1936,13 @@ async function renderMaterialFile(filePath) {
   return materialFileEditor.render(filePath);
 }
 
+/** Checks whether two Element instance paths identify the same instance. */
 function sameInstancePath(left, right) {
   return left.length === right.length && left.every((part, index) => part === right[index]);
 }
 
 
+/** Sets the screen dom context from the supplied data. */
 function setScreenDomContext(node, screen) {
   if (!node) return;
   if (!screen) {
@@ -1714,6 +1954,7 @@ function setScreenDomContext(node, screen) {
   node.dataset.specuxScreenName = screen.data.name || screen.id;
 }
 
+/** Updates DOM metadata used to interpret Screen preview events. */
 function updateScreenDomContext(screen) {
   [
     byId("workspace-context"),
@@ -1723,8 +1964,8 @@ function updateScreenDomContext(screen) {
   ].forEach((node) => setScreenDomContext(node, screen));
 }
 
-function selectInstance(path, _materialSrc, options = {}) {
-  if (viewingWorkflow) return;
+/** Copies the selected instance paths and refreshes their canvas controls. */
+function updateSelectedInstancePaths(path, options) {
   const selectedPath = Array.isArray(path) ? path : [];
   if (Array.isArray(options.paths)) {
     activeInstancePaths = options.paths
@@ -1742,15 +1983,10 @@ function selectInstance(path, _materialSrc, options = {}) {
     activeInstancePath = [...selectedPath];
     activeInstancePaths = selectedPath.length ? [[...selectedPath]] : [];
   }
-  if (viewingTheme) {
-    selectInstanceInPreview(activeInstancePaths);
-    renderInspector();
-    return;
-  }
-  if (viewingSpec) {
-    selectInstanceInPreview(activeInstancePaths);
-    return;
-  }
+}
+
+/** Clears the spec selection view and resets its associated state. */
+function clearSpecSelectionView() {
   viewingTheme = false;
   viewingProject = false;
   viewingSpec = false;
@@ -1761,11 +1997,28 @@ function selectInstance(path, _materialSrc, options = {}) {
   byId("main").classList.remove("spec-editing");
   byId("spec-editor-panel").hidden = true;
   byId("spec-source").oninput = null;
+}
+
+/** Selects the instance and updates the related editor state. */
+function selectInstance(path, _materialSrc, options = {}) {
+  if (viewingWorkflow) return;
+  updateSelectedInstancePaths(path, options);
+  if (viewingTheme) {
+    selectInstanceInPreview(activeInstancePaths);
+    renderInspector();
+    return;
+  }
+  if (viewingSpec) {
+    selectInstanceInPreview(activeInstancePaths);
+    return;
+  }
+  clearSpecSelectionView();
   selectInstanceInPreview(activeInstancePaths);
   updateNavigationSelection();
   renderInspector();
 }
 
+/** Selects the instances and updates the related editor state. */
 function selectInstances(paths) {
   const selectedPaths = Array.isArray(paths)
     ? paths.filter((path) => Array.isArray(path) && path.length)
@@ -1773,9 +2026,41 @@ function selectInstances(paths) {
   selectInstance(selectedPaths.at(-1) || [], null, { paths: selectedPaths });
 }
 
+/** Updates the screen placement menu for the current editor state. */
+function prepareScreenPlacementMenu(placement) {
+  const groupButton = byId("screen-placement-context-group");
+  const ungroupButton = byId("screen-placement-context-ungroup");
+  const placements = screens[activeScreenIndex]?.data?.materials || [];
+  groupButton.hidden = !canGroupScreenPlacements(placements, activeInstancePaths);
+  ungroupButton.hidden = !isScreenGroup(placement);
+  return !groupButton.hidden || !ungroupButton.hidden;
+}
+
+/** Updates the screen placement menu for the current editor state. */
+function positionScreenPlacementMenu(event) {
+  const menu = byId("screen-placement-context-menu");
+  const groupButton = byId("screen-placement-context-group");
+  const ungroupButton = byId("screen-placement-context-ungroup");
+  menu.hidden = false;
+  menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - 210))}px`;
+  menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - 96))}px`;
+  (groupButton.hidden ? ungroupButton : groupButton).focus();
+}
+
+/** Checks whether the selected placement can open its context menu. */
+function canOpenPlacementContextMenu(path) {
+  return !isRenderOnly && !viewingWorkflow && !viewingTheme &&
+    Array.isArray(path) && path.length > 0;
+}
+
+/** Checks whether the supplied instance path is in the current selection. */
+function isPlacementSelected(path) {
+  return activeInstancePaths.some((selectedPath) => sameInstancePath(selectedPath, path));
+}
+
+/** Opens the screen placement context menu in the editor. */
 function openScreenPlacementContextMenu(event, path) {
-  if (isRenderOnly || viewingWorkflow || viewingTheme ||
-      !Array.isArray(path) || path.length === 0) return;
+  if (!canOpenPlacementContextMenu(path)) return;
   const screen = screens[activeScreenIndex];
   if (getActivePreviewStateId(screen?.data) !== "default") {
     closeScreenPlacementContextMenu();
@@ -1784,32 +2069,25 @@ function openScreenPlacementContextMenu(event, path) {
   event.preventDefault();
   const placement = getInstanceAtPath(screen, path);
   if (!placement) return;
-  if (!activeInstancePaths.some((selectedPath) => sameInstancePath(selectedPath, path))) {
+  if (!isPlacementSelected(path)) {
     selectInstance(path, placement.src || null);
   }
   screenPlacementMenuTarget = [...path];
-  const menu = byId("screen-placement-context-menu");
-  const groupButton = byId("screen-placement-context-group");
-  const ungroupButton = byId("screen-placement-context-ungroup");
-  const placements = screens[activeScreenIndex]?.data?.materials || [];
-  groupButton.hidden = !canGroupScreenPlacements(placements, activeInstancePaths);
-  ungroupButton.hidden = !isScreenGroup(placement);
-  if (groupButton.hidden && ungroupButton.hidden) {
+  if (!prepareScreenPlacementMenu(placement)) {
     closeScreenPlacementContextMenu();
     return;
   }
-  menu.hidden = false;
-  menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - 210))}px`;
-  menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - 96))}px`;
-  (groupButton.hidden ? ungroupButton : groupButton).focus();
+  positionScreenPlacementMenu(event);
 }
 
+/** Closes the screen placement context menu and restores the related editor state. */
 function closeScreenPlacementContextMenu() {
   const menu = byId("screen-placement-context-menu");
   if (menu) menu.hidden = true;
   screenPlacementMenuTarget = null;
 }
 
+/** Registers event listeners for screen placement context menu interactions. */
 function bindScreenPlacementContextMenu() {
   const menu = byId("screen-placement-context-menu");
   byId("screen-placement-context-group").addEventListener("click", () => {
@@ -1830,6 +2108,7 @@ function bindScreenPlacementContextMenu() {
   });
 }
 
+/** Marks the navigation item that corresponds to the current editor view. */
 function updateNavigationSelection() {
   document.querySelectorAll(".file-tree-file").forEach((button) => {
     const filePath = button.dataset.projectFile;
@@ -1843,122 +2122,135 @@ function updateNavigationSelection() {
   publishSelection();
 }
 
-function publishSelection() {
-  if (isRenderOnly) return;
-  const selection = currentUiSelection();
-  const screenId = selection?.screen?.id;
-  const file = getSelectionFilePath(selection);
-  const type = selection?.view === "material-file" ? "material" : selection?.view;
-  const name = selection?.view === "project"
-    ? project?.name || "Project"
-    : selection?.view === "screen"
-      ? selection.screen?.name || selection.screen?.id
-      : selection?.view === "material-file"
-        ? selection.material?.name || selection.material?.id
-        : selection?.view === "workflow"
-          ? selection.workflow?.file?.split("/").at(-1)?.replace(/\.mmd$/i, "")
-          : selection?.view === "theme"
-            ? "Theme"
-            : selection?.view === "spec"
-              ? selection.spec?.file?.split("/").at(-1)?.replace(/\.md$/i, "")
-              : null;
-  const publishedSelection = selection?.view === "screen"
-    ? {
-        ...selection,
-        previewStateId: activePreviewStateIds.get(screenId) || "default"
-      }
-    : selection;
-  const main = byId("main");
-  let viewMode = selection?.view === "screen"
-    ? screenYamlEditor.mode
-    : selection?.view === "material-file"
-      ? main.dataset.materialView || "split"
-      : selection?.view === "workflow"
-        ? main.dataset.workflowView || "split"
-        : selection?.view === "spec"
-          ? main.dataset.specView || "split"
-          : "preview";
-  if (selection?.view === "workflow") {
-    const workflowSurface = main.classList.contains("workflow-spec-preview-active")
-        ? "spec"
-        : byId("workflow-source").hidden
-          ? "diagram"
-          : "source";
-    viewMode = `${main.dataset.workflowView || "split"}:${workflowSurface}`;
+/** Returns a readable label for the active selection. */
+function selectionName(selection) {
+  const view = selection?.view;
+  if (view === "project") return project?.name || "Project";
+  if (view === "screen") return selection.screen?.name || selection.screen?.id;
+  if (view === "material-file") return selection.material?.name || selection.material?.id;
+  if (view === "workflow") {
+    return selection.workflow?.file?.split("/").at(-1)?.replace(/\.mmd$/i, "");
   }
-  if (selection?.view !== "screen" || screenYamlEditor.mode === "yaml") {
-    const contextType = selection?.view === "material-file" ? "material" : selection?.view;
-    const contextKey = [
-      contextType || "project",
-      file || "overview",
-      selection?.screen?.id || ""
-    ].join(":");
-    screenAnnotationController?.setEditorContext({
-      key: contextKey,
-      view: selection?.view || "project",
-      type: contextType || "project",
-      file: file || null,
-      mode: viewMode
-    });
-  }
-  const annotationContext = screenAnnotationController?.getEditorAnnotationContext();
-  const selectedScreen = screens[activeScreenIndex];
-  let selected = [];
+  if (view === "theme") return "Theme";
+  if (view === "spec") return selection.spec?.file?.split("/").at(-1)?.replace(/\.md$/i, "");
+  return null;
+}
+
+/** Returns the current layout mode for the active selection. */
+function selectionViewMode(selection, main) {
+  const modeByView = {
+    screen: screenYamlEditor.mode,
+    "material-file": main.dataset.materialView || "split",
+    workflow: main.dataset.workflowView || "split",
+    spec: main.dataset.specView || "split"
+  };
+  const mode = modeByView[selection?.view] || "preview";
+  if (selection?.view !== "workflow") return mode;
+  const surface = main.classList.contains("workflow-spec-preview-active")
+    ? "spec"
+    : byId("workflow-source").hidden ? "diagram" : "source";
+  return `${main.dataset.workflowView || "split"}:${surface}`;
+}
+
+/** Publishes the active selection and its annotation coordinate context. */
+function updateSelectionAnnotationContext(selection, file, viewMode) {
+  if (selection?.view === "screen" && screenYamlEditor.mode !== "yaml") return;
+  const contextType = selection?.view === "material-file" ? "material" : selection?.view;
+  const contextKey = [
+    contextType || "project",
+    file || "overview",
+    selection?.screen?.id || ""
+  ].join(":");
+  screenAnnotationController?.setEditorContext({
+    key: contextKey,
+    view: selection?.view || "project",
+    type: contextType || "project",
+    file: file || null,
+    mode: viewMode
+  });
+}
+
+/** Returns the published selection items. */
+function getPublishedSelectionItems(selection, selectedScreen) {
   if (selection?.view === "workflow" && typeof selectedWorkflowNodeId === "string") {
-    selected = [selectedWorkflowNodeId];
-  } else if (selection?.view === "screen" && selectedScreen) {
-    selected = activeInstancePaths
+    return [selectedWorkflowNodeId];
+  }
+  if (selection?.view === "screen" && selectedScreen) {
+    return activeInstancePaths
       .map((instancePath) => getInstanceAtPath(selectedScreen, instancePath)?.id)
       .filter((id) => typeof id === "string");
-  } else if (["spec", "material-file"].includes(selection?.view)) {
-    const editor = byId(selection.view === "spec"
-      ? "spec-source"
-      : "material-document-source");
+  }
+  if (["spec", "material-file"].includes(selection?.view)) {
+    const editor = byId(selection.view === "spec" ? "spec-source" : "material-document-source");
     const textSelection = editor && getSelectedText(
       editor.value,
       editor.selectionStart,
       editor.selectionEnd
     );
-    if (textSelection) selected = [textSelection];
+    return textSelection ? [textSelection] : [];
   }
-  let preview = null;
-  if (selection?.view === "workflow" && selectedWorkflowNodeId && selection.screen?.id) {
-    const workflowFile = selection.workflow?.file || "";
-    const workflowName = workflowFile.split("/").at(-1);
-    if (workflowName?.endsWith(".mmd")) {
-      preview = `specux://screen/${encodeURIComponent(selection.screen.id)}` +
-        `/workflows/${encodeURIComponent(workflowName)}?node=${encodeURIComponent(selectedWorkflowNodeId)}`;
-    }
-  } else if (["screen", "spec"].includes(selection?.view) && selection.screen?.id) {
-    const parameters = new URLSearchParams();
-    const previewPlacementIds = selection.view === "spec" && selectedScreen
-      ? activeInstancePaths
-        .map((instancePath) => getInstanceAtPath(selectedScreen, instancePath)?.id)
-        .filter((id) => typeof id === "string")
-      : selected;
-    if (previewPlacementIds.length === 1) {
-      parameters.set("placement", previewPlacementIds[0]);
-    }
-    const stateId = selection.previewStateId || activePreviewStateIds.get(screenId) || "default";
-    if (stateId && stateId !== "default") parameters.set("state", stateId);
-    const query = parameters.toString();
-    preview = `specux://screen/${encodeURIComponent(selection.screen.id)}/screen.yml` +
-      (query ? `?${query}` : "");
+  return [];
+}
+
+/** Returns the preview placement ids. */
+function getPreviewPlacementIds(selection, selectedScreen, selected) {
+  if (selection.view !== "spec" || !selectedScreen) return selected;
+  return activeInstancePaths
+    .map((instancePath) => getInstanceAtPath(selectedScreen, instancePath)?.id)
+    .filter((id) => typeof id === "string");
+}
+
+/** Returns the workflow selection preview. */
+function getWorkflowSelectionPreview(selection) {
+  if (selection?.view !== "workflow" || !selectedWorkflowNodeId || !selection.screen?.id) {
+    return null;
   }
+  const workflowName = (selection.workflow?.file || "").split("/").at(-1);
+  if (!workflowName?.endsWith(".mmd")) return null;
+  return `specux://screen/${encodeURIComponent(selection.screen.id)}` +
+    `/workflows/${encodeURIComponent(workflowName)}?node=${encodeURIComponent(selectedWorkflowNodeId)}`;
+}
+
+/** Returns the screen selection preview. */
+function getScreenSelectionPreview(selection, selectedScreen, screenId, selected) {
+  if (!["screen", "spec"].includes(selection?.view) || !selection.screen?.id) return null;
+  const parameters = new URLSearchParams();
+  const placementIds = getPreviewPlacementIds(selection, selectedScreen, selected);
+  if (placementIds.length === 1) parameters.set("placement", placementIds[0]);
+  const stateId = selection.previewStateId || activePreviewStateIds.get(screenId) || "default";
+  if (stateId && stateId !== "default") parameters.set("state", stateId);
+  const query = parameters.toString();
+  return `specux://screen/${encodeURIComponent(selection.screen.id)}/screen.yml` +
+    (query ? `?${query}` : "");
+}
+
+/** Returns the selection preview. */
+function getSelectionPreview(selection, selectedScreen, screenId, selected) {
+  return getWorkflowSelectionPreview(selection) ||
+    getScreenSelectionPreview(selection, selectedScreen, screenId, selected);
+}
+
+/** Builds the selection and annotation-context object published to the editor session. */
+function createSelectionPayload(selection, details) {
+  return {
+    path: `${window.location.pathname}${window.location.search}`,
+    file: details.file,
+    type: details.type,
+    name: details.name,
+    preview: details.preview,
+    selection: details.selection,
+    selected: details.selected,
+    clientId: editorClientId,
+    ...(details.annotationContext || {})
+  };
+}
+
+/** Updates the selection publication for the current editor state. */
+function queueSelectionPublication(payload) {
   const operation = selectionPublishQueue.then(() => fetch("/api/selection", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      path: `${window.location.pathname}${window.location.search}`,
-      file,
-      type,
-      name,
-      preview,
-      selection: publishedSelection,
-      selected,
-      clientId: editorClientId,
-      ...(annotationContext || {})
-    })
+    body: JSON.stringify(payload)
   }));
   const published = operation.catch((error) => {
     console.warn("Could not publish the current SpecUX selection.", error);
@@ -1968,99 +2260,174 @@ function publishSelection() {
   return published;
 }
 
+/** Publishes the selection for the current editor state. */
+function publishSelection() {
+  if (isRenderOnly) return;
+  const selection = currentUiSelection();
+  const screenId = selection?.screen?.id;
+  const file = getSelectionFilePath(selection);
+  const type = selection?.view === "material-file" ? "material" : selection?.view;
+  const name = selectionName(selection);
+  const publishedSelection = selection?.view === "screen"
+    ? { ...selection, previewStateId: activePreviewStateIds.get(screenId) || "default" }
+    : selection;
+  const main = byId("main");
+  const viewMode = selectionViewMode(selection, main);
+  updateSelectionAnnotationContext(selection, file, viewMode);
+  const annotationContext = screenAnnotationController?.getEditorAnnotationContext();
+  const selectedScreen = screens[activeScreenIndex];
+  const selected = getPublishedSelectionItems(selection, selectedScreen);
+  const preview = getSelectionPreview(selection, selectedScreen, screenId, selected);
+  const payload = createSelectionPayload(selection, {
+    file,
+    type,
+    name,
+    preview,
+    selection: publishedSelection,
+    selected,
+    annotationContext
+  });
+  return queueSelectionPublication(payload);
+}
+
+/** Renders the inspector from the current editor data. */
 function renderInspector() {
   inspectorRenderer.render();
 }
 
+/** Adds the section for the current editor state. */
 function appendSection(parent, title) {
   parent.append(element("div", "section-title", title));
 }
 
+/** Adds the detail for the current editor state. */
 function appendDetail(parent, label, value) {
   if (value === undefined || value === null || value === "") return;
   parent.append(element("div", "detail-label", label));
   parent.append(element("div", "detail-value", String(value)));
 }
 
+/** Adds the note for the current editor state. */
 function appendNote(parent, label, text) {
   parent.append(element("div", "detail-label", label));
   parent.append(element("div", "note-box", text));
 }
 
-function appendEditableField(parent, label, value, onChange, options = {}) {
-  const wrapper = element("div", options.checkbox ? "editor-field checkbox" : "editor-field");
-  const input = element(options.multiline ? "textarea" : options.selectOptions ? "select" : "input");
-  const inputId = options.id || `editor-field-${editorFieldId++}`;
-  input.id = inputId;
-  if (options.required) input.required = true;
+/** Creates the accessible label associated with an editable inspector field. */
+function createEditableFieldLabel(label, inputId) {
+  const fieldLabel = element("label", "", label);
+  fieldLabel.htmlFor = inputId;
+  return fieldLabel;
+}
 
+/** Sets the editable select options from the supplied data. */
+function setEditableSelectOptions(input, value, options) {
+  const placeholder = element("option", "", "Select an option");
+  placeholder.value = "";
+  placeholder.disabled = true;
+  input.append(placeholder);
+  for (const optionValue of options.selectOptions) {
+    const option = element("option", "", String(optionValue));
+    option.value = String(optionValue);
+    input.append(option);
+  }
+  input.value = value === undefined || value === null ? "" : String(value);
+}
+
+/** Sets the editable number input from the supplied data. */
+function setEditableNumberInput(input, options) {
+  if (options.numberFormat && input instanceof HTMLInputElement) {
+    input.type = "number";
+    input.step = options.numberFormat === "integer"
+      ? "1"
+      : options.numberFormat === "decimal" ? "any" : "0.01";
+  } else if (input instanceof HTMLInputElement) {
+    input.type = "text";
+  }
+}
+
+/** Updates the editable value input for the current editor state. */
+function configureEditableValueInput(input, value, options) {
+  if (options.selectOptions) {
+    setEditableSelectOptions(input, value, options);
+  } else if (options.color) {
+    input.type = "color";
+    input.value = /^#[0-9a-f]{6}$/i.test(String(value)) ? value : "#4569e8";
+  } else {
+    setEditableNumberInput(input, options);
+    input.value = value === undefined || value === null ? "" : String(value);
+  }
+}
+
+/** Updates the editable field for the current editor state. */
+function configureEditableField(wrapper, input, label, value, inputId, options) {
   if (options.checkbox) {
     input.type = "checkbox";
     input.checked = Boolean(value);
-    const fieldLabel = element("label", "", label);
-    fieldLabel.htmlFor = inputId;
-    wrapper.append(input, fieldLabel);
-  } else {
-    if (options.selectOptions) {
-      const placeholder = element("option", "", "Select an option");
-      placeholder.value = "";
-      placeholder.disabled = true;
-      input.append(placeholder);
-      for (const optionValue of options.selectOptions) {
-        const option = element("option", "", String(optionValue));
-        option.value = String(optionValue);
-        input.append(option);
-      }
-      input.value = value === undefined || value === null ? "" : String(value);
-    } else if (options.color) {
-      input.type = "color";
-      input.value = /^#[0-9a-f]{6}$/i.test(String(value)) ? value : "#4569e8";
-    } else {
-      if (options.numberFormat && input instanceof HTMLInputElement) {
-        input.type = "number";
-        input.step = options.numberFormat === "integer"
-          ? "1"
-          : options.numberFormat === "decimal" ? "any" : "0.01";
-      } else if (input instanceof HTMLInputElement) {
-        input.type = "text";
-      }
-      input.value = value === undefined || value === null ? "" : String(value);
-    }
-    const fieldLabel = element("label", "", label);
-    fieldLabel.htmlFor = inputId;
-    wrapper.append(fieldLabel, input);
+    wrapper.append(input, createEditableFieldLabel(label, inputId));
+    return;
   }
+  configureEditableValueInput(input, value, options);
+  wrapper.append(createEditableFieldLabel(label, inputId), input);
+}
 
+/** Handles editable field change events and applies the corresponding editor action. */
+function handleEditableFieldChange(input, onChange, options) {
+  if (options.checkbox) {
+    onChange(input.checked);
+    return;
+  }
+  if (!options.numberFormat) {
+    onChange(input.value);
+    return;
+  }
+  if (input.value === "") {
+    onChange(undefined);
+    return;
+  }
+  if (!input.checkValidity() || !Number.isFinite(input.valueAsNumber)) {
+    input.reportValidity();
+    return;
+  }
+  onChange(input.valueAsNumber);
+}
+
+/** Adds the editable field for the current editor state. */
+function appendEditableField(parent, label, value, onChange, options = {}) {
+  const wrapper = element("div", options.checkbox ? "editor-field checkbox" : "editor-field");
+  const inputType = options.multiline ? "textarea" : options.selectOptions ? "select" : "input";
+  const input = element(inputType);
+  const inputId = options.id || `editor-field-${editorFieldId++}`;
+  input.id = inputId;
+  if (options.required) input.required = true;
+  configureEditableField(wrapper, input, label, value, inputId, options);
   input.addEventListener("change", () => {
-    let updated;
-    if (options.checkbox) updated = input.checked;
-    else if (options.numberFormat) {
-      if (input.value === "") updated = undefined;
-      else if (!input.checkValidity() || !Number.isFinite(input.valueAsNumber)) {
-        input.reportValidity();
-        return;
-      } else updated = input.valueAsNumber;
-    } else updated = input.value;
-    onChange(updated);
+    handleEditableFieldChange(input, onChange, options);
   });
   parent.append(wrapper);
 }
 
+/** Records a changed file and updates the unsaved-edit indicators. */
 function markEdited(filePath, options = {}) {
   projectPersistence.markEdited(filePath, options);
 }
 
+/** Clears the edited and resets its associated state. */
 function clearEdited(filePath) {
   projectPersistence.clearEdited(filePath);
 }
 
+/** Updates the save controls to reflect the latest editor state. */
 function updateSaveControls() {
   projectPersistence.updateSaveControls();
 }
 
+/** Persists the project changes to the project. */
 async function saveProjectChanges() {
   return projectPersistence.save();
 }
+
+/** Renders the active Material or Screen again and restores selected placement paths. */
 async function refreshActiveView() {
   try {
     if (viewingMaterialFile) {
@@ -2077,6 +2444,7 @@ async function refreshActiveView() {
   }
 }
 
+// Bind global controls after their view controllers and shared actions are available.
 const editorEventController = new EditorEventController({
   state: {
     get hasEdits() { return hasEdits; },
@@ -2107,6 +2475,7 @@ const editorEventController = new EditorEventController({
 editorEventController.bind();
 bindScreenPlacementContextMenu();
 
+/** Renders the theme view from the current editor data. */
 async function renderThemeView(filePath = project?.theme) {
   await screenAnnotationController?.fileLoaded(filePath);
   workflowEditor?.deactivate();
@@ -2114,24 +2483,28 @@ async function renderThemeView(filePath = project?.theme) {
   themeEditor.render(filePath);
 }
 
+/** Shows the editor message for the current editor state. */
 function showEditorMessage(title, message) {
   const output = byId("editor-message");
   output.replaceChildren(element("strong", "", title), element("div", "", message));
   output.classList.add("visible");
 }
 
+/** Hides the editor message for the current editor state. */
 function hideEditorMessage() {
   const output = byId("editor-message");
   output.classList.remove("visible");
   output.replaceChildren();
 }
 
+/** Sets the preview message from the supplied data. */
 function setPreviewMessage(state, message) {
   const preview = byId("screen-preview");
   preview.className = `screen-preview ${state}`;
   preview.replaceChildren(element("div", state === "error" ? "error-message" : "loading-message", message));
 }
 
+/** Shows the fatal error for the current editor state. */
 function showFatalError(error) {
   setPreviewMessage("error", error.message || String(error));
   byId("screen-heading").textContent = "Could not load project";
@@ -2142,6 +2515,7 @@ function showFatalError(error) {
   );
 }
 
+/** Handles system theme change events and applies the corresponding editor action. */
 function handleSystemThemeChange(event) {
   systemThemeMode = event.matches ? "dark" : "light";
   if (!theme || themeModePreference !== "system") return;

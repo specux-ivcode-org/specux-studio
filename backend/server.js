@@ -1,1062 +1,298 @@
 const http = require("node:http");
-const fs = require("node:fs/promises");
 const path = require("node:path");
-const { randomUUID } = require("node:crypto");
-const validation = require("../shared/validation");
 const { validateProject } = require("./project");
+const { EditorSession } = require("./server/editorSession");
+const { ProjectFileService, saveProjectFiles } = require("./server/projectFileService");
+const { StaticFileService } = require("./server/staticFileService");
 const {
-  clearBrowserAnnotationCache,
-  writeBrowserAnnotationCache
-} = require("./browserAnnotationCache");
+  MAX_EDITOR_IMAGE_BYTES,
+  readBufferBody,
+  readJsonBody,
+  requestError,
+  sendJson
+} = require("./server/httpUtils");
+const { validateAnnotationSet, validateSelectionRequest } = require("./server/requestValidation");
 
-const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
-const MAX_EDITOR_IMAGE_BYTES = 12 * 1024 * 1024;
-const EDITOR_IMAGE_CAPTURE_TIMEOUT_MS = 20000;
-const MAX_FILES_PER_SAVE = 100;
-const MAX_ANNOTATIONS_PER_SCREEN = 200;
-const MAX_ANNOTATIONS_PER_CONTEXT = 200;
-const MAX_POINTS_PER_ANNOTATION = 2048;
-const ANNOTATION_TOOLS = new Set(["pen", "circle", "rectangle", "arrow", "highlight", "note"]);
-const EDITOR_VIEWS = new Set(["screen", "workflow", "spec", "theme", "project", "material-file"]);
-const mermaidDistRoot = path.dirname(require.resolve("mermaid"));
-const html2canvasDistRoot = path.dirname(require.resolve("html2canvas"));
-const yamlPackageRoot = path.dirname(require.resolve("yaml/package.json"));
-const yamlModule = import("../shared/yaml.mjs");
-const CONTENT_TYPES = new Map([
-  [".css", "text/css; charset=utf-8"],
-  [".html", "text/html; charset=utf-8"],
-  [".js", "text/javascript; charset=utf-8"],
-  [".mjs", "text/javascript; charset=utf-8"],
-  [".json", "application/json; charset=utf-8"],
-  [".avif", "image/avif"],
-  [".bmp", "image/bmp"],
-  [".gif", "image/gif"],
-  [".ico", "image/x-icon"],
-  [".svg", "image/svg+xml"],
-  [".webp", "image/webp"],
-  [".png", "image/png"],
-  [".jpg", "image/jpeg"],
-  [".jpeg", "image/jpeg"],
-  [".otf", "font/otf"],
-  [".ttf", "font/ttf"],
-  [".woff", "font/woff"],
-  [".woff2", "font/woff2"],
-  [".yml", "text/yaml; charset=utf-8"],
-  [".yaml", "text/yaml; charset=utf-8"],
-  [".md", "text/markdown; charset=utf-8"],
-  [".mmd", "text/markdown; charset=utf-8"],
-  [validation.MATERIAL_FILE_EXTENSION, "text/plain; charset=utf-8"]
-]);
-
-function requestError(message, statusCode = 400) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  return error;
-}
-
-function isSpecuxPreviewUrl(value) {
+/** Validates update request origins and rejects non-local browser origins. */
+function validateUpdateOrigin(origin) {
+  if (!origin) return;
+  let originUrl;
   try {
-    const url = new URL(value);
-    return url.protocol === "specux:" && url.hostname === "screen" &&
-      !url.username && !url.password && !url.port && !url.hash;
+    originUrl = new URL(origin);
   } catch {
-    return false;
+    throw requestError("Update requests must originate from the local editor.", 403);
+  }
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(originUrl.hostname)) {
+    throw requestError("Update requests must originate from the local editor.", 403);
   }
 }
 
-function isValidStateSelection(value) {
-  if (typeof value === "string") return true;
-  if (!value || Array.isArray(value) || typeof value !== "object" ||
-      value.type !== "text" || typeof value.text !== "string" ||
-      !value.range || typeof value.range !== "object") return false;
-  return ["start", "end"].every((key) => {
-    const position = value.range[key];
-    return position && Number.isInteger(position.line) && position.line > 0 &&
-      Number.isInteger(position.column) && position.column > 0;
-  });
-}
+/** Creates the editor HTTP server and delegates state and file operations to focused services. */
+class EditorServer {
+  #getRoutes;
+  #postRoutes;
+  #deleteRoutes;
 
-function isWithin(directory, target) {
-  const relative = path.relative(directory, target);
-  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
-}
+  /** Configures server roots, collaborators, and the HTTP request handler. */
+  constructor(options = {}) {
+    // Resolve the editor, project, and shared roots before creating their services.
+    const repositoryRoot = path.resolve(__dirname, "..");
+    const rootDirectory = path.resolve(options.rootDirectory || path.join(repositoryRoot, "frontend"));
+    const projectRoot = path.resolve(options.projectRoot ||
+      (options.rootDirectory ? path.join(rootDirectory, "specux") : path.join(repositoryRoot, "specux")));
+    const sharedRoot = path.resolve(options.sharedRoot || path.join(repositoryRoot, "shared"));
+    this.options = options;
+    this.projectRoot = projectRoot;
+    this.projectFiles = new ProjectFileService({ projectRoot });
+    this.staticFiles = new StaticFileService({ rootDirectory, projectRoot, sharedRoot });
+    this.session = new EditorSession(projectRoot);
+    this.httpServer = null;
 
-function sendJson(response, statusCode, body) {
-  response.writeHead(statusCode, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-    "X-Content-Type-Options": "nosniff"
-  });
-  response.end(JSON.stringify(body));
-}
-
-function validateAnnotationSet(body) {
-  if (!body || Array.isArray(body) || typeof body !== "object" ||
-      typeof body.screenId !== "string" || !/^[a-z][a-z0-9-]*$/.test(body.screenId) ||
-      body.coordinateSpace !== "screen canvas pixels" ||
-      typeof body.previewStateId !== "string" || !/^[a-z][a-z0-9-]*$/.test(body.previewStateId) ||
-      !body.canvasSize ||
-      !Number.isInteger(body.canvasSize.width) || body.canvasSize.width < 1 ||
-      body.canvasSize.width > 16384 ||
-      !Number.isInteger(body.canvasSize.height) || body.canvasSize.height < 1 ||
-      body.canvasSize.height > 16384 ||
-      !Array.isArray(body.annotations) || body.annotations.length > MAX_ANNOTATIONS_PER_SCREEN) {
-    throw requestError(
-      "Annotations must include a valid screenId, Screen State, canvas size, and canvas coordinate space."
-    );
+    // Register the supported API routes by HTTP method.
+    this.#getRoutes = new Map([
+      ["/api/validation", (_request, response) => this.#getValidation(response)],
+      ["/api/status", (_request, response) => this.#getStatus(response)],
+      ["/api/files", (_request, response) => this.#getFiles(response)],
+      ["/api/state", (_request, response) => this.#getState(response)],
+      ["/api/annotations", (_request, response, url) => this.#getAnnotations(response, url)],
+      ["/api/render-annotations", (_request, response, url) => this.#getRenderAnnotations(response, url)],
+      ["/api/events", (_request, response) => this.#getEvents(response)]
+    ]);
+    this.#postRoutes = new Map([
+      ["/api/editor-image/capture", (_request, response) => this.#captureEditorImage(response)],
+      ["/api/editor-image", (request, response, url) => this.#uploadEditorImage(request, response, url)],
+      ["/api/editor-image/failure", (request, response) => this.#reportEditorImageFailure(request, response)],
+      ["/api/selection", (request, response) => this.#updateSelection(request, response)],
+      ["/api/annotations", (request, response) => this.#saveAnnotations(request, response)],
+      ["/api/update", (request, response) => this.#publishUpdate(request, response)],
+      ["/api/save", (request, response) => this.#saveFiles(request, response)],
+      ["/api/yaml/parse", (request, response) => this.#parseYaml(request, response)],
+      ["/api/yaml/stringify", (request, response) => this.#stringifyYaml(request, response)]
+    ]);
+    this.#deleteRoutes = new Map([
+      ["/api/annotations", (request, response, url) => this.#clearAnnotations(response, url)]
+    ]);
   }
-  const ids = new Set();
-  const annotations = body.annotations.map((annotation) => {
-    if (!annotation || Array.isArray(annotation) || typeof annotation !== "object" ||
-        typeof annotation.id !== "string" || !annotation.id || annotation.id.length > 100 ||
-        ids.has(annotation.id) || !ANNOTATION_TOOLS.has(annotation.tool) ||
-        !Array.isArray(annotation.points) || !annotation.points.length ||
-        annotation.points.length > MAX_POINTS_PER_ANNOTATION) {
-      throw requestError("Each annotation must have a unique id, supported tool, and valid points.");
-    }
-    ids.add(annotation.id);
-    const points = annotation.points.map((point) => {
-      if (!point || Array.isArray(point) || typeof point !== "object" ||
-          !Number.isFinite(point.x) || !Number.isFinite(point.y) ||
-          point.x < 0 || point.x > body.canvasSize.width ||
-          point.y < 0 || point.y > body.canvasSize.height) {
-        throw requestError("Annotation points must be within the Screen canvas pixel dimensions.");
-      }
-      return { x: point.x, y: point.y };
-    });
-    const clean = {
-      id: annotation.id,
-      tool: annotation.tool,
-      points
-    };
-    if (annotation.text !== undefined) {
-      if (typeof annotation.text !== "string" || annotation.text.length > 500) {
-        throw requestError("Annotation text must be at most 500 characters.");
-      }
-      clean.text = annotation.text;
-    }
-    if (annotation.target !== undefined) {
-      const target = annotation.target;
-      if (!target || Array.isArray(target) || typeof target !== "object" ||
-          !Array.isArray(target.instancePath) ||
-          target.instancePath.some((part) =>
-            !(Number.isInteger(part) && part >= 0) &&
-            !(typeof part === "string" && /^[a-z][a-z0-9-]*$/.test(part))
-          )) {
-        throw requestError("Annotation targets must include a valid Element instancePath.");
-      }
-      if (target.text !== undefined &&
-          (typeof target.text !== "string" || target.text.length > 500)) {
-        throw requestError("Annotation target text must be at most 500 characters.");
-      }
-      clean.target = {
-        instancePath: target.instancePath,
-        ...(typeof target.elementId === "string" ? { elementId: target.elementId } : {}),
-        ...(typeof target.name === "string" ? { name: target.name } : {}),
-        ...(typeof target.materialId === "string" ? { materialId: target.materialId } : {}),
-        ...(typeof target.materialSrc === "string" ? { materialSrc: target.materialSrc } : {}),
-        ...(target.text !== undefined ? { text: target.text } : {})
-      };
-    }
-    return clean;
-  });
-  return {
-    screenId: body.screenId,
-    annotations,
-    coordinateSpace: "screen canvas pixels",
-    canvasSize: { ...body.canvasSize },
-    previewStateId: body.previewStateId
-  };
-}
 
-function validateEditorAnnotationContext(context, annotations) {
-  const validCanvasSize = (size) =>
-    size && Number.isInteger(size.width) && size.width >= 1 && size.width <= 16384 &&
-    Number.isInteger(size.height) && size.height >= 1 && size.height <= 16384;
-  const hasPreviewSizes = Array.isArray(context?.previews);
-  const previews = hasPreviewSizes ? context.previews : [];
-  if (previews.length > 12) {
-    throw requestError("Editor annotations may include at most 12 previews.");
+  /** Creates the Node HTTP server and binds request handling to this instance. */
+  createServer() {
+    this.httpServer = http.createServer(this.handleRequest.bind(this));
+    return this.httpServer;
   }
-  const previewSizes = new Map();
-  for (const preview of previews) {
-    if (!preview || Array.isArray(preview) || typeof preview !== "object" ||
-        typeof preview.id !== "string" || !preview.id || preview.id.length > 100 ||
-        previewSizes.has(preview.id) ||
-        typeof preview.label !== "string" || preview.label.length > 200 ||
-        preview.coordinateSpace !== "preview content pixels" ||
-        !validCanvasSize(preview.canvasSize)) {
-      throw requestError("Editor preview annotations must include valid preview dimensions.");
-    }
-    previewSizes.set(preview.id, {
-      id: preview.id,
-      label: preview.label,
-      coordinateSpace: "preview content pixels",
-      canvasSize: { ...preview.canvasSize }
+
+  /** Returns project validation errors. */
+  async #getValidation(response) {
+    const result = await validateProject(this.projectRoot);
+    sendJson(response, 200, { errors: result.errors });
+  }
+
+  /** Returns server and browser connection status. */
+  #getStatus(response) {
+    const address = this.httpServer.address();
+    sendJson(response, 200, {
+      status: "ok",
+      url: address && typeof address === "object"
+        ? `http://127.0.0.1:${address.port}/`
+        : null,
+      connectedBrowsers: this.session.connectedBrowserCount,
+      selectionAvailable: this.session.hasSelection
     });
   }
-  if (!context || Array.isArray(context) || typeof context !== "object" ||
-      typeof context.key !== "string" || !context.key || context.key.length > 2048 ||
-      !["screen", "workflow", "spec", "theme", "project", "material"].includes(context.type) ||
-      !EDITOR_VIEWS.has(context.view) ||
-      (context.file !== null &&
-        (typeof context.file !== "string" || context.file.length > 2048)) ||
-      typeof context.mode !== "string" || context.mode.length > 40 ||
-      !["editor viewport pixels", "editor preview pixels"].includes(context.coordinateSpace) ||
-      !validCanvasSize(context.canvasSize) ||
-      (context.coordinateSpace === "editor preview pixels" && !hasPreviewSizes) ||
-      !Array.isArray(annotations) || annotations.length > MAX_ANNOTATIONS_PER_CONTEXT) {
-    throw requestError("Editor annotations must include a valid editor context and viewport dimensions.");
-  }
-  const ids = new Set();
-  const cleanAnnotations = annotations.map((annotation) => {
-    if (!annotation || Array.isArray(annotation) || typeof annotation !== "object" ||
-        typeof annotation.id !== "string" || !annotation.id || annotation.id.length > 100 ||
-        ids.has(annotation.id) || !ANNOTATION_TOOLS.has(annotation.tool) ||
-        !Array.isArray(annotation.points) || !annotation.points.length ||
-        annotation.points.length > MAX_POINTS_PER_ANNOTATION) {
-      throw requestError("Each editor annotation must have a unique id, supported tool, and valid points.");
-    }
-    ids.add(annotation.id);
-    const previewId = annotation.previewId;
-    const annotationCanvasSize = context.coordinateSpace === "editor preview pixels"
-      ? previewSizes.get(previewId)?.canvasSize
-      : context.canvasSize;
-    if (!annotationCanvasSize) {
-      throw requestError("Editor annotation references an unknown preview.");
-    }
-    const points = annotation.points.map((point) => {
-      if (!point || Array.isArray(point) || typeof point !== "object" ||
-          !Number.isFinite(point.x) || !Number.isFinite(point.y) ||
-          point.x < 0 || point.x > annotationCanvasSize.width ||
-          point.y < 0 || point.y > annotationCanvasSize.height) {
-        throw requestError("Editor annotation points must be within their preview dimensions.");
-      }
-      return { x: point.x, y: point.y };
-    });
-    const clean = { id: annotation.id, tool: annotation.tool, points };
-    if (previewId !== undefined) clean.previewId = previewId;
-    if (annotation.text !== undefined) {
-      if (typeof annotation.text !== "string" || annotation.text.length > 500) {
-        throw requestError("Editor annotation text must be at most 500 characters.");
-      }
-      clean.text = annotation.text;
-    }
-    return clean;
-  });
-  return {
-    context: {
-      key: context.key,
-      view: context.view,
-      type: context.type,
-      file: context.file,
-      mode: context.mode,
-      coordinateSpace: context.coordinateSpace,
-      canvasSize: { ...context.canvasSize },
-      ...(hasPreviewSizes ? { previews: [...previewSizes.values()] } : {})
-    },
-    annotations: cleanAnnotations
-  };
-}
 
-async function listProjectFiles(projectRoot) {
-  const realProjectRoot = await fs.realpath(projectRoot);
-  const files = [];
-
-  async function visit(directory, relativeDirectory) {
-    const entries = await fs.readdir(directory, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.name.startsWith(".")) continue;
-      const relativePath = relativeDirectory
-        ? `${relativeDirectory}/${entry.name}`
-        : entry.name;
-      const entryPath = path.join(directory, entry.name);
-      if (entry.isDirectory()) {
-        await visit(entryPath, relativePath);
-      } else if (entry.isFile()) {
-        files.push(relativePath);
-      }
-    }
+  /** Returns the visible project file list. */
+  async #getFiles(response) {
+    sendJson(response, 200, { files: await this.projectFiles.listFiles() });
   }
 
-  await visit(realProjectRoot, "");
-  return files.sort((left, right) => left.localeCompare(right));
-}
-
-async function readJsonBody(request) {
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of request) {
-    size += chunk.length;
-    if (size > MAX_REQUEST_BYTES) {
-      throw requestError("Request body exceeds the 2 MB limit.", 413);
-    }
-    chunks.push(chunk);
-  }
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    throw requestError("Request body must be valid JSON.");
-  }
-}
-
-async function readBufferBody(request, maximumBytes) {
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of request) {
-    size += chunk.length;
-    if (size > maximumBytes) {
-      throw requestError(`Request body exceeds the ${Math.floor(maximumBytes / (1024 * 1024))} MB limit.`, 413);
-    }
-    chunks.push(chunk);
-  }
-  return Buffer.concat(chunks);
-}
-
-function isSpecPath(relativePath) {
-  try {
-    validation.validateSpecPath(relativePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isWorkflowPath(relativePath) {
-  try {
-    validation.validateWorkflowPath(relativePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isScreenFilePath(relativePath) {
-  return /^screens\/[a-z][a-z0-9-]*\/screen\.yml$/.test(relativePath);
-}
-
-function isMaterialFilePath(relativePath) {
-  return /^materials\/[a-z][a-z0-9-]*\.stml$/.test(relativePath);
-}
-
-async function resolveProjectDirectory(projectRoot, relativePath, { create = false } = {}) {
-  const realProjectRoot = await fs.realpath(projectRoot);
-  let current = realProjectRoot;
-  for (const segment of relativePath.split("/")) {
-    current = path.join(current, segment);
-    let details;
-    try {
-      details = await fs.lstat(current);
-    } catch (error) {
-      if (error.code !== "ENOENT" || !create) throw error;
-      await fs.mkdir(current);
-      details = await fs.lstat(current);
-    }
-    if (details.isSymbolicLink() || !details.isDirectory()) {
-      throw requestError("Project directories must be real directories inside the specux project.");
-    }
-  }
-  if (!isWithin(realProjectRoot, current)) {
-    throw requestError("Project directory resolves outside the specux project.");
-  }
-  return current;
-}
-
-async function parseYamlMapping(source) {
-  if (typeof source !== "string") throw requestError("YAML source must be text.");
-  const YAML = await yamlModule;
-  const document = YAML.parseDocument(source);
-  if (document.errors.length) {
-    const issues = document.errors.map((error) => {
-      const position = error.linePos?.[0];
-      return position
-        ? `line ${position.line}, column ${position.col}: ${error.message}`
-        : error.message;
-    });
-    throw requestError(`Invalid YAML: ${issues.join("; ")}`);
-  }
-  const data = document.toJS();
-  if (!data || Array.isArray(data) || typeof data !== "object") {
-    throw requestError("YAML source must contain a mapping.");
-  }
-  return data;
-}
-
-async function resolveProjectFile(projectRoot, relativePath, { create = false } = {}) {
-  if (typeof relativePath !== "string" || !relativePath || relativePath.includes("\\") ||
-      relativePath.startsWith("/") || relativePath.split("/").some((segment) =>
-        !segment || segment === "." || segment === ".." || segment.startsWith(".")
-      )) {
-    throw requestError("Save paths must be relative paths inside the specux project.");
-  }
-  const extension = path.extname(relativePath).toLowerCase();
-  const specPath = isSpecPath(relativePath);
-  const workflowPath = isWorkflowPath(relativePath);
-  if (![".yml", ".yaml", validation.MATERIAL_FILE_EXTENSION].includes(extension) &&
-      !(extension === ".md" && specPath) && !(extension === ".mmd" && workflowPath)) {
-    throw requestError("The editor can only save project YAML, STML, behavior spec Markdown, and Screen workflow Mermaid files.");
+  /** Returns the editor's current state snapshot. */
+  #getState(response) {
+    sendJson(response, 200, this.session.getEditorState());
   }
 
-  if (extension === validation.MATERIAL_FILE_EXTENSION && !isMaterialFilePath(relativePath)) {
-    throw requestError("STML saves are only allowed as named files inside materials/.");
+  /** Returns annotations for an explicitly requested or currently selected Screen. */
+  #getAnnotations(response, requestUrl) {
+    const screenId = requestUrl.searchParams.get("screenId") ||
+      this.session.currentScreenId || null;
+    sendJson(response, 200, this.session.getAnnotations(screenId));
   }
 
-  const target = path.resolve(projectRoot, ...relativePath.split("/"));
-  if (!isWithin(projectRoot, target)) {
-    throw requestError("Save path is outside the specux project.");
+  /** Returns the annotation set supplied for the current render operation. */
+  #getRenderAnnotations(response, requestUrl) {
+    // Return only annotations explicitly associated with this render request.
+    const screenId = requestUrl.searchParams.get("screenId");
+    const annotationSet = this.options.renderAnnotations;
+    if (!annotationSet || annotationSet.screenId !== screenId) {
+      throw requestError("No matching annotation set is available for this render.", 404);
+    }
+    sendJson(response, 200, annotationSet);
   }
 
-  if (create) {
-    const screenFile = isScreenFilePath(relativePath);
-    const materialFile = isMaterialFilePath(relativePath);
-    if (!screenFile && !specPath && !materialFile && !workflowPath) {
-      throw requestError("New files can only be created as named Screen YAML, Material STML, behavior spec Markdown, or Screen workflow Mermaid files.", 400);
-    }
-    const relativeDirectory = path.posix.dirname(relativePath);
-    const realTargetDirectory = await resolveProjectDirectory(projectRoot, relativeDirectory, { create: true });
-    const newTarget = path.join(realTargetDirectory, path.basename(relativePath));
-    try {
-      await fs.lstat(newTarget);
-      throw requestError(`Project file "${relativePath}" already exists.`, 409);
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
-    }
-    return newTarget;
-  }
-
-  let realTarget;
-  try {
-    realTarget = await fs.realpath(target);
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      throw requestError(`Project file "${relativePath}" does not exist.`);
-    }
-    throw error;
-  }
-  if (!isWithin(projectRoot, realTarget)) {
-    throw requestError("Save path resolves outside the specux project.");
-  }
-  const details = await fs.stat(realTarget);
-  if (!details.isFile()) throw requestError(`Project path "${relativePath}" is not a file.`);
-  return realTarget;
-}
-
-async function saveProjectFiles(projectRoot, files) {
-  const YAML = await yamlModule;
-  if (!Array.isArray(files) || files.length === 0 || files.length > MAX_FILES_PER_SAVE) {
-    throw requestError(`Save requests must contain between 1 and ${MAX_FILES_PER_SAVE} files.`);
-  }
-  const seen = new Set();
-  const updates = [];
-  for (const file of files) {
-    if (!file || Array.isArray(file) || typeof file !== "object" || typeof file.path !== "string") {
-      throw requestError("Each save entry must specify a project file path.");
-    }
-    if (Object.hasOwn(file, "create") && typeof file.create !== "boolean") {
-      throw requestError("Save entry create flags must be booleans.");
-    }
-    if (seen.has(file.path)) throw requestError(`Save request contains "${file.path}" more than once.`);
-    seen.add(file.path);
-    const create = file.create === true;
-    const extension = path.extname(file.path).toLowerCase();
-    if (extension === ".md") {
-      if (typeof file.content !== "string" || Object.hasOwn(file, "data")) {
-        throw requestError("Behavior spec Markdown save entries must contain text content.");
-      }
-      try {
-        validation.validateSpecContent(file.content);
-        const references = validation.parseSpecScreenReferences(file.content, file.path);
-        if (/^screens\/[^/]+\/specs\/element-/.test(file.path)) {
-          const identity = validation.getElementSpecIdentity(file.path);
-          if (!identity) throw new Error("Element behavior spec path is invalid.");
-          validation.validateElementSpecPath(file.path, identity.elementId);
-          if (!references.some((reference) =>
-            reference.screenId === identity.screenId &&
-            reference.placementId === identity.elementId
-          )) {
-            throw new Error(
-              `Element behavior specs must include a SpecUX Screen link to Element "${identity.elementId}".`
-            );
-          }
-        }
-      } catch (error) {
-        throw requestError(`${file.path}: ${error.message || String(error)}`);
-      }
-      updates.push({ path: file.path, content: file.content, create });
-    } else if (extension === ".mmd") {
-      if (!isWorkflowPath(file.path) || typeof file.content !== "string" ||
-          Object.hasOwn(file, "data")) {
-        throw requestError("Screen workflow Mermaid save entries must contain text content at a valid Screen workflow path.");
-      }
-      updates.push({ path: file.path, content: file.content, create });
-    } else if (extension === validation.MATERIAL_FILE_EXTENSION && isMaterialFilePath(file.path)) {
-      if (typeof file.content !== "string" || Object.hasOwn(file, "data")) {
-        throw requestError("Material STML save entries must contain text content.");
-      }
-      try {
-        const { header, body } = validation.splitMaterialDocument(file.content, file.path);
-        const materialDocument = await parseYamlMapping(header);
-        validation.validateMaterialDocumentHeader(materialDocument, file.path);
-        const expectedId = path.posix.basename(file.path, validation.MATERIAL_FILE_EXTENSION);
-        if (materialDocument.id !== expectedId) {
-          throw new Error(`front matter id must match Material file name "${expectedId}${validation.MATERIAL_FILE_EXTENSION}".`);
-        }
-        validation.validateMaterialMarkup(body, file.path);
-        validation.validateMaterialAttributeMarkup(materialDocument, body, file.path);
-      } catch (error) {
-        throw requestError(`${file.path}: ${error.message || String(error)}`);
-      }
-      updates.push({ path: file.path, content: file.content, create });
-    } else if (typeof file.content === "string" && !Object.hasOwn(file, "data")) {
-      await parseYamlMapping(file.content);
-      updates.push({ path: file.path, content: file.content, create });
-    } else {
-      if (!Object.hasOwn(file, "data") || !file.data ||
-          Array.isArray(file.data) || typeof file.data !== "object" ||
-          Object.hasOwn(file, "content")) {
-        throw requestError("YAML save entries must contain a mapping of data.");
-      }
-      updates.push({ path: file.path, content: YAML.stringify(file.data), create });
-    }
-  }
-
-  const staged = [];
-  try {
-    for (const update of updates) {
-      update.target = await resolveProjectFile(projectRoot, update.path, {
-        create: update.create
-      });
-    }
-    for (const update of updates) {
-      const temporaryPath = path.join(
-        path.dirname(update.target),
-        `.${path.basename(update.target)}.${randomUUID()}.tmp`
-      );
-      await fs.writeFile(temporaryPath, update.content, { encoding: "utf8", flag: "wx" });
-      staged.push({ ...update, temporaryPath });
-    }
-    for (const update of staged) {
-      if (update.create) {
-        try {
-          await fs.link(update.temporaryPath, update.target);
-        } catch (error) {
-          if (error.code === "EEXIST") {
-            throw requestError(`Project file "${update.path}" already exists.`, 409);
-          }
-          throw error;
-        }
-        await fs.rm(update.temporaryPath, { force: true });
-      } else {
-        await fs.rename(update.temporaryPath, update.target);
-      }
-    }
-  } catch (error) {
-    await Promise.all(staged.map(({ temporaryPath }) => fs.rm(temporaryPath, { force: true })));
-    throw error;
-  }
-  return { saved: updates.map(({ path: filePath }) => filePath) };
-}
-
-async function serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, response) {
-  let relativePath;
-  let allowedRoot = rootDirectory;
-  if (pathname === "/") relativePath = "index.html";
-  else if (pathname.startsWith("/vendor/html2canvas/")) {
-    const packagePath = pathname.slice("/vendor/html2canvas/".length);
-    if (!packagePath || packagePath.split("/").some((segment) =>
-      !segment || segment === "." || segment === ".." || segment.startsWith(".")
-    )) {
-      sendJson(response, 404, { error: "File not found." });
-      return;
-    }
-    allowedRoot = html2canvasDistRoot;
-    relativePath = path.join(...packagePath.split("/"));
-  }
-  else if (pathname.startsWith("/vendor/mermaid/")) {
-    const packagePath = pathname.slice("/vendor/mermaid/".length);
-    if (!packagePath || packagePath.split("/").some((segment) =>
-      !segment || segment === "." || segment === ".." || segment.startsWith(".")
-    )) {
-      sendJson(response, 404, { error: "File not found." });
-      return;
-    }
-    allowedRoot = mermaidDistRoot;
-    relativePath = path.join(...packagePath.split("/"));
-  }
-  else if (pathname.startsWith("/vendor/yaml/")) {
-    const packagePath = pathname.slice("/vendor/yaml/".length);
-    if (!packagePath || packagePath.split("/").some((segment) =>
-      !segment || segment === "." || segment === ".." || segment.startsWith(".")
-    )) {
-      sendJson(response, 404, { error: "File not found." });
-      return;
-    }
-    allowedRoot = yamlPackageRoot;
-    relativePath = path.join(...packagePath.split("/"));
-  }
-  else if ([
-    "/index.html",
-    "/app.mjs",
-    "/icons/spec-icon.svg",
-    "/browser/EditorEventController.mjs",
-    "/styles.css",
-    "/browser/BrowserHistory.mjs",
-    "/browser/EditorNavigation.mjs",
-    "/browser/InspectorRenderer.mjs",
-    "/browser/MaterialFileEditor.mjs",
-    "/browser/ProjectRepository.mjs",
-    "/browser/ProjectFileNavigator.mjs",
-    "/browser/ProjectFileTree.mjs",
-    "/browser/ProjectPersistence.mjs",
-    "/browser/ResizablePanels.mjs",
-    "/browser/PreviewStateController.mjs",
-    "/browser/ResponsiveToolbarController.mjs",
-    "/browser/ScreenAnnotationController.mjs",
-    "/browser/ScreenController.mjs",
-    "/browser/ScreenSelectionController.mjs",
-    "/browser/ScreenRulerController.mjs",
-    "/browser/ScreenYamlEditor.mjs",
-    "/browser/MaterialCanvas.mjs",
-    "/browser/ScreenMaterialController.mjs",
-    "/browser/ScreenMaterialRenderer.mjs",
-    "/browser/MaterialDefaults.mjs",
-    "/browser/SpecEditor.mjs",
-    "/browser/SplitViewLayout.mjs",
-    "/browser/ThemeEditor.mjs",
-    "/browser/TemplateMarkupRenderer.mjs",
-    "/browser/WorkspaceViewRenderer.mjs",
-    "/browser/WorkflowEditor.mjs"
-  ].includes(pathname)) {
-    relativePath = pathname.slice(1);
-  } else if ([
-    "/shared/yaml.mjs",
-    "/shared/validation.js",
-    "/shared/ScreenLayers.mjs",
-    "/shared/ScreenGroups.mjs"
-  ].includes(pathname)) {
-    allowedRoot = sharedRoot;
-    relativePath = pathname.slice("/shared/".length);
-  } else if (pathname.startsWith("/specux/")) {
-    let projectPath;
-    try {
-      projectPath = decodeURIComponent(pathname.slice("/specux/".length));
-    } catch {
-      sendJson(response, 404, { error: "File not found." });
-      return;
-    }
-    if (projectPath.includes("\\") || projectPath.includes("\0") ||
-        path.win32.isAbsolute(projectPath) || projectPath.split("/").some((segment) =>
-      !segment || segment === "." || segment === ".." || segment.startsWith(".")
-    )) {
-      sendJson(response, 404, { error: "File not found." });
-      return;
-    }
-    allowedRoot = projectRoot;
-    relativePath = path.join(...projectPath.split("/"));
-  } else {
-    sendJson(response, 404, { error: "File not found." });
-    return;
-  }
-
-  const target = path.resolve(allowedRoot, relativePath);
-  try {
-    const realTarget = await fs.realpath(target);
-    if (!isWithin(allowedRoot, realTarget)) {
-      sendJson(response, 404, { error: "File not found." });
-      return;
-    }
-    const details = await fs.stat(realTarget);
-    if (!details.isFile()) {
-      sendJson(response, 404, { error: "File not found." });
-      return;
-    }
-    const content = await fs.readFile(realTarget);
+  /** Opens a server-sent event stream for the connected editor browser. */
+  #getEvents(response) {
     response.writeHead(200, {
-      "Content-Type": CONTENT_TYPES.get(path.extname(realTarget).toLowerCase()) || "application/octet-stream",
-      "Cache-Control": "no-store",
-      "Content-Length": content.length,
-      "X-Content-Type-Options": "nosniff"
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no"
     });
-    response.end(content);
-  } catch (error) {
-    if (error.code === "ENOENT" || error.code === "ENOTDIR") {
-      sendJson(response, 404, { error: "File not found." });
-      return;
-    }
-    throw error;
+    response.write(": connected\n\n");
+    this.session.addEventClient(response);
+    response.on("close", () => this.session.removeEventClient(response));
   }
-}
 
-function createServer(options = {}) {
-  const repositoryRoot = path.resolve(__dirname, "..");
-  const rootDirectory = path.resolve(options.rootDirectory || path.join(repositoryRoot, "frontend"));
-  const projectRoot = path.resolve(options.projectRoot ||
-    (options.rootDirectory ? path.join(rootDirectory, "specux") : path.join(repositoryRoot, "specux")));
-  const sharedRoot = path.resolve(options.sharedRoot || path.join(repositoryRoot, "shared"));
-  const eventClients = new Set();
-  const selectionState = {
-    path: null,
-    file: null,
-    type: null,
-    name: null,
-    clientId: null,
-    preview: null,
-    selection: null,
-    selected: [],
-    annotationContext: null,
-    annotations: [],
-    updatedAt: null
-  };
-  const pendingEditorImageCaptures = new Map();
-  const annotationsByScreen = new Map();
-  let annotationCacheGeneration = 0;
-  let annotationCacheQueue = Promise.resolve();
-  let server;
-  function enqueueAnnotationCacheTask(task) {
-    const operation = annotationCacheQueue.then(task);
-    annotationCacheQueue = operation.catch(() => {});
-    return operation;
+  /** Routes GET requests to API handlers or the static file service. */
+  async #handleGet(request, response, requestUrl) {
+    const handler = this.#getRoutes.get(requestUrl.pathname);
+    if (handler) return handler(request, response, requestUrl);
+    return this.staticFiles.serve(requestUrl.pathname, response);
   }
-  function publishEvent(name, data) {
-    const message = `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
-    for (const client of eventClients) client.write(message);
+
+  /** Captures the active editor image and returns its state snapshot. */
+  async #captureEditorImage(response) {
+    const capture = await this.session.captureEditorImage();
+    sendJson(response, 200, {
+      image: capture.image.toString("base64"),
+      state: capture.state
+    });
   }
-  function annotationsFor(screenId) {
-    const entry = screenId ? annotationsByScreen.get(screenId) : null;
-    return {
-      screenId: screenId || null,
-      coordinateSpace: "screen canvas pixels",
-      annotations: entry?.annotations || [],
-      ...(entry?.canvasSize ? { canvasSize: entry.canvasSize } : {}),
-      ...(entry?.previewStateId ? { previewStateId: entry.previewStateId } : {}),
-      updatedAt: entry?.updatedAt || null
-    };
+
+  /** Receives a PNG image only while its capture request remains active. */
+  async #uploadEditorImage(request, response, requestUrl) {
+    // Confirm the capture request is still active and belongs to the requesting browser.
+    const requestId = requestUrl.searchParams.get("requestId");
+    const clientId = requestUrl.searchParams.get("clientId");
+    if (!this.session.hasPendingEditorImageCapture(requestId, clientId)) {
+      throw requestError("This image capture request is no longer active.", 404);
+    }
+    if (request.headers["content-type"] !== "image/png") {
+      throw requestError("Editor image uploads must use image/png.", 415);
+    }
+
+    // Enforce the upload limit and PNG signature before passing the image to the session.
+    const image = await readBufferBody(request, MAX_EDITOR_IMAGE_BYTES);
+    const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+    if (image.length < 8 || !image.subarray(0, 8).equals(pngSignature)) {
+      throw requestError("The editor did not provide a valid PNG image.");
+    }
+    this.session.receiveEditorImage(requestId, image);
+    sendJson(response, 202, { received: true });
   }
-  function getEditorState() {
-    const screenId = selectionState.selection?.screen?.id;
-    const screenAnnotations = screenId && annotationsByScreen.has(screenId)
-      ? annotationsFor(screenId)
-      : null;
-    return {
-      path: selectionState.path,
-      file: selectionState.file,
-      type: selectionState.type,
-      name: selectionState.name,
-      preview: selectionState.preview,
-      selected: selectionState.selected,
-      ...(selectionState.annotationContext
-        ? {
-            annotationContext: selectionState.annotationContext,
-            annotations: selectionState.annotations
-          }
-        : {}),
-      ...(screenAnnotations ? { screenAnnotations } : {}),
-      annotated: Boolean(
-        (selectionState.annotationContext && selectionState.annotations.length) ||
-        (screenId && annotationsByScreen.get(screenId)?.annotations.length)
-      )
-    };
+
+  /** Records an editor image capture failure reported by its browser. */
+  async #reportEditorImageFailure(request, response) {
+    const body = await readJsonBody(request);
+    this.session.reportEditorImageFailure(body);
+    sendJson(response, 202, { received: true });
   }
-  function finishEditorImageCapture(requestId, image, error) {
-    const capture = pendingEditorImageCaptures.get(requestId);
-    if (!capture) return false;
-    pendingEditorImageCaptures.delete(requestId);
-    clearTimeout(capture.timeout);
-    if (error) capture.reject(error);
-    else capture.resolve(image);
+
+  /** Applies a validated editor selection and optional annotation context. */
+  async #updateSelection(request, response) {
+    const body = await readJsonBody(request);
+    const editorAnnotations = validateSelectionRequest(body);
+    await this.session.updateSelection(body, editorAnnotations);
+    sendJson(response, 200, { updated: true });
+  }
+
+  /** Validates and stores Screen-scoped annotations. */
+  async #saveAnnotations(request, response) {
+    const body = await readJsonBody(request);
+    const annotationSet = validateAnnotationSet(body);
+    sendJson(response, 200, await this.session.saveAnnotations(annotationSet));
+  }
+
+  /** Clears saved annotations for an optional Screen ID. */
+  async #clearAnnotations(response, requestUrl) {
+    const screenId = requestUrl.searchParams.get("screenId");
+    if (screenId && !/^[a-z][a-z0-9-]*$/.test(screenId)) {
+      throw requestError("Invalid Screen id for clearing annotations.");
+    }
+    sendJson(response, 200, await this.session.clearAnnotations(screenId));
+  }
+
+  /** Publishes a project-updated event after validating a supplied origin. */
+  #publishUpdate(request, response) {
+    validateUpdateOrigin(request.headers.origin);
+    const timestamp = new Date().toISOString();
+    this.session.publishEvent("project-updated", { timestamp });
+    sendJson(response, 200, { notifiedBrowsers: this.session.connectedBrowserCount });
+  }
+
+  /** Validates and saves a batch of project files. */
+  async #saveFiles(request, response) {
+    // Require a JSON object before delegating path and content validation to the file service.
+    const body = await readJsonBody(request);
+    if (!body || Array.isArray(body) || typeof body !== "object") {
+      throw requestError("Save request must be a JSON object.");
+    }
+    const result = await this.projectFiles.saveFiles(body.files);
+    sendJson(response, 200, result);
+  }
+
+  /** Parses YAML request text and returns its mapping data. */
+  async #parseYaml(request, response) {
+    // Require a JSON object and return the parsed YAML mapping.
+    const body = await readJsonBody(request);
+    if (!body || Array.isArray(body) || typeof body !== "object") {
+      throw requestError("YAML parse request must be a JSON object.");
+    }
+    sendJson(response, 200, { data: await this.projectFiles.parseYaml(body.source) });
+  }
+
+  /** Serializes a YAML mapping supplied by the editor. */
+  async #stringifyYaml(request, response) {
+    // Require a JSON object containing a mapping before serializing YAML.
+    const body = await readJsonBody(request);
+    if (!body || Array.isArray(body) || typeof body !== "object" ||
+        !body.data || Array.isArray(body.data) || typeof body.data !== "object") {
+      throw requestError("YAML stringify request must contain a mapping of data.");
+    }
+    sendJson(response, 200, { source: await this.projectFiles.stringifyYaml(body.data) });
+  }
+
+  /** Routes POST requests to API handlers and reports whether a route matched. */
+  async #handlePost(request, response, requestUrl) {
+    const handler = this.#postRoutes.get(requestUrl.pathname);
+    if (!handler) return false;
+    await handler(request, response, requestUrl);
     return true;
   }
-  server = http.createServer(async (request, response) => {
-    let pathname;
-    let requestUrl;
+
+  /** Routes DELETE requests to API handlers and reports whether a route matched. */
+  async #handleDelete(request, response, requestUrl) {
+    const handler = this.#deleteRoutes.get(requestUrl.pathname);
+    if (!handler) return false;
+    await handler(request, response, requestUrl);
+    return true;
+  }
+
+  /** Dispatches a request by HTTP method, using static assets only for GET fallbacks. */
+  async #dispatchRequest(request, response, requestUrl) {
+    // Handle GET requests directly, then try the state-changing route tables.
+    if (request.method === "GET") return this.#handleGet(request, response, requestUrl);
+    if (request.method === "POST" && await this.#handlePost(request, response, requestUrl)) return;
+    if (request.method === "DELETE" && await this.#handleDelete(request, response, requestUrl)) return;
+    sendJson(response, 405, { error: "Method not allowed." });
+  }
+
+  /** Routes API and static-file requests, converting thrown errors into JSON responses. */
+  async handleRequest(request, response) {
+    // Parse and dispatch the request, converting handler failures to JSON error responses.
     try {
-      requestUrl = new URL(request.url, "http://localhost");
-      pathname = requestUrl.pathname;
-      if (request.method === "GET") {
-        if (pathname === "/api/validation") {
-          const result = await validateProject(projectRoot);
-          sendJson(response, 200, { errors: result.errors });
-          return;
-        }
-        if (pathname === "/api/status") {
-          const address = server.address();
-          sendJson(response, 200, {
-            status: "ok",
-            url: address && typeof address === "object"
-              ? `http://127.0.0.1:${address.port}/`
-              : null,
-            connectedBrowsers: eventClients.size,
-            selectionAvailable: selectionState.selection !== null
-          });
-          return;
-        }
-        if (pathname === "/api/files") {
-          sendJson(response, 200, { files: await listProjectFiles(projectRoot) });
-          return;
-        }
-        if (pathname === "/api/state") {
-          sendJson(response, 200, getEditorState());
-          return;
-        }
-        if (pathname === "/api/annotations") {
-          const screenId = requestUrl.searchParams.get("screenId") ||
-            selectionState.selection?.screen?.id || null;
-          sendJson(response, 200, annotationsFor(screenId));
-          return;
-        }
-        if (pathname === "/api/render-annotations") {
-          const screenId = requestUrl.searchParams.get("screenId");
-          const annotationSet = options.renderAnnotations;
-          if (!annotationSet || annotationSet.screenId !== screenId) {
-            throw requestError("No matching annotation set is available for this render.", 404);
-          }
-          sendJson(response, 200, annotationSet);
-          return;
-        }
-        if (pathname === "/api/events") {
-          response.writeHead(200, {
-            "Content-Type": "text/event-stream; charset=utf-8",
-            "Cache-Control": "no-cache, no-transform",
-            Connection: "keep-alive",
-            "X-Accel-Buffering": "no"
-          });
-          response.write(": connected\n\n");
-          eventClients.add(response);
-          response.on("close", () => eventClients.delete(response));
-          return;
-        }
-        await serveStatic(rootDirectory, projectRoot, sharedRoot, pathname, response);
-        return;
-      }
-      if (request.method === "POST" && pathname === "/api/editor-image/capture") {
-        if (!selectionState.path || !selectionState.clientId) {
-          throw requestError("No active editor browser has published its selection.", 409);
-        }
-        if (eventClients.size === 0) {
-          throw requestError("No editor browser is connected to capture an image.", 409);
-        }
-        const requestId = randomUUID();
-        const clientId = selectionState.clientId;
-        const image = await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            finishEditorImageCapture(
-              requestId,
-              null,
-              requestError("The active editor did not respond to the image capture request.", 504)
-            );
-          }, EDITOR_IMAGE_CAPTURE_TIMEOUT_MS);
-          pendingEditorImageCaptures.set(requestId, {
-            clientId,
-            resolve,
-            reject,
-            timeout
-          });
-          publishEvent("capture-editor-image", {
-            requestId,
-            clientId
-          });
-        });
-        if (selectionState.clientId !== clientId) {
-          throw requestError("The active editor changed during image capture. Retry the command.", 409);
-        }
-        sendJson(response, 200, {
-          image: image.toString("base64"),
-          state: getEditorState()
-        });
-        return;
-      }
-      if (request.method === "POST" && pathname === "/api/editor-image") {
-        const requestId = requestUrl.searchParams.get("requestId");
-        const clientId = requestUrl.searchParams.get("clientId");
-        const capture = pendingEditorImageCaptures.get(requestId);
-        if (!capture || capture.clientId !== clientId) {
-          throw requestError("This image capture request is no longer active.", 404);
-        }
-        if (request.headers["content-type"] !== "image/png") {
-          throw requestError("Editor image uploads must use image/png.", 415);
-        }
-        const image = await readBufferBody(request, MAX_EDITOR_IMAGE_BYTES);
-        if (image.length < 8 ||
-            !image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
-          throw requestError("The editor did not provide a valid PNG image.");
-        }
-        finishEditorImageCapture(requestId, image);
-        sendJson(response, 202, { received: true });
-        return;
-      }
-      if (request.method === "POST" && pathname === "/api/editor-image/failure") {
-        const body = await readJsonBody(request);
-        const capture = pendingEditorImageCaptures.get(body?.requestId);
-        if (!capture || capture.clientId !== body?.clientId ||
-            typeof body.message !== "string" || !body.message.trim()) {
-          throw requestError("This image capture failure report is invalid or expired.");
-        }
-        finishEditorImageCapture(
-          body.requestId,
-          null,
-          requestError(`The active editor could not capture an image: ${body.message.slice(0, 500)}`, 422)
-        );
-        sendJson(response, 202, { received: true });
-        return;
-      }
-      if (request.method === "POST" && pathname === "/api/selection") {
-        const body = await readJsonBody(request);
-        const editorAnnotations = body && Object.hasOwn(body, "annotationContext")
-          ? validateEditorAnnotationContext(body.annotationContext, body.annotations)
-          : null;
-        if (!body || Array.isArray(body) || typeof body !== "object" ||
-            !Object.hasOwn(body, "selection") ||
-            (body.selection !== null && (Array.isArray(body.selection) || typeof body.selection !== "object")) ||
-            (Object.hasOwn(body, "path") &&
-              (typeof body.path !== "string" || !body.path.startsWith("/") || body.path.startsWith("//"))) ||
-            (Object.hasOwn(body, "file") && body.file !== null && typeof body.file !== "string") ||
-            (Object.hasOwn(body, "type") &&
-              body.type !== null &&
-              !["screen", "workflow", "spec", "theme", "project", "material"].includes(body.type)) ||
-            (Object.hasOwn(body, "name") && body.name !== null && typeof body.name !== "string") ||
-            (Object.hasOwn(body, "clientId") &&
-              (typeof body.clientId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.clientId))) ||
-            (Object.hasOwn(body, "preview") &&
-              body.preview !== null &&
-              !isSpecuxPreviewUrl(body.preview)) ||
-            (Object.hasOwn(body, "selected") &&
-              (!Array.isArray(body.selected) ||
-                body.selected.some((item) => !isValidStateSelection(item))))) {
-          throw requestError("Selection updates must contain an object or null and a valid URL path.");
-        }
-        selectionState.selection = body.selection;
-        selectionState.annotationContext = editorAnnotations?.context || null;
-        selectionState.annotations = editorAnnotations?.annotations || [];
-        selectionState.selected = body.selected ??
-          (typeof body.selection?.selectedPlacement?.id === "string"
-            ? [body.selection.selectedPlacement.id]
-            : []);
-        if (body.path !== undefined) selectionState.path = body.path;
-        if (body.file !== undefined) selectionState.file = body.file;
-        if (body.type !== undefined) selectionState.type = body.type;
-        if (body.name !== undefined) selectionState.name = body.name;
-        selectionState.clientId = body.clientId ?? null;
-        if (body.preview !== undefined) selectionState.preview = body.preview;
-        selectionState.updatedAt = new Date().toISOString();
-        annotationCacheGeneration += 1;
-        await enqueueAnnotationCacheTask(() => clearBrowserAnnotationCache(projectRoot));
-        sendJson(response, 200, { updated: true });
-        return;
-      }
-      if (request.method === "POST" && pathname === "/api/annotations") {
-        const body = await readJsonBody(request);
-        const annotationSet = validateAnnotationSet(body);
-        const cacheGeneration = annotationCacheGeneration;
-        const selectionUpdatedAt = selectionState.updatedAt;
-        const updatedAt = new Date().toISOString();
-        let cached = false;
-        await enqueueAnnotationCacheTask(async () => {
-          const selection = selectionState.selection;
-          if (cacheGeneration !== annotationCacheGeneration ||
-              selectionUpdatedAt !== selectionState.updatedAt ||
-              selection?.view !== "screen" ||
-              selection.screen?.id !== annotationSet.screenId ||
-              (selection.previewStateId || "default") !== annotationSet.previewStateId) {
-            return;
-          }
-          await writeBrowserAnnotationCache(projectRoot, annotationSet);
-          cached = true;
-        });
-        annotationsByScreen.set(annotationSet.screenId, {
-          annotations: annotationSet.annotations,
-          canvasSize: annotationSet.canvasSize,
-          previewStateId: annotationSet.previewStateId,
-          updatedAt
-        });
-        publishEvent("annotations-updated", {
-          screenId: annotationSet.screenId,
-          updatedAt
-        });
-        sendJson(response, 200, {
-          screenId: annotationSet.screenId,
-          saved: annotationSet.annotations.length,
-          cached,
-          updatedAt
-        });
-        return;
-      }
-      if (request.method === "DELETE" && pathname === "/api/annotations") {
-        const screenId = requestUrl.searchParams.get("screenId");
-        if (screenId && !/^[a-z][a-z0-9-]*$/.test(screenId)) {
-          throw requestError("Invalid Screen id for clearing annotations.");
-        }
-        annotationCacheGeneration += 1;
-        await enqueueAnnotationCacheTask(() => clearBrowserAnnotationCache(projectRoot));
-        const clearedScreenIds = screenId
-          ? (annotationsByScreen.has(screenId) ? [screenId] : [])
-          : [...annotationsByScreen.keys()];
-        if (screenId) annotationsByScreen.delete(screenId);
-        else annotationsByScreen.clear();
-        publishEvent("annotations-updated", {
-          screenId: screenId || null,
-          cleared: true,
-          updatedAt: new Date().toISOString()
-        });
-        sendJson(response, 200, {
-          cleared: clearedScreenIds.length,
-          screenIds: clearedScreenIds
-        });
-        return;
-      }
-      if (request.method === "POST" && pathname === "/api/update") {
-        const origin = request.headers.origin;
-        if (origin) {
-          let originUrl;
-          try {
-            originUrl = new URL(origin);
-          } catch {
-            throw requestError("Update requests must originate from the local editor.", 403);
-          }
-          if (!["localhost", "127.0.0.1", "[::1]"].includes(originUrl.hostname)) {
-            throw requestError("Update requests must originate from the local editor.", 403);
-          }
-        }
-        const timestamp = new Date().toISOString();
-        publishEvent("project-updated", { timestamp });
-        sendJson(response, 200, { notifiedBrowsers: eventClients.size });
-        return;
-      }
-      if (request.method === "POST" && pathname === "/api/save") {
-        const body = await readJsonBody(request);
-        if (!body || Array.isArray(body) || typeof body !== "object") {
-          throw requestError("Save request must be a JSON object.");
-        }
-        const result = await saveProjectFiles(projectRoot, body.files);
-        sendJson(response, 200, result);
-        return;
-      }
-      if (request.method === "POST" && pathname === "/api/yaml/parse") {
-        const body = await readJsonBody(request);
-        if (!body || Array.isArray(body) || typeof body !== "object") {
-          throw requestError("YAML parse request must be a JSON object.");
-        }
-        sendJson(response, 200, { data: await parseYamlMapping(body.source) });
-        return;
-      }
-      if (request.method === "POST" && pathname === "/api/yaml/stringify") {
-        const body = await readJsonBody(request);
-        if (!body || Array.isArray(body) || typeof body !== "object" ||
-            !body.data || Array.isArray(body.data) || typeof body.data !== "object") {
-          throw requestError("YAML stringify request must contain a mapping of data.");
-        }
-        const YAML = await yamlModule;
-        sendJson(response, 200, { source: YAML.stringify(body.data) });
-        return;
-      }
-      sendJson(response, 405, { error: "Method not allowed." });
+      const requestUrl = new URL(request.url, "http://localhost");
+      await this.#dispatchRequest(request, response, requestUrl);
     } catch (error) {
       sendJson(response, error.statusCode || 500, { error: error.message || "Request failed." });
     }
-  });
-  return server;
+  }
+}
+
+/** Preserves the existing factory API while constructing the class-based server. */
+function createServer(options = {}) {
+  return new EditorServer(options).createServer();
 }
 
 if (require.main === module) {
+  // Start the standalone editor on the configured loopback port.
   const server = createServer();
   const port = Number(process.env.PORT) || 3000;
   server.listen(port, "127.0.0.1", () => {

@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const validation = require("../shared/validation");
 
+/** Creates the controller using the supplied test selection and window. */
 function createController(screen) {
   const state = {
     screens: [{ id: "home", data: screen }],
@@ -16,6 +17,7 @@ function createController(screen) {
   );
 }
 
+/** Named states inherit unchanged Default values and serialize only differing placement and layer overrides. */
 test("named states inherit placement and layer values and persist sparse edits", async () => {
   const screen = {
     layers: [{ id: "base", name: "Base" }],
@@ -67,6 +69,7 @@ test("named states inherit placement and layer values and persist sparse edits",
   assert.deepEqual(controller.resolvePlacement(addedPlacement, "dialog", screen), addedPlacement);
 });
 
+/** Visibility inherits until overridden, and choosing Default removes the sparse override entry. */
 test("state visibility overrides inherit and are removed when reset to Default", async () => {
   const screen = {
     layers: [{ id: "base", name: "Base", visible: false }],
@@ -94,6 +97,7 @@ test("state visibility overrides inherit and are removed when reset to Default",
   assert.equal(screen["preview-states"][1].layers, undefined);
 });
 
+/** Checks that the editor exposes the expected entries and override values. */
 test("lists individual placement, attribute, and layer state overrides", async () => {
   const screen = {
     layers: [{ id: "overlay", name: "Overlay" }],
@@ -145,6 +149,7 @@ test("lists individual placement, attribute, and layer state overrides", async (
   );
 });
 
+/** Resetting one property preserves sibling changes and removes state containers left empty. */
 test("resetting a selected state override removes only that change and prunes empty entries", async () => {
   const screen = {
     layers: [{ id: "overlay", name: "Overlay" }],
@@ -168,6 +173,8 @@ test("resetting a selected state override removes only that change and prunes em
   const controller = await createController(screen);
   const record = { data: screen };
   const overrides = controller.listStateOverrides(screen, "dialog");
+
+  /** Returns the matching state override from the list. */
   const findOverride = (key) => overrides.find((override) => override.key === key);
 
   controller.resetStateOverride(record, "dialog", findOverride("placement:notice:attributes:tone"));

@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+/** Creates a DOM element with the supplied content and attributes. */
 function createElement() {
   return {
     value: "",
@@ -20,6 +21,7 @@ function createElement() {
   };
 }
 
+/** Screen YAML rendering leaves annotation toolbar visibility under the annotation controller's ownership. */
 test("leaves annotation toolbar visibility to the annotation controller", async () => {
   const { ScreenYamlEditor } = await import("../frontend/browser/ScreenYamlEditor.mjs");
   const elements = new Map([
@@ -62,6 +64,7 @@ test("leaves annotation toolbar visibility to the annotation controller", async 
   assert.equal(elements.get("annotation-toolbar").hidden, true);
 });
 
+/** A successful parse replaces active Screen data and refreshes navigation and preview. */
 test("parses valid Screen YAML and refreshes the active Screen", async () => {
   const { ScreenYamlEditor } = await import("../frontend/browser/ScreenYamlEditor.mjs");
   const screen = {
@@ -108,6 +111,7 @@ test("parses valid Screen YAML and refreshes the active Screen", async () => {
   }, screen.file]]);
 });
 
+/** A parse response arriving after a Screen switch is discarded rather than replacing the new Screen. */
 test("ignores a stale Screen YAML parse response", async () => {
   const { ScreenYamlEditor } = await import("../frontend/browser/ScreenYamlEditor.mjs");
   const screen = {
@@ -134,6 +138,7 @@ test("ignores a stale Screen YAML parse response", async () => {
   assert.deepEqual(screen.data, { name: "Home" });
 });
 
+/** The active Screen object is serialized and its YAML is placed in the source editor. */
 test("generates Screen YAML and fills the active YAML editor", async () => {
   const { ScreenYamlEditor } = await import("../frontend/browser/ScreenYamlEditor.mjs");
   const screen = {
@@ -175,6 +180,7 @@ test("generates Screen YAML and fills the active YAML editor", async () => {
   assert.equal(status.textContent, "YAML source is ready.");
 });
 
+/** A missing placement layer aborts parsing before Screen rendering and save controls are updated. */
 test("rejects Screen YAML placements without an explicit layer", async () => {
   const { ScreenYamlEditor } = await import("../frontend/browser/ScreenYamlEditor.mjs");
   const screen = {

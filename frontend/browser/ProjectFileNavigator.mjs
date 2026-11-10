@@ -1,10 +1,25 @@
+/** Builds and updates navigation for files in the loaded project. */
 export class ProjectFileNavigator {
+
+  /** Stores the injected collaborators and initializes the instance state. */
   constructor({ state, services, projectFileTree }) {
     this.state = state;
     this.services = services;
     this.projectFileTree = projectFileTree;
   }
 
+  /** Returns the path of the currently active project file. */
+  activeFilePath() {
+    const { state } = this;
+    if (state.activeProjectFilePath) return state.activeProjectFilePath;
+    if (state.viewingSpec) return state.activeSpecPath;
+    if (state.viewingTheme) return state.project?.theme;
+    if (state.viewingProject) return "project.yml";
+    if (state.viewingMaterialFile) return state.activeMaterialFilePath;
+    return state.screens[state.activeScreenIndex]?.file;
+  }
+
+  /** Renders the navigation from the current editor data. */
   renderNavigation() {
     const { state, services } = this;
     if (!state.viewingMaterialFile &&
@@ -12,20 +27,13 @@ export class ProjectFileNavigator {
         !state.viewingWorkflow) {
       services.byId("breadcrumb").textContent = "Screens";
     }
-    const activeFilePath = state.activeProjectFilePath || (state.viewingSpec
-      ? state.activeSpecPath
-      : state.viewingTheme
-        ? state.project?.theme
-        : state.viewingProject
-          ? "project.yml"
-          : state.viewingMaterialFile
-              ? state.activeMaterialFilePath
-            : state.screens[state.activeScreenIndex]?.file);
+    const activeFilePath = this.activeFilePath();
     if (activeFilePath) this.projectFileTree.expandPath(activeFilePath);
     this.projectFileTree.render();
     services.updateNavigationSelection();
   }
 
+  /** Renders the screen selector from the current editor data. */
   renderScreenSelector() {
     const { state, services } = this;
     const toggle = services.byId("screen-selector-toggle");
@@ -63,6 +71,7 @@ export class ProjectFileNavigator {
     services.byId("screen-selector-no-results").hidden = matches.length > 0;
   }
 
+  /** Sets the screen selector open from the supplied data. */
   setScreenSelectorOpen(open, restoreFocus = false) {
     const { services } = this;
     const toggle = services.byId("screen-selector-toggle");
@@ -76,6 +85,7 @@ export class ProjectFileNavigator {
     else if (restoreFocus) toggle.focus();
   }
 
+  /** Collects project files and generated drafts for the navigation tree. */
   getProjectTreeFilePaths() {
     const { state } = this;
     const filePaths = new Set(state.projectFilePaths);
@@ -93,6 +103,7 @@ export class ProjectFileNavigator {
     ).sort((left, right) => left.localeCompare(right));
   }
 
+  /** Renders the project file from the current editor data. */
   renderProjectFile(file) {
     const { state, services } = this;
     const action = this.getProjectFileAction(file.path);
@@ -125,6 +136,7 @@ export class ProjectFileNavigator {
     return button;
   }
 
+  /** Returns the project file action. */
   getProjectFileAction(filePath) {
     const { state } = this;
     if (filePath === "project.yml") return { kind: "project" };
@@ -145,6 +157,7 @@ export class ProjectFileNavigator {
       : null;
   }
 
+  /** Returns the spec file action. */
   getSpecFileAction(filePath) {
     const { state } = this;
     if (state.project?.spec === filePath ||
@@ -169,6 +182,33 @@ export class ProjectFileNavigator {
     return null;
   }
 
+  /** Renders the spec action from the current editor data. */
+  async renderSpecAction(filePath, action) {
+    const { state, services } = this;
+    state.activeScreenIndex = action.screenIndex ?? state.activeScreenIndex;
+    if (state.viewingSpec && state.activeSpecPath === filePath) {
+      await services.renderSpecEditor(filePath, action.instancePath, action.owner);
+      return;
+    }
+    if (action.owner === "project") await services.renderProjectOverview();
+    else await services.renderScreen(state.activeScreenIndex);
+    await services.renderSpecEditor(filePath, action.instancePath, action.owner);
+  }
+
+  /** Renders the file action from the current editor data. */
+  async renderFileAction(filePath, action) {
+    const { services, state } = this;
+    if (action.kind === "project") return services.renderProjectOverview();
+    if (action.kind === "screen") return services.renderScreen(action.screenIndex);
+    if (action.kind === "theme") return services.renderThemeView(filePath);
+    if (action.kind === "material") return services.renderMaterialFile(filePath);
+    if (action.kind === "spec") return this.renderSpecAction(filePath, action);
+    state.activeScreenIndex = action.screenIndex;
+    await services.renderScreen(action.screenIndex);
+    return services.renderWorkflowEditor(filePath, action.screenIndex);
+  }
+
+  /** Opens the project file in the editor. */
   async openProjectFile(filePath) {
     const { state, services } = this;
     const action = this.getProjectFileAction(filePath);
@@ -176,28 +216,7 @@ export class ProjectFileNavigator {
     const wasHistoryUpdateSuppressed = state.historyUpdateSuppressed;
     state.historyUpdateSuppressed = true;
     try {
-      if (action.kind === "project") {
-        await services.renderProjectOverview();
-      } else if (action.kind === "screen") {
-        await services.renderScreen(action.screenIndex);
-      } else if (action.kind === "theme") {
-        await services.renderThemeView(filePath);
-      } else if (action.kind === "material") {
-        await services.renderMaterialFile(filePath);
-      } else if (action.kind === "spec") {
-        state.activeScreenIndex = action.screenIndex ?? state.activeScreenIndex;
-        if (state.viewingSpec && state.activeSpecPath === filePath) {
-          await services.renderSpecEditor(filePath, action.instancePath, action.owner);
-        } else {
-          if (action.owner === "project") await services.renderProjectOverview();
-          else await services.renderScreen(state.activeScreenIndex);
-          await services.renderSpecEditor(filePath, action.instancePath, action.owner);
-        }
-      } else if (action.kind === "workflow") {
-        state.activeScreenIndex = action.screenIndex;
-        await services.renderScreen(action.screenIndex);
-        await services.renderWorkflowEditor(filePath, action.screenIndex);
-      }
+      await this.renderFileAction(filePath, action);
     } finally {
       state.historyUpdateSuppressed = wasHistoryUpdateSuppressed;
     }

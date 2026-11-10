@@ -10,12 +10,16 @@ import {
   ungroupScreenPlacement
 } from "../../shared/ScreenGroups.mjs";
 
+/** Coordinates Material placement, editing, grouping, and visibility on a Screen. */
 export class ScreenMaterialController {
+
+  /** Stores the injected collaborators and initializes the instance state. */
   constructor({ state, services }) {
     this.state = state;
     this.services = services;
   }
 
+  /** Adds the requested placement or preview-state entry to the project data. */
   async add(type, position = null) {
     if (!this.state.screens[this.state.activeScreenIndex]) {
       throw new Error("Select a Screen before adding a Material.");
@@ -37,6 +41,7 @@ export class ScreenMaterialController {
     await this.addFromFile(definition.file, position);
   }
 
+  /** Builds the Label Material definition used when inserting a Label instance. */
   createLabelDefinition() {
     const { state } = this;
     let id = "label";
@@ -63,6 +68,7 @@ export class ScreenMaterialController {
     };
   }
 
+  /** Adds the from file for the current editor state. */
   async addFromFile(filePath, position = null) {
     const { state, services } = this;
     const screen = state.screens[state.activeScreenIndex];
@@ -74,38 +80,69 @@ export class ScreenMaterialController {
     const size = getMaterialDefaultSize(definition.data.type);
     if (!size) throw new Error(`Material "${filePath}" has an unsupported type.`);
     const materials = screen.data.materials;
-    const baseId = definition.id;
-    let id = baseId;
-    for (let suffix = 2; getScreenPlacementPathById(materials, id); suffix += 1) {
-      id = `${baseId}-${suffix}`;
-    }
-    const attributes = Object.fromEntries(
-      Object.entries(definition.data.attributes || {})
-        .filter(([, attribute]) =>
-          attribute.overridable === true && Object.hasOwn(attribute, "default")
-        )
-        .map(([name, attribute]) => [name, attribute.default])
-    );
-    const layerId = screen.data.layers.find((layer) => layer.id === BASE_LAYER_ID)?.id ||
-      screen.data.layers[0]?.id;
-    if (!layerId) throw new Error("The Screen must have a layer before adding a Material.");
-    const material = {
-      id,
-      src: filePath,
-      ...(Object.keys(attributes).length ? { attributes } : {}),
-      position: Number.isFinite(position?.x) && Number.isFinite(position?.y)
-        ? { x: Math.max(0, Math.round(position.x)), y: Math.max(0, Math.round(position.y)) }
-        : nextMaterialPosition(materials, size),
-      size,
-      rotation: 0,
-      layer: layerId
-    };
+    const material = this.createPlacement(screen, definition, filePath, size, position);
     materials.push(material);
     services.markEdited(screen.file);
     await services.renderScreen(state.activeScreenIndex);
     services.selectInstance([materials.length - 1], null);
   }
 
+  /** Creates a Screen placement with its Material reference and default geometry. */
+  createPlacement(screen, definition, filePath, size, position) {
+    const materials = screen.data.materials;
+    const layerId = this.getDefaultLayerId(screen);
+    return {
+      id: this.getUniquePlacementId(materials, definition.id),
+      src: filePath,
+      ...this.getDefaultAttributes(definition.data.attributes),
+      position: this.getPlacementPosition(position, materials, size),
+      size,
+      rotation: 0,
+      layer: layerId
+    };
+  }
+
+  /** Returns the unique placement id. */
+  getUniquePlacementId(materials, baseId) {
+    let id = baseId;
+    for (let suffix = 2; getScreenPlacementPathById(materials, id); suffix += 1) {
+      id = `${baseId}-${suffix}`;
+    }
+    return id;
+  }
+
+  /** Returns the default attributes. */
+  getDefaultAttributes(attributes = {}) {
+    const values = Object.fromEntries(
+      Object.entries(attributes)
+        .filter(([, attribute]) =>
+          attribute.overridable === true && Object.hasOwn(attribute, "default")
+        )
+        .map(([name, attribute]) => [name, attribute.default])
+    );
+    return Object.keys(values).length ? { attributes: values } : {};
+  }
+
+  /** Returns the placement position. */
+  getPlacementPosition(position, materials, size) {
+    if (Number.isFinite(position?.x) && Number.isFinite(position?.y)) {
+      return {
+        x: Math.max(0, Math.round(position.x)),
+        y: Math.max(0, Math.round(position.y))
+      };
+    }
+    return nextMaterialPosition(materials, size);
+  }
+
+  /** Returns the first configured layer ID or the default base layer ID. */
+  getDefaultLayerId(screen) {
+    const layerId = screen.data.layers.find((layer) => layer.id === BASE_LAYER_ID)?.id ||
+      screen.data.layers[0]?.id;
+    if (!layerId) throw new Error("The Screen must have a layer before adding a Material.");
+    return layerId;
+  }
+
+  /** Creates a Screen layer with a unique ID and default properties. */
   async createLayer() {
     const screen = this.getActiveScreen();
     this.requireDefaultState(screen);
@@ -118,6 +155,7 @@ export class ScreenMaterialController {
     return layer.id;
   }
 
+  /** Renames the layer in the current project data. */
   async renameLayer(layerId, name) {
     const screen = this.getActiveScreen();
     this.requireDefaultState(screen);
@@ -128,6 +166,7 @@ export class ScreenMaterialController {
     await this.commitLayerChange(screen);
   }
 
+  /** Sets the layer visibility from the supplied data. */
   async setLayerVisibility(layerId, visible) {
     const screen = this.getActiveScreen();
     const layer = this.getLayer(screen, layerId);
@@ -139,6 +178,7 @@ export class ScreenMaterialController {
     await this.commitLayerChange(screen);
   }
 
+  /** Moves the layer for the current editor state. */
   async moveLayer(layerId, direction) {
     const screen = this.getActiveScreen();
     this.requireDefaultState(screen);
@@ -150,6 +190,7 @@ export class ScreenMaterialController {
     await this.commitLayerChange(screen);
   }
 
+  /** Updates the layer for the current editor state. */
   async reorderLayer(layerId, targetLayerId, insertAfter) {
     const screen = this.getActiveScreen();
     this.requireDefaultState(screen);
@@ -168,10 +209,12 @@ export class ScreenMaterialController {
     await this.commitLayerChange(screen);
   }
 
+  /** Moves the material for the current editor state. */
   async moveMaterial(materialIndex, direction) {
     return this.movePlacement([materialIndex], direction);
   }
 
+  /** Moves the placement for the current editor state. */
   async movePlacement(path, direction) {
     const screen = this.getActiveScreen();
     this.requireDefaultState(screen);
@@ -194,6 +237,7 @@ export class ScreenMaterialController {
     await this.commitPlacementChange(screen, selectedId);
   }
 
+  /** Updates the material for the current editor state. */
   async reorderMaterial(materialIndex, targetMaterialId, insertAfter) {
     const screen = this.getActiveScreen();
     return this.reorderPlacement([materialIndex], [screen.data.materials.findIndex(
@@ -201,6 +245,7 @@ export class ScreenMaterialController {
     )], insertAfter);
   }
 
+  /** Updates the placement for the current editor state. */
   async reorderPlacement(path, targetPath, insertAfter) {
     const screen = this.getActiveScreen();
     this.requireDefaultState(screen);
@@ -227,6 +272,7 @@ export class ScreenMaterialController {
     await this.commitPlacementChange(screen, selectedId);
   }
 
+  /** Updates the layer for the current editor state. */
   async deleteLayer(layerId) {
     const screen = this.getActiveScreen();
     this.requireDefaultState(screen);
@@ -257,10 +303,12 @@ export class ScreenMaterialController {
     }
   }
 
+  /** Updates the material layer for the current editor state. */
   async assignMaterialLayer(materialIndex, layerId) {
     return this.assignPlacementLayer([materialIndex], layerId);
   }
 
+  /** Updates the placement layer for the current editor state. */
   async assignPlacementLayer(path, layerId) {
     const screen = this.getActiveScreen();
     this.requireDefaultState(screen);
@@ -274,6 +322,7 @@ export class ScreenMaterialController {
     await this.commitLayerChange(screen);
   }
 
+  /** Groups the selected placements and persists their combined geometry. */
   async group(paths) {
     const screen = this.getActiveScreen();
     this.requireDefaultState(screen);
@@ -291,46 +340,20 @@ export class ScreenMaterialController {
     return path;
   }
 
+  /** Ungroups the selected group while preserving transformed child placements. */
   async ungroup(path) {
     const screen = this.getActiveScreen();
     this.requireDefaultState(screen);
     const groupId = getScreenPlacementAtPath(screen.data.materials, path)?.id;
     const stateSnapshots = this.captureNamedStatePlacements(screen);
-    const stateChildVisibility = [];
-    for (const { stateId, placements } of stateSnapshots) {
-      const stateGroup = getScreenPlacementAtPath(placements, path);
-      if (stateGroup) {
-        const groupVisible = this.services.isInstanceVisible
-          ? this.services.isInstanceVisible(stateGroup, stateId, screen.data)
-          : true;
-        stateGroup.children.forEach((child) => {
-          const childVisible = this.services.isInstanceVisible
-            ? this.services.isInstanceVisible(child, stateId, screen.data)
-            : true;
-          stateChildVisibility.push({
-            id: child.id,
-            stateId,
-            visible: groupVisible && childVisible
-          });
-        });
-      }
-      ungroupScreenPlacement(placements, path);
-    }
-    const baseGroup = getScreenPlacementAtPath(screen.data.materials, path);
-    if (baseGroup && this.services.isInstanceVisible &&
-        !this.services.isInstanceVisible(baseGroup, "default", screen.data)) {
-      baseGroup.children.forEach((child) => { child.visible = false; });
-    }
+    const stateChildVisibility = this.captureUngroupedStateVisibility(stateSnapshots, path, screen);
+    this.applyBaseUngroupVisibility(screen, path);
     const children = ungroupScreenPlacement(screen.data.materials, path);
     if (groupId) this.services.removePlacementStateOverrides?.(screen, [groupId]);
     for (const { stateId, placements } of stateSnapshots) {
       this.services.persistStatePlacements?.(screen, placements, stateId);
     }
-    for (const { id, stateId, visible } of stateChildVisibility) {
-      const childPath = getScreenPlacementPathById(screen.data.materials, id);
-      const child = childPath && getScreenPlacementAtPath(screen.data.materials, childPath);
-      if (child) this.services.setInstanceVisible?.(screen, child, visible, stateId);
-    }
+    this.restoreUngroupedChildVisibility(screen, stateChildVisibility);
     await this.commitLayerChange(screen);
     const first = children[0];
     const instance = getScreenPlacementAtPath(screen.data.materials, first);
@@ -338,6 +361,55 @@ export class ScreenMaterialController {
     return children;
   }
 
+  /** Captures the ungrouped state visibility for the current editor state. */
+  captureUngroupedStateVisibility(stateSnapshots, path, screen) {
+    const stateChildVisibility = [];
+    for (const { stateId, placements } of stateSnapshots) {
+      const stateGroup = getScreenPlacementAtPath(placements, path);
+      if (stateGroup) this.captureGroupChildVisibility(stateChildVisibility, stateGroup, stateId, screen);
+      ungroupScreenPlacement(placements, path);
+    }
+    return stateChildVisibility;
+  }
+
+  /** Captures the group child visibility for the current editor state. */
+  captureGroupChildVisibility(result, group, stateId, screen) {
+    const groupVisible = this.getInstanceVisibility(group, stateId, screen);
+    group.children.forEach((child) => {
+      result.push({
+        id: child.id,
+        stateId,
+        visible: groupVisible && this.getInstanceVisibility(child, stateId, screen)
+      });
+    });
+  }
+
+  /** Resolves visibility from the selected state, placement, and layer defaults. */
+  getInstanceVisibility(instance, stateId, screen) {
+    return this.services.isInstanceVisible
+      ? this.services.isInstanceVisible(instance, stateId, screen.data)
+      : true;
+  }
+
+  /** Applies the base ungroup visibility to the current editor state. */
+  applyBaseUngroupVisibility(screen, path) {
+    const baseGroup = getScreenPlacementAtPath(screen.data.materials, path);
+    if (baseGroup && this.services.isInstanceVisible &&
+        !this.services.isInstanceVisible(baseGroup, "default", screen.data)) {
+      baseGroup.children.forEach((child) => { child.visible = false; });
+    }
+  }
+
+  /** Restores the ungrouped child visibility for the current editor state. */
+  restoreUngroupedChildVisibility(screen, stateChildVisibility) {
+    for (const { id, stateId, visible } of stateChildVisibility) {
+      const childPath = getScreenPlacementPathById(screen.data.materials, id);
+      const child = childPath && getScreenPlacementAtPath(screen.data.materials, childPath);
+      if (child) this.services.setInstanceVisible?.(screen, child, visible, stateId);
+    }
+  }
+
+  /** Deletes the selected entry and updates dependent editor state. */
   async delete(path) {
     const { state, services } = this;
     const screen = state.screens[state.activeScreenIndex];
@@ -366,6 +438,7 @@ export class ScreenMaterialController {
     await services.renderScreen(state.activeScreenIndex);
   }
 
+  /** Returns the active screen. */
   getActiveScreen() {
     const screen = this.state.screens[this.state.activeScreenIndex];
     if (!screen) throw new Error("Select a Screen before editing layers.");
@@ -373,23 +446,27 @@ export class ScreenMaterialController {
     return screen;
   }
 
+  /** Updates the default state for the current editor state. */
   requireDefaultState(screen = this.getActiveScreen()) {
     if ((this.services.getActivePreviewStateId?.(screen.data) || "default") !== "default") {
       throw new Error("Placement and layer structure can only be edited in the Default state.");
     }
   }
 
+  /** Returns the layer. */
   getLayer(screen, layerId) {
     const layer = screen.data.layers?.find((candidate) => candidate.id === layerId);
     if (!layer) throw new Error(`Layer "${layerId}" is no longer available.`);
     return layer;
   }
 
+  /** Updates the layer change for the current editor state. */
   async commitLayerChange(screen) {
     this.services.markEdited(screen.file);
     await this.services.renderScreen(this.state.activeScreenIndex);
   }
 
+  /** Returns the unique group id. */
   getUniqueGroupId(placements) {
     let suffix = 1;
     let id = "group";
@@ -400,6 +477,7 @@ export class ScreenMaterialController {
     return id;
   }
 
+  /** Returns the placement ids. */
   getPlacementIds(placement) {
     return [
       placement.id,
@@ -407,6 +485,7 @@ export class ScreenMaterialController {
     ];
   }
 
+  /** Captures the named state placements for the current editor state. */
   captureNamedStatePlacements(screen) {
     const states = this.services.getScreenPreviewStates?.(screen.data) || [];
     return states
@@ -425,6 +504,7 @@ export class ScreenMaterialController {
       }));
   }
 
+  /** Updates the placement change for the current editor state. */
   async commitPlacementChange(screen, placementId) {
     await this.commitLayerChange(screen);
     if (!placementId) return;
@@ -433,6 +513,7 @@ export class ScreenMaterialController {
     this.services.selectInstance?.(path || [], placement?.src || null);
   }
 
+  /** Selects the placement by id and updates the related editor state. */
   async selectPlacementById(placements, id) {
     const path = getScreenPlacementPathById(placements, id);
     const placement = path && getScreenPlacementAtPath(placements, path);

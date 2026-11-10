@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+/** Wires a ThemeEditor instance to the test state and DOM controls. */
 function createThemeEditor(ThemeEditor, activeInstancePath = []) {
   const screen = {
     id: "home",
@@ -56,6 +57,7 @@ function createThemeEditor(ThemeEditor, activeInstancePath = []) {
   });
 }
 
+/** Screen token lookup includes matching attribute and style references across the Screen. */
 test("Screen Theme context finds attribute and style token references", async () => {
   const { ThemeEditor } = await import("../frontend/browser/ThemeEditor.mjs");
   const editor = createThemeEditor(ThemeEditor);
@@ -72,6 +74,7 @@ test("Screen Theme context finds attribute and style token references", async ()
   );
 });
 
+/** Theme usage remains scoped to the Screen when a named placement state is active. */
 test("Screen Theme usage stays Screen-wide regardless of placement state", async () => {
   const { ThemeEditor } = await import("../frontend/browser/ThemeEditor.mjs");
   const editor = createThemeEditor(ThemeEditor, [0]);
@@ -85,6 +88,7 @@ test("Screen Theme usage stays Screen-wide regardless of placement state", async
   ]);
 });
 
+/** Material token lookup includes default attributes and CSS style references from the source. */
 test("Material Theme context reads its defaults and style references", async () => {
   const { ThemeEditor } = await import("../frontend/browser/ThemeEditor.mjs");
   const editor = createThemeEditor(ThemeEditor);
@@ -93,9 +97,12 @@ test("Material Theme context reads its defaults and style references", async () 
   assert.deepEqual([...usages.keys()].sort(), ["border", "card-shadow", "surface"]);
 });
 
+/** Sampling resolves the painted background or border declaration rather than unrelated tokens on the same element. */
 test("preview point maps to the painted background or border token, not every token on the element", async () => {
   const { ThemeEditor } = await import("../frontend/browser/ThemeEditor.mjs");
   const editor = createThemeEditor(ThemeEditor);
+
+  /** Creates a style object that records property updates for assertions. */
   const makeStyle = (entries) => {
     const values = new Map(entries);
     return {
@@ -160,6 +167,7 @@ test("preview point maps to the painted background or border token, not every to
   assert.equal(border.property, "border");
 });
 
+/** The sampled preview point resolves to the corresponding Material CSS color declaration. */
 test("preview maps a matching Material CSS color declaration", async () => {
   const { ThemeEditor } = await import("../frontend/browser/ThemeEditor.mjs");
   const editor = createThemeEditor(ThemeEditor);
@@ -194,6 +202,7 @@ test("preview maps a matching Material CSS color declaration", async () => {
   assert.equal(binding.source, "Material CSS");
 });
 
+/** Color picking stops event propagation before Screen placement selection can run. */
 test("Theme preview pointer handling consumes the color pick without selecting a placement", async () => {
   const { ThemeEditor } = await import("../frontend/browser/ThemeEditor.mjs");
   const editor = createThemeEditor(ThemeEditor);
@@ -217,6 +226,7 @@ test("Theme preview pointer handling consumes the color pick without selecting a
   assert.deepEqual(selected[0][1], candidates);
 });
 
+/** Annotation overlays retain pointer ownership while Theme color picking is active. */
 test("Theme preview lets annotation overlays handle pointer events", async () => {
   const { ThemeEditor } = await import("../frontend/browser/ThemeEditor.mjs");
   const editor = createThemeEditor(ThemeEditor);
@@ -238,6 +248,7 @@ test("Theme preview lets annotation overlays handle pointer events", async () =>
   assert.equal(pickerOpened, false);
 });
 
+/** The sampling guide uses the configured radius and leaves the browser pointer unchanged. */
 test("Theme preview shows a 35px radius guide and retains the normal pointer", async () => {
   const { ThemeEditor } = await import("../frontend/browser/ThemeEditor.mjs");
   const editor = createThemeEditor(ThemeEditor);
@@ -286,6 +297,7 @@ test("Theme preview shows a 35px radius guide and retains the normal pointer", a
   assert.equal(previewClasses.has("theme-color-picking"), false);
 });
 
+/** Nearby sample results are unique and ordered by distance within the radius boundary. */
 test("nearby Theme colors are deduplicated and ordered within a 35px circle", async () => {
   const { ThemeEditor } = await import("../frontend/browser/ThemeEditor.mjs");
   const editor = createThemeEditor(ThemeEditor);
@@ -332,6 +344,7 @@ test("nearby Theme colors are deduplicated and ordered within a 35px circle", as
   ]);
 });
 
+/** Sampling traverses transparent overlapping Materials to find the painted token beneath them. */
 test("radius search finds Theme colors beneath transparent overlapping Materials", async () => {
   const { ThemeEditor } = await import("../frontend/browser/ThemeEditor.mjs");
   const editor = createThemeEditor(ThemeEditor);
@@ -367,6 +380,7 @@ test("radius search finds Theme colors beneath transparent overlapping Materials
   assert.equal(candidates[0].root, backgroundRoot);
 });
 
+/** Editing a color updates the live preview while preserving the token's alpha component. */
 test("live Theme color edits preserve token alpha and apply immediately", async () => {
   const { ThemeEditor } = await import("../frontend/browser/ThemeEditor.mjs");
   const editor = createThemeEditor(ThemeEditor);
@@ -384,10 +398,13 @@ test("live Theme color edits preserve token alpha and apply immediately", async 
   assert.deepEqual(calls, ["apply", "theme.yml"]);
 });
 
+/** Choosing a Material changes preview context, and restoring Screen context returns to the active Screen. */
 test("Material context selection renders the chosen Material and Screen context restores the Screen", async () => {
   const { ThemeEditor } = await import("../frontend/browser/ThemeEditor.mjs");
   const editor = createThemeEditor(ThemeEditor);
   const calls = [];
+
+  /** Creates a DOM-like element fixture with the requested attributes. */
   const makeElement = (tagName, className = "", textContent = "") => ({
     tagName,
     className,

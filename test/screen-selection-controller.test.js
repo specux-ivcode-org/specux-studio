@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+/** Creates a DOM-like frame fixture with the supplied children and geometry. */
 function frame(path, bounds) {
   return {
     dataset: { instancePath: JSON.stringify(path) },
@@ -8,6 +9,7 @@ function frame(path, bounds) {
   };
 }
 
+/** Marquee selection requires full containment and excludes the placement beneath the drag origin. */
 test("marquee selection includes fully enclosed placements but excludes partial intersections and placements under its start point", async () => {
   const { getMarqueeSelectedPaths } =
     await import("../frontend/browser/ScreenSelectionController.mjs");
@@ -30,6 +32,7 @@ test("marquee selection includes fully enclosed placements but excludes partial 
   );
 });
 
+/** Drag-select gathers visible root placements and replaces, rather than extends, prior selection. */
 test("drag-select collects visible root placements and replaces the current selection", async () => {
   const { ScreenSelectionController } =
     await import("../frontend/browser/ScreenSelectionController.mjs");
@@ -77,6 +80,7 @@ test("drag-select collects visible root placements and replaces the current sele
   assert.deepEqual(selected, [[[1]]]);
 });
 
+/** A click without a drag clears the previous selection while the marquee tool is active. */
 test("clicking in Drag to select clears the selection", async () => {
   const { ScreenSelectionController } =
     await import("../frontend/browser/ScreenSelectionController.mjs");
@@ -109,6 +113,7 @@ test("clicking in Drag to select clears the selection", async () => {
   assert.deepEqual(selected, [[]]);
 });
 
+/** Scale mode updates the active toolbar control without permanently replacing the selected tool. */
 test("scale mode is temporary and updates the active toolbar control", async () => {
   const { ScreenSelectionController } =
     await import("../frontend/browser/ScreenSelectionController.mjs");
@@ -135,6 +140,7 @@ test("scale mode is temporary and updates the active toolbar control", async () 
   assert.equal(controller.state.scaleType, undefined);
 });
 
+/** Theme editing disables Screen-only tools and prevents marquee selection on the preview. */
 test("Theme context disables Screen selection tools and marquee interactions", async () => {
   const { ScreenSelectionController } =
     await import("../frontend/browser/ScreenSelectionController.mjs");
@@ -146,6 +152,19 @@ test("Theme context disables Screen selection tools and marquee interactions", a
   assert.equal(controller.isInteractionDisabled(), true);
 });
 
+/** Behavior spec previews remain read-only while their canvas stays pannable. */
+test("spec context disables Screen selection tools and placement interactions", async () => {
+  const { ScreenSelectionController } =
+    await import("../frontend/browser/ScreenSelectionController.mjs");
+  const controller = new ScreenSelectionController({
+    state: { viewingSpec: true },
+    services: {}
+  });
+
+  assert.equal(controller.isInteractionDisabled(), true);
+});
+
+/** Right-click reaches the placement menu whether the pointer is over the marquee overlay or canvas. */
 test("context-menu handling works through the marquee overlay and normal canvas", async () => {
   const { ScreenSelectionController } =
     await import("../frontend/browser/ScreenSelectionController.mjs");
@@ -181,6 +200,7 @@ test("context-menu handling works through the marquee overlay and normal canvas"
   assert.deepEqual(calls, [[3]]);
 });
 
+/** Workflow preview suppresses Screen placement selection and context-menu behavior. */
 test("workflow preview disables selection tools and context-menu interactions", async () => {
   const { ScreenSelectionController } =
     await import("../frontend/browser/ScreenSelectionController.mjs");

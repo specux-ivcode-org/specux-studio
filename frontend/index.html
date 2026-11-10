@@ -122,28 +122,70 @@
     <main class="canvas" id="main">
       <div class="spec-view-toolbar" aria-label="Behavior spec preview layout">
         <h2 class="spec-view-heading" id="spec-view-heading">Preview</h2>
-        <div class="screen-view-selector spec-view-selector" role="group" aria-label="Behavior spec view">
-          <button
-            class="screen-view-button"
-            id="spec-view-split"
-            type="button"
-            aria-pressed="true"
-            aria-controls="screen-stage spec-editor-panel"
-          >Split</button>
-          <button
-            class="screen-view-button"
-            id="spec-view-preview"
-            type="button"
-            aria-pressed="false"
-            aria-controls="screen-stage spec-editor-panel"
-          >Preview</button>
-          <button
-            class="screen-view-button"
-            id="spec-view-markdown"
-            type="button"
-            aria-pressed="false"
-            aria-controls="screen-stage spec-editor-panel"
-          >Markdown</button>
+        <div class="spec-toolbar-actions">
+          <div class="screen-view-selector spec-view-selector" role="group" aria-label="Behavior spec view">
+            <button
+              class="screen-view-button"
+              id="spec-view-split"
+              type="button"
+              aria-pressed="true"
+              aria-controls="screen-stage spec-editor-panel"
+            >Split</button>
+            <button
+              class="screen-view-button"
+              id="spec-view-preview"
+              type="button"
+              aria-pressed="false"
+              aria-controls="screen-stage spec-editor-panel"
+            >Preview</button>
+            <button
+              class="screen-view-button"
+              id="spec-view-markdown"
+              type="button"
+              aria-pressed="false"
+              aria-controls="screen-stage spec-editor-panel"
+            >Markdown</button>
+          </div>
+          <div class="screen-zoom-controls spec-zoom-controls" role="group" aria-label="Screen preview canvas">
+            <button
+              class="screen-zoom-button"
+              id="spec-canvas-zoom-out"
+              type="button"
+              aria-label="Zoom out"
+              title="Zoom out"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 8h10"></path>
+              </svg>
+            </button>
+            <button
+              class="screen-zoom-button screen-zoom-value"
+              id="spec-canvas-zoom-reset"
+              type="button"
+              aria-label="Reset canvas zoom to 100%"
+              title="Reset zoom"
+            >100%</button>
+            <button
+              class="screen-zoom-button"
+              id="spec-canvas-zoom-in"
+              type="button"
+              aria-label="Zoom in"
+              title="Zoom in"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 8h10M8 3v10"></path>
+              </svg>
+            </button>
+            <button
+              class="screen-zoom-button screen-grid-toggle"
+              id="spec-canvas-grid-toggle"
+              type="button"
+              aria-label="Screen grid"
+              aria-controls="screen-preview"
+              aria-pressed="true"
+              title="Hide Screen grid"
+            >Grid</button>
+          </div>
         </div>
       </div>
       <div class="material-view-toolbar" aria-label="Material preview layout">
@@ -320,7 +362,7 @@
             </svg>
             <span>Open preview</span>
           </button>
-          <div class="screen-zoom-controls" role="group" aria-label="Canvas zoom" data-overflow-group data-overflow-priority="2">
+          <div class="screen-zoom-controls" role="group" aria-label="Canvas view" data-overflow-group data-overflow-priority="2">
             <button
               class="screen-zoom-button"
               id="screen-canvas-zoom-out"
@@ -338,8 +380,8 @@
               id="screen-canvas-zoom-reset"
               data-overflow-label="Reset"
               type="button"
-              aria-label="Reset canvas zoom to 100%"
-              title="Reset zoom"
+              aria-label="Reset canvas view to 100%"
+              title="Reset view"
             >100%</button>
             <button
               class="screen-zoom-button"
@@ -353,6 +395,15 @@
                 <path d="M3 8h10M8 3v10"></path>
               </svg>
             </button>
+            <button
+              class="screen-zoom-button screen-grid-toggle"
+              id="screen-canvas-grid-toggle"
+              type="button"
+              aria-label="Screen grid"
+              aria-controls="screen-preview"
+              aria-pressed="true"
+              title="Hide Screen grid"
+            >Grid</button>
           </div>
           <div class="screen-view-selector" role="group" aria-label="Screen view" data-overflow-group data-overflow-priority="3">
             <button

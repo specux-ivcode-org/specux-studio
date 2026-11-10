@@ -5,11 +5,15 @@ const booleanHtmlAttributes = new Set([
   "reversed", "selected"
 ]);
 
+/** Renders template markup for the editor preview. */
 export class TemplateMarkupRenderer {
+
+  /** Stores the injected collaborators and initializes the instance state. */
   constructor({ appRoot }) {
     this.appRoot = appRoot;
   }
 
+  /** Attaches the renderer to the preview and prepares its first render. */
   mount(root, markup, materialBase, instance, material) {
     const parsed = new DOMParser().parseFromString(markup, "text/html");
     this.applyPlaceholders(parsed, instance, material);
@@ -40,6 +44,7 @@ export class TemplateMarkupRenderer {
     }
   }
 
+  /** Applies the placeholders to the current editor state. */
   applyPlaceholders(parsed, instance, material) {
     for (const node of parsed.querySelectorAll("*")) {
       for (const attribute of [...node.attributes]) {
@@ -68,12 +73,14 @@ export class TemplateMarkupRenderer {
     }
   }
 
+  /** Updates the placeholders for the current editor state. */
   interpolatePlaceholders(text, instance, material) {
     return text.replace(/\$\{([a-zA-Z_][a-zA-Z0-9_.-]*)\}/g, (_, path) =>
       String(this.getPlaceholderValue(instance, material, path) ?? "")
     );
   }
 
+  /** Returns the placeholder value. */
   getPlaceholderValue(instance, material, path) {
     const value = this.getInstanceValue(instance, material, path);
     const attributePath = path.startsWith("attributes.") ? path.slice("attributes.".length) : null;
@@ -83,6 +90,7 @@ export class TemplateMarkupRenderer {
     return value;
   }
 
+  /** Updates the resource for the current editor state. */
   safeResource(path, materialBase) {
     if (!path || path.startsWith("#") || path.startsWith("data:image/")) return path;
     if (path.startsWith("/") || path.includes("\\") || path.split("/").includes("..")) return null;
@@ -91,6 +99,7 @@ export class TemplateMarkupRenderer {
     return url.href;
   }
 
+  /** Updates the css for the current editor state. */
   rewriteCss(css, materialBase) {
     return css
       .replace(/@import[^;]+;/gi, "")
@@ -101,6 +110,7 @@ export class TemplateMarkupRenderer {
       });
   }
 
+  /** Returns the instance value. */
   getInstanceValue(instance, material, path) {
     const normalized = path.startsWith("attributes.") ? path.slice("attributes.".length) : path;
     if (normalized.startsWith("attributes.")) return undefined;
@@ -116,6 +126,7 @@ export class TemplateMarkupRenderer {
     return instance[normalized];
   }
 
+  /** Updates the css for the current editor state. */
   scopeCss(root, css) {
     if (!(root instanceof HTMLElement)) return css;
     const scopedCss = css

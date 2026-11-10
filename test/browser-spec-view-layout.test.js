@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+/** Creates a DOM element with the supplied content and attributes. */
 function createElement() {
   return {
     attributes: {},
@@ -26,6 +27,7 @@ function createElement() {
   };
 }
 
+/** Builds the fake DOM, storage, and panel controls used by the controller tests. */
 function createHarness({ viewIdPrefix, resizerId, modes, headingId }) {
   const elements = new Map([
     ["main", createElement()],
@@ -81,6 +83,7 @@ const MATERIAL_LAYOUT = {
   editorTrackProperty: "--material-source-track"
 };
 
+/** Checks that each layout choice selects the expected visible panes. */
 test("switches between split, preview, and Markdown layouts", async () => {
   const { SplitViewLayout } = await import("../frontend/browser/SplitViewLayout.mjs");
   const harness = createHarness(SPEC_LAYOUT);
@@ -103,6 +106,7 @@ test("switches between split, preview, and Markdown layouts", async () => {
   assert.equal(harness.elements.get("spec-view-preview").attributes["aria-pressed"], "true");
 });
 
+/** Checks that each layout choice selects the expected visible panes. */
 test("switches between split, preview, and Material source layouts", async () => {
   const { SplitViewLayout } = await import("../frontend/browser/SplitViewLayout.mjs");
   const harness = createHarness(MATERIAL_LAYOUT);
@@ -125,6 +129,7 @@ test("switches between split, preview, and Material source layouts", async () =>
   assert.equal(harness.elements.get("material-view-preview").attributes["aria-pressed"], "true");
 });
 
+/** Exercises the relevant input paths and checks their resulting editor state. */
 test("supports bounded pointer and keyboard resizing", async () => {
   const { SplitViewLayout } = await import("../frontend/browser/SplitViewLayout.mjs");
   const harness = createHarness(SPEC_LAYOUT);

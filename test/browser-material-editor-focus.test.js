@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+/** Creates a DOM-like node fixture with child and event support. */
 function createNode(tagName, ownerDocument = null) {
   let textContent = "";
   return {
@@ -32,6 +33,7 @@ function createNode(tagName, ownerDocument = null) {
   };
 }
 
+/** Blur handling must preserve the source selection overlay and keep its scroll offsets aligned with the editor. */
 test("Material source retains a visible text selection and its scroll position on blur", async () => {
   const { MaterialFileEditor } = await import("../frontend/browser/MaterialFileEditor.mjs");
   const document = {
@@ -96,6 +98,7 @@ test("Material source retains a visible text selection and its scroll position o
   assert.equal(typeof editor.renderSourceHighlight, "function");
 });
 
+/** The drag path updates width and height in the existing STML block while leaving surrounding source text unchanged. */
 test("resizing a Material preview updates only its STML preview-size block", async () => {
   const { MaterialFileEditor } = await import("../frontend/browser/MaterialFileEditor.mjs");
   const validation = require("../shared/validation");
@@ -158,6 +161,7 @@ test("resizing a Material preview updates only its STML preview-size block", asy
   assert.match(resizedBlock, /  height: 72/);
 });
 
+/** The completed resize notifies annotation overlays so they can recalculate their canvas dimensions. */
 test("Material preview resizing dispatches the overlay resize event", async () => {
   const { MaterialFileEditor } = await import("../frontend/browser/MaterialFileEditor.mjs");
   const eventTypes = [];

@@ -82,6 +82,10 @@ async function withServer(run) {
     "export class ScreenRulerController {}\n"
   );
   await fs.writeFile(
+    path.join(rootDirectory, "browser", "ScreenCanvasViewportController.mjs"),
+    "export class ScreenCanvasViewportController {}\n"
+  );
+  await fs.writeFile(
     path.join(rootDirectory, "browser", "ProjectFileTree.mjs"),
     "export class ProjectFileTree {}\n"
   );
@@ -193,6 +197,7 @@ test("serves the editor root and the example project", async () => {
     const screenAnnotationControllerModule = await fetch(`${baseUrl}/browser/ScreenAnnotationController.mjs`);
     const screenSelectionControllerModule = await fetch(`${baseUrl}/browser/ScreenSelectionController.mjs`);
     const screenRulerControllerModule = await fetch(`${baseUrl}/browser/ScreenRulerController.mjs`);
+    const screenCanvasViewportControllerModule = await fetch(`${baseUrl}/browser/ScreenCanvasViewportController.mjs`);
     const screenYamlEditorModule = await fetch(`${baseUrl}/browser/ScreenYamlEditor.mjs`);
     const retiredAssetEditorModule = await fetch(`${baseUrl}/browser/AssetEditor.mjs`);
     const screenControllerModule = await fetch(`${baseUrl}/browser/ScreenController.mjs`);
@@ -239,7 +244,7 @@ test("serves the editor root and the example project", async () => {
     );
     assert.match(
       readFileSync(path.join(__dirname, "..", "frontend", "app.mjs"), "utf8"),
-      /cloneTarget\.style\.height = `\$\{height\}px`/
+      /function setCaptureElementBounds\(element, width, height\)[\s\S]*?element\.style\.height = `\$\{height\}px`/
     );
     assert.match(
       readFileSync(path.join(__dirname, "..", "frontend", "app.mjs"), "utf8"),
@@ -270,6 +275,7 @@ test("serves the editor root and the example project", async () => {
     assert.equal(screenAnnotationControllerModule.status, 200);
     assert.equal(screenSelectionControllerModule.status, 200);
     assert.equal(screenRulerControllerModule.status, 200);
+    assert.equal(screenCanvasViewportControllerModule.status, 200);
     assert.equal(screenYamlEditorModule.status, 200);
     assert.equal(screenControllerModule.status, 200);
     assert.equal(specEditorModule.status, 200);

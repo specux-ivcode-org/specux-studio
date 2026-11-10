@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
+/** Builds a resizer handle stub that records its pointer and accessibility state. */
 function createHandle() {
   const classes = new Set();
   return {
@@ -48,6 +49,7 @@ function createHandle() {
   };
 }
 
+/** Builds the fake DOM, storage, and panel controls used by the controller tests. */
 function createHarness(savedLayout) {
   const values = new Map(savedLayout ? [["specux-studio.layout.v1", savedLayout]] : []);
   const properties = new Map();
@@ -121,6 +123,7 @@ function createHarness(savedLayout) {
   return { windowObject, documentObject, workspace, handles, bodyClasses, properties, values, messages };
 }
 
+/** Saved widths are clamped on restore; both keyboard and pointer adjustments are written back to storage. */
 test("restores clamped panel sizes and persists keyboard and pointer resizing", async () => {
   const { ResizablePanels } = await import("../frontend/browser/ResizablePanels.mjs");
   const harness = createHarness('{"sidebar":999,"inspector":100}');
@@ -171,6 +174,7 @@ test("restores clamped panel sizes and persists keyboard and pointer resizing", 
   assert.deepEqual(harness.messages, []);
 });
 
+/** The two sidebar toggles remain at opposite topbar edges and expose labels to assistive technology. */
 test("places icon-only sidebar controls at opposite topbar edges with accessible labels", () => {
   const html = fs.readFileSync(path.join(__dirname, "../frontend/index.html"), "utf8");
   const sidebarButton = html.match(/<button(?=[^>]*id="sidebar-mode")[\s\S]*?<\/button>/)?.[0];
@@ -196,6 +200,7 @@ test("places icon-only sidebar controls at opposite topbar edges with accessible
   assert.match(styles, /data-side="right"\]\s+\.panel-mode-icon\s*\{\s*transform:\s*scaleX\(-1\)/);
 });
 
+/** Each sidebar retains its own visibility mode when switching between persistent display and hover access. */
 test("toggles independent visibility modes between Show and Hover to show", async () => {
   const { ResizablePanels } = await import("../frontend/browser/ResizablePanels.mjs");
   const harness = createHarness();
@@ -263,6 +268,7 @@ test("toggles independent visibility modes between Show and Hover to show", asyn
   assert.equal(harness.messages.length, 0);
 });
 
+/** Exercises preview resizing and checks the updated dimensions and saved source. */
 test("resizes open hover overlays from their inner edges without dismissing them", async () => {
   const { ResizablePanels } = await import("../frontend/browser/ResizablePanels.mjs");
   const harness = createHarness();
@@ -322,6 +328,7 @@ test("resizes open hover overlays from their inner edges without dismissing them
   assert.match(styles, /data-inspector-mode="hover"\]\s+\.inspector-resizer:not\(\[hidden\]\)\s*\{\s*position:\s*absolute/);
 });
 
+/** A resized panel closes only after the outside-pointer delay, not immediately on release. */
 test("closes resized hover overlays one second after pointer release outside", async () => {
   const { ResizablePanels } = await import("../frontend/browser/ResizablePanels.mjs");
   const harness = createHarness();
@@ -370,6 +377,7 @@ test("closes resized hover overlays one second after pointer release outside", a
   }
 });
 
+/** Checks that selection and preview state remain consistent through the interaction. */
 test("keeps Details hover available after inspector rerenders and closes only outside both targets", async () => {
   const { ResizablePanels } = await import("../frontend/browser/ResizablePanels.mjs");
   const harness = createHarness();
@@ -419,6 +427,7 @@ test("keeps Details hover available after inspector rerenders and closes only ou
   assert.equal(harness.messages.length, 0);
 });
 
+/** Leaving either sidebar starts a timer, and entering its panel or trigger cancels the pending close. */
 test("delays pointer-leave dismissal for one second and cancels it on either target for both sidebars", async () => {
   const { ResizablePanels } = await import("../frontend/browser/ResizablePanels.mjs");
   const harness = createHarness();
@@ -461,6 +470,7 @@ test("delays pointer-leave dismissal for one second and cancels it on either tar
   }
 });
 
+/** An outside selection closes the hover panel even if an inner control retains focus or pointer capture. */
 test("dismisses hover overlays on outside selection despite focus and pointer capture", async () => {
   const { ResizablePanels } = await import("../frontend/browser/ResizablePanels.mjs");
   const harness = createHarness();
@@ -532,6 +542,7 @@ test("dismisses hover overlays on outside selection despite focus and pointer ca
   assert.equal(sidebar.hidden, true);
 });
 
+/** Exercises the relevant input paths and checks their resulting editor state. */
 test("supports keyboard access to and dismissal of a hover panel", async () => {
   const { ResizablePanels } = await import("../frontend/browser/ResizablePanels.mjs");
   const harness = createHarness();
@@ -571,6 +582,7 @@ test("supports keyboard access to and dismissal of a hover panel", async () => {
   assert.equal(trigger.focused, true);
 });
 
+/** Legacy Hide preferences are converted during load and leave an edge trigger for reopening the panel. */
 test("migrates saved Hide modes to Hover to show and keeps the edge trigger available", async () => {
   const { ResizablePanels } = await import("../frontend/browser/ResizablePanels.mjs");
   const harness = createHarness('{"sidebar":300,"inspector":310,"sidebarMode":"hide","inspectorMode":"hover"}');
@@ -595,6 +607,7 @@ test("migrates saved Hide modes to Hover to show and keeps the edge trigger avai
   assert.equal(harness.messages.length, 0);
 });
 
+/** Checks that selection and preview state remain consistent through the interaction. */
 test("keeps hover sidebars above editor annotation overlays", () => {
   const styles = fs.readFileSync(path.join(__dirname, "../frontend/styles.css"), "utf8");
   const canvasRule = styles.match(/\.canvas\s*\{\s*position:\s*relative;([\s\S]*?)\}/)?.[1];

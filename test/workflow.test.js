@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const validation = require("../shared/validation");
 
+/** Checks the accepted and rejected data shapes and their validation results. */
 test("validates Screen-scoped Mermaid workflow paths", () => {
   assert.equal(
     validation.validateWorkflowPath("screens/home/workflows/add-item.mmd"),
@@ -18,6 +19,7 @@ test("validates Screen-scoped Mermaid workflow paths", () => {
   }
 });
 
+/** The workflow inspector shows placement details without exposing editing controls. */
 test("workflow inspector exposes read-only placement context", async () => {
   const { InspectorRenderer } = await import("../frontend/browser/InspectorRenderer.mjs");
   const panel = {
@@ -26,6 +28,8 @@ test("workflow inspector exposes read-only placement context", async () => {
     replaceChildren(...children) { this.children = children; },
     append(...children) { this.children.push(...children); }
   };
+
+  /** Creates a DOM element with the supplied content and attributes. */
   const createElement = (tagName, className, textContent) => ({
     tagName,
     className,
@@ -61,6 +65,7 @@ test("workflow inspector exposes read-only placement context", async () => {
   assert.equal(rendered.some((node) => node.tagName === "button" || node.tagName === "input"), false);
 });
 
+/** Workflow URLs are decoded into the linked Screen, workflow, and optional node context. */
 test("parses explicit SpecUX workflow links", async () => {
   const {
     WorkflowEditor,
@@ -190,6 +195,7 @@ test("parses explicit SpecUX workflow links", async () => {
     services: { byId: () => noopElement }
   });
 
+  /** Checks that the preview output reflects the supplied project and selection data. */
   test("renders a workflow node referenced from a behavior spec", async () => {
     const { WorkflowEditor } = await import("../frontend/browser/WorkflowEditor.mjs");
     const classes = new Set();
@@ -403,6 +409,8 @@ test("parses explicit SpecUX workflow links", async () => {
   assert.equal(specLinkControl.attributes.get("aria-pressed"), "false");
 
   const attributes = new Map();
+
+  /** Creates a DOM element with the supplied content and attributes. */
   const createElement = (tagName) => {
     const classes = new Set();
     const element = {
@@ -585,6 +593,7 @@ test("parses explicit SpecUX workflow links", async () => {
   assert.equal(screenPreview.children, undefined);
 });
 
+/** Checks that selection and preview state remain consistent through the interaction. */
 test("keeps the workflow owner Screen in the editor selection while previewing another Screen", async () => {
   const { EditorNavigation } = await import(
     "../frontend/browser/EditorNavigation.mjs"
@@ -619,6 +628,7 @@ test("keeps the workflow owner Screen in the editor selection while previewing a
   });
 });
 
+/** Checks that selection and preview state remain consistent through the interaction. */
 test("keeps the workflow layout active while rerendering a linked Screen preview", async () => {
   const { WorkspaceViewRenderer } = await import(
     "../frontend/browser/WorkspaceViewRenderer.mjs"
@@ -630,6 +640,8 @@ test("keeps the workflow layout active while rerendering a linked Screen preview
       remove: (value) => classes.delete(value)
     }
   };
+
+  /** Creates a DOM element with the supplied content and attributes. */
   const createElement = () => ({
     className: "",
     hidden: false,

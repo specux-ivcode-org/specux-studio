@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+/** Creates a DOM-like node fixture with child and event support. */
 function createNode(tagName, className = "", textContent = "") {
   return {
     tagName,
@@ -29,11 +30,13 @@ function createNode(tagName, className = "", textContent = "") {
   };
 }
 
+/** Finds the rendered folder node for a project-relative directory path. */
 function findFolder(container, directoryPath) {
   return container.querySelectorAll(".file-tree-folder")
     .find((folder) => folder.dataset.directoryPath === directoryPath);
 }
 
+/** Checks that the preview output reflects the supplied project and selection data. */
 test("renders sorted project files and preserves expanded directory state", async () => {
   const { ProjectFileTree } = await import("../frontend/browser/ProjectFileTree.mjs");
   const container = createNode("div");

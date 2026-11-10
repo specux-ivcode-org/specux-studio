@@ -6,7 +6,10 @@ const PANEL_LIMITS = {
 const VISIBILITY_MODES = ["show", "hover"];
 const DESKTOP_BREAKPOINT = 1120;
 
+/** Manages panel sizing, visibility modes, and keyboard and pointer resizing. */
 export class ResizablePanels {
+
+  /** Stores the injected collaborators and initializes the instance state. */
   constructor({ windowObject, documentObject, workspace, showMessage }) {
     this.window = windowObject;
     this.document = documentObject;
@@ -22,6 +25,7 @@ export class ResizablePanels {
     this.closeTimers = { sidebar: null, inspector: null };
   }
 
+  /** Attaches the configured event listeners to the editor controls. */
   bind() {
     this.bindHandle("sidebar-resizer", "sidebar");
     this.bindHandle("inspector-resizer", "inspector");
@@ -38,14 +42,9 @@ export class ResizablePanels {
     }
   }
 
+  /** Reads the saved layout and returns its editor representation. */
   readSavedLayout() {
-    const defaults = {
-      widths: {
-        sidebar: PANEL_LIMITS.sidebar.default,
-        inspector: PANEL_LIMITS.inspector.default
-      },
-      modes: { sidebar: "show", inspector: "show" }
-    };
+    const defaults = this.defaultLayout();
     try {
       const saved = this.window.localStorage.getItem(STORAGE_KEY);
       if (!saved) return defaults;
@@ -53,28 +52,46 @@ export class ResizablePanels {
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
         throw new Error("Saved panel layout must be an object.");
       }
-      const migratedLegacyMode = parsed.sidebarMode === "hide" || parsed.inspectorMode === "hide";
-      return {
-        widths: {
-          sidebar: this.clamp("sidebar", parsed.sidebar ?? defaults.widths.sidebar),
-          inspector: this.clamp("inspector", parsed.inspector ?? defaults.widths.inspector)
-        },
-        modes: {
-          sidebar: parsed.sidebarMode === "hide"
-            ? "hover"
-            : VISIBILITY_MODES.includes(parsed.sidebarMode) ? parsed.sidebarMode : "show",
-          inspector: parsed.inspectorMode === "hide"
-            ? "hover"
-            : VISIBILITY_MODES.includes(parsed.inspectorMode) ? parsed.inspectorMode : "show"
-        },
-        migratedLegacyMode
-      };
+      return this.parseSavedLayout(parsed, defaults);
     } catch (error) {
       this.showMessage("Could not load saved layout", error.message || String(error));
       return defaults;
     }
   }
 
+  /** Returns the default widths and visibility modes for the resizable panels. */
+  defaultLayout() {
+    return {
+      widths: {
+        sidebar: PANEL_LIMITS.sidebar.default,
+        inspector: PANEL_LIMITS.inspector.default
+      },
+      modes: { sidebar: "show", inspector: "show" }
+    };
+  }
+
+  /** Parses the saved layout into structured editor data. */
+  parseSavedLayout(parsed, defaults) {
+    return {
+      widths: {
+        sidebar: this.clamp("sidebar", parsed.sidebar ?? defaults.widths.sidebar),
+        inspector: this.clamp("inspector", parsed.inspector ?? defaults.widths.inspector)
+      },
+      modes: {
+        sidebar: this.parseSavedMode(parsed.sidebarMode),
+        inspector: this.parseSavedMode(parsed.inspectorMode)
+      },
+      migratedLegacyMode: parsed.sidebarMode === "hide" || parsed.inspectorMode === "hide"
+    };
+  }
+
+  /** Parses the saved mode into structured editor data. */
+  parseSavedMode(mode) {
+    if (mode === "hide") return "hover";
+    return VISIBILITY_MODES.includes(mode) ? mode : "show";
+  }
+
+  /** Constrains a panel size to its configured minimum and maximum. */
   clamp(panel, value) {
     const limits = PANEL_LIMITS[panel];
     const numericValue = Number(value);
@@ -82,6 +99,7 @@ export class ResizablePanels {
     return Math.round(Math.min(limits.max, Math.max(limits.min, numericValue)));
   }
 
+  /** Registers event listeners for handle interactions. */
   bindHandle(elementId, panel) {
     const handle = this.document.getElementById(elementId);
     if (!handle) return;
@@ -97,6 +115,7 @@ export class ResizablePanels {
     handle.addEventListener("focusout", () => this.scheduleClose(panel));
   }
 
+  /** Registers event listeners for mode button interactions. */
   bindModeButton(elementId, panel) {
     const button = this.document.getElementById(elementId);
     if (!button) return;
@@ -106,6 +125,7 @@ export class ResizablePanels {
     });
   }
 
+  /** Registers event listeners for edge trigger interactions. */
   bindEdgeTrigger(panel, panelId, triggerId) {
     const element = this.document.getElementById(panelId);
     const trigger = this.document.getElementById(triggerId);
@@ -135,6 +155,7 @@ export class ResizablePanels {
     element.addEventListener("keydown", (event) => this.handleOverlayKeydown(event, panel, trigger));
   }
 
+  /** Updates the open for the current editor state. */
   scheduleOpen(panel) {
     this.cancelOpen(panel);
     if (this.modes[panel] !== "hover") return;
@@ -144,6 +165,7 @@ export class ResizablePanels {
     }, 1000);
   }
 
+  /** Cancels the open for the current editor state. */
   cancelOpen(panel) {
     if (this.hoverTimers[panel] !== null) {
       this.window.clearTimeout(this.hoverTimers[panel]);
@@ -151,33 +173,50 @@ export class ResizablePanels {
     }
   }
 
+  /** Updates the close for the current editor state. */
   scheduleClose(panel, pointerLeft = false) {
     this.cancelClose(panel);
     if (this.modes[panel] !== "hover") return;
     this.closeTimers[panel] = this.window.setTimeout(() => {
-      this.closeTimers[panel] = null;
-      const element = this.document.getElementById(
-        panel === "sidebar" ? "project-sidebar" : "details-inspector"
-      );
-      const trigger = this.document.getElementById(
-        panel === "sidebar" ? "sidebar-edge-trigger" : "inspector-edge-trigger"
-      );
-      const handle = this.document.getElementById(
-        panel === "sidebar" ? "sidebar-resizer" : "inspector-resizer"
-      );
-      if (this.activeDrag?.panel === panel) {
-        this.scheduleClose(panel, pointerLeft);
-        return;
-      }
-      if (element?.matches?.(":hover") || trigger?.matches?.(":hover") || handle?.matches?.(":hover")) return;
-      if (!pointerLeft && (
-        element?.contains?.(this.document.activeElement) ||
-        handle?.contains?.(this.document.activeElement)
-      )) return;
-      this.setOverlayOpen(panel, false);
+      this.closeIfIdle(panel, pointerLeft);
     }, 1000);
   }
 
+  /** Closes the if idle and restores the related editor state. */
+  closeIfIdle(panel, pointerLeft) {
+    this.closeTimers[panel] = null;
+    const element = this.document.getElementById(
+      panel === "sidebar" ? "project-sidebar" : "details-inspector"
+    );
+    const trigger = this.document.getElementById(
+      panel === "sidebar" ? "sidebar-edge-trigger" : "inspector-edge-trigger"
+    );
+    const handle = this.document.getElementById(
+      panel === "sidebar" ? "sidebar-resizer" : "inspector-resizer"
+    );
+    if (this.activeDrag?.panel === panel) {
+      this.scheduleClose(panel, pointerLeft);
+      return;
+    }
+    if (this.isPointerOver(element, trigger, handle)) return;
+    if (this.hasPanelFocus(element, handle, pointerLeft)) return;
+    this.setOverlayOpen(panel, false);
+  }
+
+  /** Checks whether the pointer is over either the panel or its trigger. */
+  isPointerOver(element, trigger, handle) {
+    return element?.matches?.(":hover") || trigger?.matches?.(":hover") || handle?.matches?.(":hover");
+  }
+
+  /** Checks whether the current editor state contains panel focus. */
+  hasPanelFocus(element, handle, pointerLeft) {
+    return !pointerLeft && (
+      element?.contains?.(this.document.activeElement) ||
+      handle?.contains?.(this.document.activeElement)
+    );
+  }
+
+  /** Cancels the close for the current editor state. */
   cancelClose(panel) {
     if (this.closeTimers[panel] !== null) {
       this.window.clearTimeout(this.closeTimers[panel]);
@@ -185,33 +224,43 @@ export class ResizablePanels {
     }
   }
 
+  /** Handles document pointer down events and applies the corresponding editor action. */
   handleDocumentPointerDown(event) {
-    const hitTarget = Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
-      ? this.document.elementFromPoint?.(event.clientX, event.clientY)
-      : null;
+    const hitTarget = this.getPointerHitTarget(event);
     const target = hitTarget || event.target;
     const path = hitTarget ? [] : event.composedPath?.() || [];
     for (const [panel, elementId, triggerId] of [
       ["sidebar", "project-sidebar", "sidebar-edge-trigger"],
       ["inspector", "details-inspector", "inspector-edge-trigger"]
     ]) {
-      if (this.modes[panel] !== "hover" || !this.openOverlays[panel]) continue;
-      const element = this.document.getElementById(elementId);
-      const trigger = this.document.getElementById(triggerId);
-      const handle = this.document.getElementById(
-        panel === "sidebar" ? "sidebar-resizer" : "inspector-resizer"
-      );
-      const isInside = (node) => node && (
-        path.includes(node) || node.contains?.(target)
-      );
-      if (isInside(element) || isInside(trigger) || isInside(handle)) {
-        this.cancelClose(panel);
-      } else {
-        this.setOverlayOpen(panel, false);
-      }
+      this.handlePanelDocumentPointerDown(panel, elementId, triggerId, target, path);
     }
   }
 
+  /** Finds the nearest interactive target beneath a pointer event. */
+  getPointerHitTarget(event) {
+    if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return null;
+    return this.document.elementFromPoint?.(event.clientX, event.clientY) || null;
+  }
+
+  /** Handles panel document pointer down events and applies the corresponding editor action. */
+  handlePanelDocumentPointerDown(panel, elementId, triggerId, target, path) {
+    if (this.modes[panel] !== "hover" || !this.openOverlays[panel]) return;
+    const element = this.document.getElementById(elementId);
+    const trigger = this.document.getElementById(triggerId);
+    const handleId = panel === "sidebar" ? "sidebar-resizer" : "inspector-resizer";
+    const handle = this.document.getElementById(handleId);
+
+    /** Checks whether the point falls within the supplied rectangle. */
+    const isInside = (node) => node && (path.includes(node) || node.contains?.(target));
+    if (isInside(element) || isInside(trigger) || isInside(handle)) {
+      this.cancelClose(panel);
+      return;
+    }
+    this.setOverlayOpen(panel, false);
+  }
+
+  /** Handles overlay keydown events and applies the corresponding editor action. */
   handleOverlayKeydown(event, panel, trigger) {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -231,6 +280,7 @@ export class ResizablePanels {
     }
   }
 
+  /** Sets the overlay open from the supplied data. */
   setOverlayOpen(panel, open) {
     this.cancelOpen(panel);
     this.cancelClose(panel);
@@ -238,6 +288,7 @@ export class ResizablePanels {
     this.syncPanel(panel);
   }
 
+  /** Sets the mode from the supplied data. */
   setMode(panel, mode) {
     if (!VISIBILITY_MODES.includes(mode)) return;
     this.modes[panel] = mode;
@@ -248,6 +299,7 @@ export class ResizablePanels {
     this.saveWidths();
   }
 
+  /** Starts the drag for the current editor state. */
   startDrag(event, panel, handle) {
     if (
       event.button !== 0 ||
@@ -266,6 +318,7 @@ export class ResizablePanels {
     this.document.body.classList.add("panel-resizing");
   }
 
+  /** Moves the drag for the current editor state. */
   moveDrag(event) {
     const drag = this.activeDrag;
     if (!drag || event.pointerId !== drag.pointerId) return;
@@ -277,6 +330,7 @@ export class ResizablePanels {
     this.applyLayout();
   }
 
+  /** Ends the drag for the current editor state. */
   endDrag(event, handle) {
     if (!this.activeDrag || event.pointerId !== this.activeDrag.pointerId) return;
     const panel = this.activeDrag.panel;
@@ -287,26 +341,30 @@ export class ResizablePanels {
     this.scheduleClose(panel, true);
   }
 
+  /** Resizes the from keyboard within its configured bounds. */
   resizeFromKeyboard(event, panel) {
     if (this.modes[panel] !== "show" && !(this.modes[panel] === "hover" && this.openOverlays[panel])) return;
     const limits = PANEL_LIMITS[panel];
     const step = event.shiftKey ? 32 : 12;
-    let nextWidth;
-    if (event.key === "Home") nextWidth = limits.min;
-    else if (event.key === "End") nextWidth = limits.max;
-    else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-      const physicalDirection = event.key === "ArrowRight" ? 1 : -1;
-      const panelDirection = panel === "sidebar" ? physicalDirection : -physicalDirection;
-      nextWidth = this.widths[panel] + panelDirection * step;
-    } else {
-      return;
-    }
+    const nextWidth = this.getKeyboardWidth(event, panel, limits, step);
+    if (nextWidth === null) return;
     event.preventDefault();
     this.widths[panel] = this.clamp(panel, nextWidth);
     this.applyLayout();
     this.saveWidths();
   }
 
+  /** Returns the keyboard width. */
+  getKeyboardWidth(event, panel, limits, step) {
+    if (event.key === "Home") return limits.min;
+    if (event.key === "End") return limits.max;
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return null;
+    const physicalDirection = event.key === "ArrowRight" ? 1 : -1;
+    const panelDirection = panel === "sidebar" ? physicalDirection : -physicalDirection;
+    return this.widths[panel] + panelDirection * step;
+  }
+
+  /** Applies the layout to the current editor state. */
   applyLayout() {
     this.workspace.style.setProperty("--sidebar-width", `${this.widths.sidebar}px`);
     this.workspace.style.setProperty("--inspector-width", `${this.widths.inspector}px`);
@@ -322,16 +380,30 @@ export class ResizablePanels {
     }
   }
 
+  /** Synchronizes the panel with the current editor state. */
   syncPanel(panel, elementId, triggerId, buttonId, handleId) {
+    const elements = this.getPanelElements(panel, elementId, triggerId, buttonId, handleId);
+    const mode = this.modes[panel];
+    const isOpen = mode === "show" || (mode === "hover" && this.openOverlays[panel]);
+    this.syncPanelVisibility(elements, mode, isOpen, panel);
+    this.syncModeButton(elements.button, panel, mode);
+  }
+
+  /** Returns the panel elements. */
+  getPanelElements(panel, elementId, triggerId, buttonId, handleId) {
     const ids = panel === "sidebar"
       ? ["project-sidebar", "sidebar-edge-trigger", "sidebar-mode", "sidebar-resizer"]
       : ["details-inspector", "inspector-edge-trigger", "inspector-mode", "inspector-resizer"];
-    const element = this.document.getElementById(elementId || ids[0]);
-    const trigger = this.document.getElementById(triggerId || ids[1]);
-    const button = this.document.getElementById(buttonId || ids[2]);
-    const handle = this.document.getElementById(handleId || ids[3]);
-    const mode = this.modes[panel];
-    const isOpen = mode === "show" || (mode === "hover" && this.openOverlays[panel]);
+    return {
+      element: this.document.getElementById(elementId || ids[0]),
+      trigger: this.document.getElementById(triggerId || ids[1]),
+      button: this.document.getElementById(buttonId || ids[2]),
+      handle: this.document.getElementById(handleId || ids[3])
+    };
+  }
+
+  /** Synchronizes the panel visibility with the current editor state. */
+  syncPanelVisibility({ element, trigger, handle }, mode, isOpen, panel) {
     if (element) {
       element.hidden = !isOpen;
       element.classList?.toggle("panel-overlay-open", mode === "hover" && this.openOverlays[panel]);
@@ -342,21 +414,26 @@ export class ResizablePanels {
       trigger.setAttribute("aria-expanded", String(mode === "hover" && this.openOverlays[panel]));
     }
     if (handle) handle.hidden = mode !== "show" && !(mode === "hover" && this.openOverlays[panel]);
-    if (button) {
-      const config = PANEL_LIMITS[panel];
-      const currentMode = this.modeLabel(mode);
-      const nextMode = mode === "hover" ? "Show" : "Hover to show";
-      const label = `${config.label}: ${currentMode}. Activate to switch to ${nextMode}.`;
-      if (button.dataset) button.dataset.mode = mode;
-      button.setAttribute("aria-label", label);
-      button.setAttribute("title", label);
-    }
   }
 
+  /** Synchronizes the mode button with the current editor state. */
+  syncModeButton(button, panel, mode) {
+    if (!button) return;
+    const config = PANEL_LIMITS[panel];
+    const currentMode = this.modeLabel(mode);
+    const nextMode = mode === "hover" ? "Show" : "Hover to show";
+    const label = `${config.label}: ${currentMode}. Activate to switch to ${nextMode}.`;
+    if (button.dataset) button.dataset.mode = mode;
+    button.setAttribute("aria-label", label);
+    button.setAttribute("title", label);
+  }
+
+  /** Returns the label shown for the selected panel mode. */
   modeLabel(mode) {
     return mode === "hover" ? "Hover to show" : mode[0].toUpperCase() + mode.slice(1);
   }
 
+  /** Persists the widths to the project. */
   saveWidths() {
     try {
       this.window.localStorage.setItem(STORAGE_KEY, JSON.stringify({

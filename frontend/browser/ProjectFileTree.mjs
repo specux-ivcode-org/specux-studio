@@ -1,4 +1,7 @@
+/** Renders the project file hierarchy and preserves its expanded folders. */
 export class ProjectFileTree {
+
+  /** Stores the injected collaborators and initializes the instance state. */
   constructor({ container, createElement, getFilePaths, renderFile }) {
     this.container = container;
     this.createElement = createElement;
@@ -7,11 +10,13 @@ export class ProjectFileTree {
     this.expandedDirectories = new Set();
   }
 
+  /** Renders the selected editor view and refreshes its dependent preview and controls. */
   render() {
     const tree = this.build(this.getFilePaths());
     this.container.replaceChildren(...this.renderContents(tree, ""));
   }
 
+  /** Expands the path for the current editor state. */
   expandPath(filePath) {
     const segments = filePath.split("/");
     for (let index = 1; index < segments.length; index += 1) {
@@ -19,6 +24,7 @@ export class ProjectFileTree {
     }
   }
 
+  /** Scrolls the project file tree to the requested file and opens its parent folders. */
   reveal(filePath) {
     this.expandPath(filePath);
     for (const folder of this.container.querySelectorAll(".file-tree-folder")) {
@@ -26,6 +32,7 @@ export class ProjectFileTree {
     }
   }
 
+  /** Builds the requested editor data structure from the current project state. */
   build(filePaths) {
     const root = { directories: new Map(), files: [] };
     for (const filePath of filePaths) {
@@ -43,6 +50,7 @@ export class ProjectFileTree {
     return root;
   }
 
+  /** Renders the contents from the current editor data. */
   renderContents(directory, parentPath) {
     const nodes = [];
     for (const [name, child] of [...directory.directories].sort(([left], [right]) =>

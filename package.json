@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node backend/cli.js server start",
     "specux": "node backend/cli.js",
-    "test": "node --test"
+    "test": "node --test",
+    "lint": "eslint backend frontend --ext .js,.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -19,5 +20,8 @@
     "html2canvas": "^1.4.1",
     "mermaid": "^12.2.0",
     "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.1"
   }
 }

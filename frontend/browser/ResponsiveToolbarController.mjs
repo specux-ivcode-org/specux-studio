@@ -1,4 +1,7 @@
+/** Moves toolbar controls into overflow menus as available space changes. */
 export class ResponsiveToolbarController {
+
+  /** Stores the injected collaborators and initializes the instance state. */
   constructor({ documentObject, windowObject, toolbarConfigs }) {
     this.document = documentObject;
     this.window = windowObject;
@@ -10,6 +13,7 @@ export class ResponsiveToolbarController {
     this.scheduleReflow = this.scheduleReflow.bind(this);
   }
 
+  /** Attaches the configured event listeners to the editor controls. */
   bind() {
     for (const config of this.toolbarConfigs) {
       const toolbar = this.document.getElementById(config.toolbarId);
@@ -81,6 +85,7 @@ export class ResponsiveToolbarController {
     this.window.addEventListener("resize", this.scheduleReflow, { passive: true });
   }
 
+  /** Updates the reflow for the current editor state. */
   scheduleReflow() {
     if (this.reflowQueued) return;
     this.reflowQueued = true;
@@ -92,10 +97,12 @@ export class ResponsiveToolbarController {
     });
   }
 
+  /** Updates the all for the current editor state. */
   reflowAll() {
     this.instances.forEach((instance) => this.reflow(instance));
   }
 
+  /** Moves low-priority toolbar controls into the overflow menu until the toolbar fits. */
   reflow(instance) {
     const { toolbar, toggle, menu, items } = instance;
     const menuWasOpen = !menu.hidden;
@@ -103,40 +110,62 @@ export class ResponsiveToolbarController {
     this.close(instance);
     toggle.hidden = true;
 
-    if (toolbar.hidden || toolbar.getClientRects().length === 0 || toolbar.clientWidth === 0) return;
+    if (!this.hasLayout(toolbar)) return;
     if (this.fits(toolbar)) return;
 
     toggle.hidden = false;
-    const overflowed = [];
     const priorityOrder = [...items].sort((left, right) => left.priority - right.priority);
-    for (const item of priorityOrder) {
-      if (this.fits(toolbar)) break;
-      overflowed.push(item);
-      menu.append(item.element);
-    }
+    const overflowed = this.moveItemsToMenu(priorityOrder, toolbar, menu);
     if (!overflowed.length) {
       toggle.hidden = true;
       return;
     }
 
+    this.orderOverflowItems(items, overflowed, menu);
+    if (menuWasOpen) this.openMenu(toggle, menu);
+  }
+
+  /** Checks whether the toolbar has measurable layout dimensions. */
+  hasLayout(toolbar) {
+    return !toolbar.hidden && toolbar.getClientRects().length > 0 && toolbar.clientWidth > 0;
+  }
+
+  /** Moves the items to menu for the current editor state. */
+  moveItemsToMenu(items, toolbar, menu) {
+    const overflowed = [];
+    for (const item of items) {
+      if (this.fits(toolbar)) break;
+      overflowed.push(item);
+      menu.append(item.element);
+    }
+    return overflowed;
+  }
+
+  /** Updates the overflow items for the current editor state. */
+  orderOverflowItems(items, overflowed, menu) {
     const overflowedSet = new Set(overflowed);
     for (const item of items) {
       if (overflowedSet.has(item)) menu.append(item.element);
     }
-    if (menuWasOpen) {
-      menu.hidden = false;
-      toggle.setAttribute("aria-expanded", "true");
-    }
   }
 
+  /** Opens the menu in the editor. */
+  openMenu(toggle, menu) {
+    menu.hidden = false;
+    toggle.setAttribute("aria-expanded", "true");
+  }
+
+  /** Restores the moved controls to their prior toolbar positions. */
   restoreItems({ items }) {
     for (const { element, placeholder } of items) placeholder.before(element);
   }
 
+  /** Checks whether all toolbar items fit in the available width. */
   fits(toolbar) {
     return toolbar.scrollWidth <= toolbar.clientWidth + 1;
   }
 
+  /** Closes the overflow menu and returns focus to its toggle when appropriate. */
   close({ toggle, menu }) {
     menu.hidden = true;
     toggle.setAttribute("aria-expanded", "false");

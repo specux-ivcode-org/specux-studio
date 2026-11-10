@@ -1,6 +1,9 @@
 import { normalizeScreenLayers } from "../../shared/ScreenLayers.mjs";
 
+/** Loads, validates, and applies Screen YAML edits. */
 export class ScreenYamlEditor {
+
+  /** Stores the injected collaborators and initializes the instance state. */
   constructor({
     documentObject,
     fetcher,
@@ -30,6 +33,7 @@ export class ScreenYamlEditor {
     this.validateScreenMaterials = validateScreenMaterials;
   }
 
+  /** Sets the status from the supplied data. */
   setStatus(screen, message, isError = false) {
     screen.yamlStatusMessage = message;
     screen.yamlStatusError = isError;
@@ -39,6 +43,7 @@ export class ScreenYamlEditor {
     status.classList.toggle("error", isError);
   }
 
+  /** Synchronizes the view mode with the current editor state. */
   syncViewMode() {
     const yamlSelected = this.mode === "yaml";
     this.document.getElementById("screen-view-preview")
@@ -67,16 +72,19 @@ export class ScreenYamlEditor {
     }
   }
 
+  /** Sets the view mode from the supplied data. */
   setViewMode(mode) {
     if (mode !== "preview" && mode !== "yaml") return;
     this.mode = mode;
     this.syncViewMode();
   }
 
+  /** Resets the view mode for the current editor state. */
   resetViewMode() {
     this.mode = "preview";
   }
 
+  /** Hides the controls for the current editor state. */
   hideControls() {
     this.document.getElementById("preview-state-toolbar").hidden = true;
     this.resetViewMode();
@@ -89,6 +97,7 @@ export class ScreenYamlEditor {
     this.document.getElementById("screen-yaml-source").oninput = null;
   }
 
+  /** Updates the source for the current editor state. */
   async prepareSource(screen) {
     const version = ++screen.yamlSerializeVersion;
     this.setStatus(screen, "Preparing YAML source...");
@@ -110,6 +119,7 @@ export class ScreenYamlEditor {
     }
   }
 
+  /** Configures editor controls and their interaction behavior. */
   configure(screen) {
     const editor = this.document.getElementById("screen-yaml-source");
     editor.value = screen.yamlSource || "";
@@ -135,6 +145,7 @@ export class ScreenYamlEditor {
     };
   }
 
+  /** Parses source text into the editor data structure it represents. */
   async parse(screen, source, version) {
     const response = await this.fetcher("/api/yaml/parse", {
       method: "POST",

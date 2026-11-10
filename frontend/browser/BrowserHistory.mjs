@@ -1,4 +1,7 @@
+/** Keeps editor selection state synchronized with the URL and browser history. */
 export class BrowserHistory {
+
+  /** Stores the injected collaborators and initializes the instance state. */
   constructor({
     windowObject,
     getCurrentSelection,
@@ -14,6 +17,7 @@ export class BrowserHistory {
     this.initialized = false;
   }
 
+  /** Builds an editor selection from the URL file, view, owner, and nested-path parameters. */
   selectionFromLocation() {
     const parameters = new URLSearchParams(this.window.location.search);
     const file = parameters.get("file");
@@ -43,13 +47,8 @@ export class BrowserHistory {
     };
   }
 
-  sync(forceReplace = false) {
-    if (this.isRenderOnly() || this.isUpdatesSuppressed()) return;
-    const selection = this.getCurrentSelection();
-    const filePath = this.getSelectionFilePath(selection);
-    if (!filePath) return;
-
-    const url = new URL(this.window.location.href);
+  /** Writes the selected file and view to the URL and removes parameters that no longer apply. */
+  updateUrlSelection(url, selection, filePath) {
     url.searchParams.set("file", filePath);
     url.searchParams.set("view", selection.view);
     if (selection.screen?.id) url.searchParams.set("screen", selection.screen.id);
@@ -60,6 +59,10 @@ export class BrowserHistory {
       url.searchParams.delete("owner");
     }
     url.searchParams.delete("instancePath");
+  }
+
+  /** Creates browser history state containing a serializable editor-selection snapshot. */
+  createHistoryState(selection, filePath) {
     const state = this.window.history.state && typeof this.window.history.state === "object"
       ? { ...this.window.history.state }
       : {};
@@ -67,6 +70,19 @@ export class BrowserHistory {
       file: filePath,
       selection: this.createHistorySelection(selection)
     };
+    return state;
+  }
+
+  /** Updates the URL and browser history entry for the current editor selection. */
+  sync(forceReplace = false) {
+    if (this.isRenderOnly() || this.isUpdatesSuppressed()) return;
+    const selection = this.getCurrentSelection();
+    const filePath = this.getSelectionFilePath(selection);
+    if (!filePath) return;
+
+    const url = new URL(this.window.location.href);
+    this.updateUrlSelection(url, selection, filePath);
+    const state = this.createHistoryState(selection, filePath);
     const previousFile = new URL(this.window.location.href).searchParams.get("file");
     if (!this.initialized || forceReplace || previousFile === filePath) {
       this.window.history.replaceState(state, "", url);
@@ -76,6 +92,7 @@ export class BrowserHistory {
     this.initialized = true;
   }
 
+  /** Copies the editor selection into the compact form stored in browser history. */
   createHistorySelection(selection) {
     const snapshot = { view: selection.view };
     if (selection.screen?.id) snapshot.screen = { id: selection.screen.id };

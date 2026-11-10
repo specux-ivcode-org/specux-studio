@@ -1,11 +1,15 @@
 import { BASE_LAYER_ID, BASE_LAYER_NAME } from "../../shared/ScreenLayers.mjs";
 
+/** Creates Screens and coordinates their editor state. */
 export class ScreenController {
+
+  /** Stores the injected collaborators and initializes the instance state. */
   constructor({ state, services }) {
     this.state = state;
     this.services = services;
   }
 
+  /** Validates the proposed name, creates the Screen file, and updates the project manifest. */
   async createScreen() {
     const { state, services } = this;
     const enteredName = services.prompt("Name for the new Screen:", "New Screen");

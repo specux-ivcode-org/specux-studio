@@ -4,59 +4,90 @@ import {
   getScreenPlacementMatrix
 } from "../../shared/ScreenGroups.mjs";
 
+/** Renders the workspace view selected by the editor. */
 export class WorkspaceViewRenderer {
+
+  /** Stores the injected collaborators and initializes the instance state. */
   constructor({ state, services }) {
     this.state = state;
     this.services = services;
   }
 
+  /** Renders the screen from the current editor data. */
   async renderScreen(index, options = {}) {
-    const { state, services } = this;
-    const selected = state.screens[index];
+    const selected = this.state.screens[index];
     if (!selected) return;
+    this.configureScreenView(index, selected, options);
+    const content = this.createScreenPreview(selected);
+    this.renderScreenContent(selected, content);
+  }
+
+  /** Updates the screen view for the current editor state. */
+  configureScreenView(index, selected, options) {
+    const { state, services } = this;
     const preserveTheme = options.preserveTheme === true;
     const preserveSpec = options.preserveSpec === true;
     if (!preserveSpec) services.discardUneditedActiveSpecDraft();
     state.activeProjectFilePath = preserveTheme
       ? state.project?.theme
       : preserveSpec ? state.activeSpecPath : selected.file;
+    this.resetScreenViewUi(preserveSpec, options.preserveWorkflow === true);
+    state.activeScreenIndex = index;
+    services.renderScreenSelector();
+    services.projectFileTree.reveal(selected.file);
+    this.setScreenViewState(selected, preserveTheme, preserveSpec, options);
+    this.updateScreenViewPresentation(selected, preserveTheme, preserveSpec);
+  }
+
+  /** Resets the screen view ui for the current editor state. */
+  resetScreenViewUi(preserveSpec, preserveWorkflow) {
+    const { state, services } = this;
     services.closeScreenPlacementContextMenu();
     clearTimeout(state.previewTimer);
     state.previewTimer = null;
     state.previewVersion += 1;
-    services.byId("main").classList.remove("material-editing");
-    if (!preserveSpec) services.byId("main").classList.remove("spec-editing");
-    if (!options.preserveWorkflow) {
-      services.byId("main").classList.remove("workflow-editing");
+    const main = services.byId("main");
+    main.classList.remove("material-editing");
+    if (!preserveSpec) main.classList.remove("spec-editing");
+    if (!preserveWorkflow) {
+      main.classList.remove("workflow-editing");
       services.byId("workflow-editor-panel").hidden = true;
       services.byId("workflow-source").oninput = null;
     }
-    services.byId("main").classList.add("screen-editing");
+    main.classList.add("screen-editing");
     services.byId("material-document-editor-panel").hidden = true;
     services.byId("material-document-source").oninput = null;
     if (!preserveSpec) {
       services.byId("spec-editor-panel").hidden = true;
       services.byId("spec-source").oninput = null;
     }
-    state.activeScreenIndex = index;
-    services.renderScreenSelector();
-    services.projectFileTree.reveal(selected.file);
+  }
+
+  /** Sets the screen view state from the supplied data. */
+  setScreenViewState(selected, preserveTheme, preserveSpec, options) {
+    const { state, services } = this;
+    const preserveWorkflow = options.preserveWorkflow === true;
     state.viewingMaterialFile = false;
     state.viewingTheme = preserveTheme;
     state.viewingProject = false;
     state.viewingSpec = preserveSpec;
     state.viewingPreviewState = options.previewStateSelected === true;
-    state.viewingWorkflow = options.preserveWorkflow === true;
-    if (!options.preserveWorkflow) state.activeWorkflowPath = null;
+    state.viewingWorkflow = preserveWorkflow;
+    if (!preserveWorkflow) state.activeWorkflowPath = null;
     if (!preserveSpec) {
       state.activeSpecPath = null;
       state.activeSpecScreenFile = null;
       state.activeSpecInstancePath = [];
     }
-    if (!options.preserveWorkflow && !preserveSpec) state.activeInstancePath = [];
+    if (!preserveWorkflow && !preserveSpec) state.activeInstancePath = [];
     services.hideEditorMessage();
     services.updateNavigationSelection();
     services.updateScreenDomContext(selected);
+  }
+
+  /** Applies the selected Screen preview or YAML presentation mode. */
+  updateScreenViewPresentation(selected, preserveTheme, preserveSpec) {
+    const { state, services } = this;
     services.byId("screen-heading").textContent = preserveTheme
       ? "Theme"
       : preserveSpec ? `Spec: ${state.activeSpecPath}` : selected.data.name || selected.id;
@@ -66,14 +97,25 @@ export class WorkspaceViewRenderer {
     services.renderPreviewStateControls(selected.data);
     services.configureScreenYamlEditor(selected);
     services.syncScreenViewMode();
+  }
 
+  /** Creates the Screen preview host and its selected-state content. */
+  createScreenPreview(selected) {
+    const { services } = this;
     const preview = services.byId("screen-preview");
     preview.className = "screen-preview";
     preview.setAttribute("aria-label", `${selected.data.name || selected.id} Screen preview`);
+    preview.title = "Pan by dragging empty space, or anywhere in Workflow preview; middle mouse or Space+drag also pan. Zoom with the mouse wheel.";
     preview.replaceChildren();
     const content = services.element("div", "form-content");
     services.setScreenDomContext(content, selected);
     preview.append(content);
+    return content;
+  }
+
+  /** Renders the screen content from the current editor data. */
+  renderScreenContent(selected, content) {
+    const { services } = this;
     try {
       if (!Array.isArray(selected.data.materials)) {
         throw new Error(`Screen "${selected.id}" materials must be a list.`);
@@ -96,56 +138,7 @@ export class WorkspaceViewRenderer {
         "Screen canvas with positioned materials"
       );
       const stateId = services.getActivePreviewStateId(selected.data);
-      const renderPlacements = (
-        placements,
-        parent,
-        parentPath = [],
-        parentTransform = { matrix: { a: 1, b: 0, c: 0, d: 1 } }
-      ) => {
-        for (const [placementIndex, basePlacement] of placements.entries()) {
-          const path = [...parentPath, placementIndex];
-          if (!services.isInstanceVisible(basePlacement, stateId, selected.data)) continue;
-          if (path.length === 1 &&
-              !services.isLayerVisible(
-                selected.data.layers?.find((layer) => layer.id === basePlacement.layer),
-                stateId,
-                selected.data
-              )) {
-            continue;
-          }
-          const placement = services.resolvePlacementForState(
-            basePlacement,
-            stateId,
-            selected.data
-          );
-          const host = services.renderMaterial(placement, placementIndex, path);
-          const frame = services.createMaterialFrame(
-            host,
-            placement,
-            placementIndex,
-            parent,
-            selected,
-            path,
-            parentTransform,
-            content
-          );
-          parent.append(frame);
-          if (isScreenGroup(placement)) {
-            renderPlacements(
-              placement.children,
-              host,
-              path,
-              {
-                matrix: multiplyAffineMatrices(
-                  parentTransform.matrix,
-                  getScreenPlacementMatrix(placement)
-                )
-              }
-            );
-          }
-        }
-      };
-      renderPlacements(selected.data.materials, content);
+      this.renderPlacements(selected, selected.data.materials, content, stateId, content);
       services.renderInspector();
     } catch (error) {
       services.setPreviewMessage("error", error.message);
@@ -153,6 +146,49 @@ export class WorkspaceViewRenderer {
     }
   }
 
+  /** Renders the placements from the current editor data. */
+  renderPlacements(
+    screen,
+    placements,
+    parent,
+    stateId,
+    content,
+    parentPath = [],
+    parentTransform = { matrix: { a: 1, b: 0, c: 0, d: 1 } }
+  ) {
+    const { services } = this;
+    for (const [placementIndex, basePlacement] of placements.entries()) {
+      const path = [...parentPath, placementIndex];
+      if (!this.isPlacementVisible(screen, basePlacement, path, stateId)) continue;
+      const placement = services.resolvePlacementForState(basePlacement, stateId, screen.data);
+      const host = services.renderMaterial(placement, placementIndex, path);
+      const frame = services.createMaterialFrame(
+        host, placement, placementIndex, parent, screen, path, parentTransform, content
+      );
+      parent.append(frame);
+      if (isScreenGroup(placement)) {
+        this.renderPlacements(
+          screen,
+          placement.children,
+          host,
+          stateId,
+          content,
+          path,
+          { matrix: multiplyAffineMatrices(parentTransform.matrix, getScreenPlacementMatrix(placement)) }
+        );
+      }
+    }
+  }
+
+  /** Checks whether the placement is visible in the active preview state. */
+  isPlacementVisible(screen, placement, path, stateId) {
+    if (!this.services.isInstanceVisible(placement, stateId, screen.data)) return false;
+    if (path.length !== 1) return true;
+    const layer = screen.data.layers?.find((entry) => entry.id === placement.layer);
+    return this.services.isLayerVisible(layer, stateId, screen.data);
+  }
+
+  /** Renders the project overview from the current editor data. */
   renderProjectOverview() {
     const { state, services } = this;
     if (!state.project) return;

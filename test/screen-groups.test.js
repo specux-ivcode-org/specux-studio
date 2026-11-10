@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const validation = require("../shared/validation");
 
+/** Creates a Material placement fixture with the requested geometry and layer. */
 function material(id, position, size = { width: 100, height: 40 }, layer = "base") {
   return {
     id,
@@ -13,6 +14,7 @@ function material(id, position, size = { width: 100, height: 40 }, layer = "base
   };
 }
 
+/** Checks placement hierarchy, transforms, and saved state after the operation. */
 test("groups consecutive same-layer placements and leaves other layers in place", async () => {
   const {
     canGroupScreenPlacements,
@@ -45,6 +47,7 @@ test("groups consecutive same-layer placements and leaves other layers in place"
   ]);
 });
 
+/** Checks placement hierarchy, transforms, and saved state after the operation. */
 test("ungroup persists transformed placements and restores the layer", async () => {
   const {
     getScreenPlacementMatrix,
@@ -84,6 +87,7 @@ test("ungroup persists transformed placements and restores the layer", async () 
   }
 });
 
+/** Nested transforms compose for rendering and are converted back to child-local values during ungrouping. */
 test("nested group transforms compose and preserve child-local transforms on ungroup", async () => {
   const {
     getScreenParentTransform,
@@ -137,6 +141,7 @@ test("nested group transforms compose and preserve child-local transforms on ung
   assert.equal(getScreenPlacementAtPath(placements, [0, 0]).id, "inside");
 });
 
+/** Checks placement hierarchy, transforms, and saved state after the operation. */
 test("ungroup preserves shear from non-uniform group scale and rotated placement", async () => {
   const {
     getScreenPlacementMatrix,
@@ -172,6 +177,7 @@ test("ungroup preserves shear from non-uniform group scale and rotated placement
   assert.deepEqual(ungrouped.position, { x: 80, y: 110 });
 });
 
+/** Validation accepts nested groups but rejects child placements that define their own layer. */
 test("frontend Screen validation accepts recursive groups and rejects child layer overrides", async () => {
   const { ProjectRepository } = await import("../frontend/browser/ProjectRepository.mjs");
   const repository = new ProjectRepository({
@@ -223,6 +229,7 @@ test("frontend Screen validation accepts recursive groups and rejects child laye
   );
 });
 
+/** Group actions use selected instance paths and update the Screen placement tree. */
 test("ScreenMaterialController groups and ungroups selected placement paths", async () => {
   const { ScreenMaterialController } = await import(
     "../frontend/browser/ScreenMaterialController.mjs"
@@ -267,6 +274,7 @@ test("ScreenMaterialController groups and ungroups selected placement paths", as
   assert.deepEqual(state.activeInstancePath, [0]);
 });
 
+/** Group geometry changes retain named-state transforms and visibility overrides. */
 test("grouping and ungrouping preserve named-state transforms and hidden groups", async () => {
   const { PreviewStateController } = await import(
     "../frontend/browser/PreviewStateController.mjs"
@@ -352,6 +360,7 @@ test("grouping and ungrouping preserve named-state transforms and hidden groups"
   assert.equal(resolvedChildren[1].position.x, originalResolved[1].position.x);
 });
 
+/** Ungrouping does not hide a group that a named preview state explicitly shows. */
 test("ungrouping preserves a named state that shows a hidden Default group", async () => {
   const { PreviewStateController } = await import(
     "../frontend/browser/PreviewStateController.mjs"

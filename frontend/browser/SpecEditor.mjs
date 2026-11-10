@@ -4,11 +4,13 @@ import {
   parseWorkflowSpecReferences
 } from "./WorkflowEditor.mjs";
 
+/** Returns the reference key. */
 function getReferenceKey(reference) {
   return reference?.href ||
     (reference?.workflowPath ? `${reference.workflowPath}?node=${reference.nodeId}` : null);
 }
 
+/** Returns the text currently selected in the editor. */
 export function getSelectedText(source, selectionStart, selectionEnd) {
   if (typeof source !== "string" ||
       !Number.isInteger(selectionStart) ||
@@ -18,6 +20,8 @@ export function getSelectedText(source, selectionStart, selectionEnd) {
       selectionEnd > source.length) {
     return null;
   }
+
+  /** Updates the at for the current editor state. */
   const positionAt = (offset) => {
     const before = source.slice(0, offset);
     const lineBreak = Math.max(before.lastIndexOf("\n"), before.lastIndexOf("\r"));
@@ -36,7 +40,10 @@ export function getSelectedText(source, selectionStart, selectionEnd) {
   };
 }
 
+/** Manages behavior and Element spec editing and preview interaction. */
 export class SpecEditor {
+
+  /** Stores the injected collaborators and initializes the instance state. */
   constructor({ state, services }) {
     this.state = state;
     this.services = services;
@@ -67,6 +74,8 @@ export class SpecEditor {
       });
     }
     if (sourceEditor) {
+
+      /** Publishes the text selection for the current editor state. */
       const publishTextSelection = () => {
         if (this.state.viewingSpec) this.services.publishSelection();
       };
@@ -91,34 +100,13 @@ export class SpecEditor {
     );
   }
 
+  /** Renders the selected editor view and refreshes its dependent preview and controls. */
   async render(filePath, instancePath = this.state.activeInstancePath, owner = "instance") {
     const { state, services } = this;
     services.hidePreviewStateControls();
     services.validation.validateSpecPath(filePath);
-    const screen = state.screens[state.activeScreenIndex];
-    const draft = state.createdSpecDrafts.get(filePath);
-    const isProjectSpec = owner === "project";
-    const isScreenSpec = owner === "screen";
+    const context = this.getSpecRenderContext(filePath, instancePath, owner);
     state.activeProjectFilePath = filePath;
-    const isScreenDraft = isScreenSpec && draft?.owner === "screen" && draft.screenFile === screen?.file;
-    const instance = !isProjectSpec && !isScreenSpec && screen
-      ? services.getInstanceAtPath(screen, instancePath)
-      : null;
-    const elementSpecOwner = state.elementSpecOwners.get(filePath);
-    if (isProjectSpec) {
-      if (state.project.spec !== filePath && draft?.owner !== "project") {
-        throw new Error(`Behavior spec "${filePath}" is not attached to the project.`);
-      }
-    } else if (isScreenSpec) {
-      if (!screen || (screen.data.spec !== filePath && !isScreenDraft)) {
-        throw new Error(`Behavior spec "${filePath}" is not attached to the selected Screen.`);
-      }
-    } else if (!instance ||
-        (draft?.owner !== "instance" &&
-         (elementSpecOwner?.screenFile !== screen?.file ||
-          !services.sameInstancePath(elementSpecOwner.instancePath, instancePath)))) {
-      throw new Error(`Behavior spec "${filePath}" is not attached to the selected Element.`);
-    }
     if (!state.specSources.has(filePath)) {
       state.specSources.set(filePath, await services.loadText(filePath));
     }
@@ -126,6 +114,66 @@ export class SpecEditor {
       this.discardUneditedActiveDraft();
     }
 
+    this.configureSpecView(context);
+    this.renderSpecSource(context);
+    services.publishSelection();
+    services.renderInspector();
+    await this.setPreviewReferences(filePath, services.byId("spec-source").value, true);
+  }
+
+  /** Returns the spec render context. */
+  getSpecRenderContext(filePath, instancePath, owner) {
+    const { state, services } = this;
+    const screen = state.screens[state.activeScreenIndex];
+    const draft = state.createdSpecDrafts.get(filePath);
+    const isProjectSpec = owner === "project";
+    const isScreenSpec = owner === "screen";
+    const instance = !isProjectSpec && !isScreenSpec && screen
+      ? services.getInstanceAtPath(screen, instancePath)
+      : null;
+    const elementSpecOwner = state.elementSpecOwners.get(filePath);
+    this.validateSpecAttachment(filePath, owner, screen, draft, instance, elementSpecOwner, instancePath);
+    return {
+      filePath,
+      screen,
+      instancePath,
+      isProjectSpec,
+      isScreenSpec,
+      owner
+    };
+  }
+
+  /** Validates the spec attachment before it is applied or saved. */
+  validateSpecAttachment(filePath, owner, screen, draft, instance, elementSpecOwner, instancePath) {
+    if (owner === "project") {
+      if (this.state.project.spec !== filePath && draft?.owner !== "project") {
+        throw new Error(`Behavior spec "${filePath}" is not attached to the project.`);
+      }
+      return;
+    }
+    if (owner === "screen") {
+      const isScreenDraft = draft?.owner === "screen" && draft.screenFile === screen?.file;
+      if (!screen || (screen.data.spec !== filePath && !isScreenDraft)) {
+        throw new Error(`Behavior spec "${filePath}" is not attached to the selected Screen.`);
+      }
+      return;
+    }
+    if (!this.isElementSpecAttached(filePath, screen, draft, instance, elementSpecOwner, instancePath)) {
+      throw new Error(`Behavior spec "${filePath}" is not attached to the selected Element.`);
+    }
+  }
+
+  /** Checks whether the Element spec is attached to the current Screen. */
+  isElementSpecAttached(filePath, screen, draft, instance, elementSpecOwner, instancePath) {
+    if (!instance || draft?.owner === "instance") return Boolean(instance);
+    return elementSpecOwner?.screenFile === screen?.file &&
+      this.services.sameInstancePath(elementSpecOwner.instancePath, instancePath);
+  }
+
+  /** Updates the spec view for the current editor state. */
+  configureSpecView(context) {
+    const { state, services } = this;
+    const { filePath, screen, instancePath, isProjectSpec, isScreenSpec, owner } = context;
     const main = services.byId("main");
     main.classList.remove("material-editing");
     main.classList.add("spec-editing");
@@ -159,6 +207,11 @@ export class SpecEditor {
     services.byId("screen-heading").textContent = `Spec: ${filePath}`;
     services.byId("breadcrumb").textContent = "Behavior spec";
     services.byId("spec-editor-heading").textContent = filePath;
+  }
+
+  /** Renders the spec source from the current editor data. */
+  renderSpecSource({ filePath }) {
+    const { state, services } = this;
     const editor = services.byId("spec-source");
     editor.setAttribute("aria-label", `Markdown source for ${filePath}`);
     editor.value = state.specSources.get(filePath);
@@ -171,11 +224,9 @@ export class SpecEditor {
     }
     editor.disabled = state.isSaving;
     editor.oninput = () => this.handleSourceInput(filePath, editor.value);
-    services.publishSelection();
-    services.renderInspector();
-    await this.setPreviewReferences(filePath, editor.value, true);
   }
 
+  /** Sets the preview references from the supplied data. */
   setPreviewReferences(filePath, source, reset = false) {
     const screenReferences = this.services.validation
       .parseSpecScreenReferences(source, filePath)
@@ -202,6 +253,7 @@ export class SpecEditor {
     return this.previewCurrentReference(filePath);
   }
 
+  /** Updates the reference navigation to reflect the latest editor state. */
   updateReferenceNavigation() {
     const { services } = this;
     const count = this.previewReferences.length;
@@ -214,6 +266,7 @@ export class SpecEditor {
     services.byId("spec-reference-next").disabled = !active || count < 2;
   }
 
+  /** Moves the preview reference for the current editor state. */
   movePreviewReference(offset) {
     if (this.previewReferences.length < 2) return;
     this.previewReferenceIndex =
@@ -223,6 +276,7 @@ export class SpecEditor {
     this.previewCurrentReference(this.state.activeSpecPath);
   }
 
+  /** Updates the current reference for the current editor state. */
   previewCurrentReference(filePath) {
     const { state, services } = this;
     const reference = this.previewReferences[this.previewReferenceIndex] || null;
@@ -252,130 +306,196 @@ export class SpecEditor {
     return this.previewQueue;
   }
 
+  /** Renders the source highlight from the current editor data. */
   renderSourceHighlight(reference, preserveSelection = false) {
-    const { state, services } = this;
-    const highlight = services.byId("spec-source-highlight");
+    const highlight = this.services.byId("spec-source-highlight");
     if (!highlight) return;
-    const sourceEditor = services.byId("spec-source");
-    const scrollTop = preserveSelection && Number.isFinite(sourceEditor?.scrollTop)
-      ? sourceEditor.scrollTop
-      : highlight.scrollTop;
-    const scrollLeft = preserveSelection && Number.isFinite(sourceEditor?.scrollLeft)
-      ? sourceEditor.scrollLeft
-      : highlight.scrollLeft;
+    const context = this.getSourceHighlightContext(reference, preserveSelection, highlight);
     highlight.replaceChildren();
-    const storedSource = state.specSources.get(state.activeSpecPath) || "";
-    const source = preserveSelection && sourceEditor
-      ? sourceEditor.value
-      : storedSource;
-    const selectionStart = preserveSelection && Number.isInteger(sourceEditor?.selectionStart)
-      ? sourceEditor.selectionStart
-      : -1;
-    const selectionEnd = preserveSelection && Number.isInteger(sourceEditor?.selectionEnd)
-      ? sourceEditor.selectionEnd
-      : -1;
-    const hasSelection = selectionStart >= 0 &&
-      selectionEnd > selectionStart &&
-      selectionEnd <= source.length;
-    const lines = source.split(/\r?\n/);
-    const linkLine = reference ? lines[reference.lineIndex] || "" : "";
-    const link = reference && findMarkdownSpecLink(linkLine, reference.columnIndex);
-    const sectionRange = reference
-      ? getMarkdownSectionRange(source, reference.sectionLineIndex, reference.lineIndex)
-      : null;
-    const { ownerDocument } = highlight;
-    const appendTextSegments = (line, text, lineOffset, linkRange) => {
-      const boundaries = [0, text.length];
-      if (hasSelection) {
-        for (const offset of [selectionStart, selectionEnd]) {
-          if (offset > lineOffset && offset < lineOffset + text.length) {
-            boundaries.push(offset - lineOffset);
-          }
-        }
-      }
-      if (linkRange) boundaries.push(linkRange.start, linkRange.end);
-      boundaries.sort((left, right) => left - right);
-      const uniqueBoundaries = [...new Set(boundaries)];
-      for (let index = 0; index < uniqueBoundaries.length - 1; index += 1) {
-        const start = uniqueBoundaries[index];
-        const end = uniqueBoundaries[index + 1];
-        const classes = [];
-        if (linkRange && start >= linkRange.start && end <= linkRange.end) {
-          classes.push("workflow-spec-link-target");
-        }
-        if (hasSelection &&
-            selectionStart < lineOffset + end &&
-            selectionEnd > lineOffset + start) {
-          classes.push("spec-source-text-selection");
-        }
-        const segment = ownerDocument.createElement("span");
-        segment.className = classes.join(" ");
-        segment.textContent = text.slice(start, end);
-        line.append(segment);
-      }
+    this.renderHighlightedLines(highlight, context);
+    if (preserveSelection) this.restoreHighlightScroll(highlight, context);
+  }
+
+  /** Returns the source highlight context. */
+  getSourceHighlightContext(reference, preserveSelection, highlight) {
+    const sourceEditor = this.services.byId("spec-source");
+    const storedSource = this.state.specSources.get(this.state.activeSpecPath) || "";
+    const source = preserveSelection && sourceEditor ? sourceEditor.value : storedSource;
+    const selection = this.getHighlightSelection(sourceEditor, source, preserveSelection);
+    const link = this.getHighlightLink(reference, source.split(/\r?\n/));
+    const scroll = this.getHighlightScroll(sourceEditor, highlight, preserveSelection);
+    return {
+      source,
+      lines: source.split(/\r?\n/),
+      reference,
+      link,
+      sectionRange: reference
+        ? getMarkdownSectionRange(source, reference.sectionLineIndex, reference.lineIndex)
+        : null,
+      ...selection,
+      ownerDocument: highlight.ownerDocument,
+      ...scroll
     };
+  }
 
+  /** Returns the highlight selection. */
+  getHighlightSelection(sourceEditor, source, preserveSelection) {
+    const selectionStart = preserveSelection && Number.isInteger(sourceEditor?.selectionStart)
+      ? sourceEditor.selectionStart : -1;
+    const selectionEnd = preserveSelection && Number.isInteger(sourceEditor?.selectionEnd)
+      ? sourceEditor.selectionEnd : -1;
+    return {
+      selectionStart,
+      selectionEnd,
+      hasSelection: selectionStart >= 0 && selectionEnd > selectionStart &&
+        selectionEnd <= source.length
+    };
+  }
+
+  /** Returns the highlight link. */
+  getHighlightLink(reference, lines) {
+    if (!reference) return null;
+    const linkLine = lines[reference.lineIndex] || "";
+    return findMarkdownSpecLink(linkLine, reference.columnIndex);
+  }
+
+  /** Returns the highlight scroll. */
+  getHighlightScroll(sourceEditor, highlight, preserveSelection) {
+    return {
+      scrollTop: preserveSelection && Number.isFinite(sourceEditor?.scrollTop)
+        ? sourceEditor.scrollTop : highlight.scrollTop,
+      scrollLeft: preserveSelection && Number.isFinite(sourceEditor?.scrollLeft)
+        ? sourceEditor.scrollLeft : highlight.scrollLeft
+    };
+  }
+
+  /** Renders the highlighted lines from the current editor data. */
+  renderHighlightedLines(highlight, context) {
     let lineOffset = 0;
-    lines.forEach((text, lineIndex) => {
-      const line = ownerDocument.createElement("span");
-      line.className = "workflow-spec-line";
-      if (sectionRange &&
-          lineIndex >= sectionRange.start && lineIndex <= sectionRange.end) {
-        line.classList.add("workflow-spec-section-target");
-      }
-
-      const linkRange = lineIndex === reference?.lineIndex && link
-        ? { start: link.index, end: link.index + link[0].length }
-        : null;
-      const selectedOnLine = hasSelection &&
-        selectionStart < lineOffset + text.length &&
-        selectionEnd > lineOffset;
-      if (selectedOnLine) {
-        appendTextSegments(line, text, lineOffset, linkRange);
-      } else if (linkRange) {
-        const before = ownerDocument.createElement("span");
-        before.textContent = text.slice(0, linkRange.start);
-        line.append(before);
-        const target = ownerDocument.createElement("span");
-        target.className = "workflow-spec-link-target";
-        target.textContent = text.slice(linkRange.start, linkRange.end);
-        line.append(target);
-        const after = ownerDocument.createElement("span");
-        after.textContent = text.slice(linkRange.end);
-        line.append(after);
-      } else {
-        line.textContent = text;
-      }
-      highlight.append(line);
+    context.lines.forEach((text, lineIndex) => {
+      this.renderHighlightedLine(highlight, context, text, lineIndex, lineOffset);
       const lineEnd = lineOffset + text.length;
-      const separator = source.slice(lineEnd).match(/^\r\n|^\r|\n/)?.[0] || "";
+      const separator = context.source.slice(lineEnd).match(/^\r\n|^\r|\n/)?.[0] || "";
       lineOffset = lineEnd + separator.length;
     });
-    if (preserveSelection) {
-      highlight.scrollTop = scrollTop;
-      highlight.scrollLeft = scrollLeft;
+  }
+
+  /** Renders the highlighted line from the current editor data. */
+  renderHighlightedLine(highlight, context, text, lineIndex, lineOffset) {
+    const { ownerDocument, reference, link, sectionRange } = context;
+    const line = ownerDocument.createElement("span");
+    line.className = "workflow-spec-line";
+    if (sectionRange && lineIndex >= sectionRange.start && lineIndex <= sectionRange.end) {
+      line.classList.add("workflow-spec-section-target");
+    }
+    const linkRange = lineIndex === reference?.lineIndex && link
+      ? { start: link.index, end: link.index + link[0].length } : null;
+    const selectedOnLine = context.hasSelection &&
+      context.selectionStart < lineOffset + text.length &&
+      context.selectionEnd > lineOffset;
+    if (selectedOnLine) {
+      this.appendTextSegments(line, text, lineOffset, linkRange, context);
+    } else if (linkRange) {
+      this.appendLinkSegments(line, text, linkRange, ownerDocument);
+    } else {
+      line.textContent = text;
+    }
+    highlight.append(line);
+  }
+
+  /** Adds the text segments for the current editor state. */
+  appendTextSegments(line, text, lineOffset, linkRange, context) {
+    const { selectionStart, selectionEnd, hasSelection, ownerDocument } = context;
+    const boundaries = [0, text.length];
+    if (hasSelection) {
+      for (const offset of [selectionStart, selectionEnd]) {
+        if (offset > lineOffset && offset < lineOffset + text.length) {
+          boundaries.push(offset - lineOffset);
+        }
+      }
+    }
+    if (linkRange) boundaries.push(linkRange.start, linkRange.end);
+    boundaries.sort((left, right) => left - right);
+    const uniqueBoundaries = [...new Set(boundaries)];
+    for (let index = 0; index < uniqueBoundaries.length - 1; index += 1) {
+      const start = uniqueBoundaries[index];
+      const end = uniqueBoundaries[index + 1];
+      const segment = ownerDocument.createElement("span");
+      segment.className = this.getTextSegmentClasses(
+        start,
+        end,
+        lineOffset,
+        linkRange,
+        selectionStart,
+        selectionEnd
+      );
+      segment.textContent = text.slice(start, end);
+      line.append(segment);
     }
   }
 
+  /** Returns the source-highlight classes for a segment of selected text. */
+  getTextSegmentClasses(start, end, lineOffset, linkRange, selectionStart, selectionEnd) {
+    const classes = [];
+    if (linkRange && start >= linkRange.start && end <= linkRange.end) {
+      classes.push("workflow-spec-link-target");
+    }
+    if (selectionStart < lineOffset + end && selectionEnd > lineOffset + start) {
+      classes.push("spec-source-text-selection");
+    }
+    return classes.join(" ");
+  }
+
+  /** Adds the link segments for the current editor state. */
+  appendLinkSegments(line, text, linkRange, ownerDocument) {
+    const before = ownerDocument.createElement("span");
+    before.textContent = text.slice(0, linkRange.start);
+    line.append(before);
+    const target = ownerDocument.createElement("span");
+    target.className = "workflow-spec-link-target";
+    target.textContent = text.slice(linkRange.start, linkRange.end);
+    line.append(target);
+    const after = ownerDocument.createElement("span");
+    after.textContent = text.slice(linkRange.end);
+    line.append(after);
+  }
+
+  /** Restores the highlight scroll for the current editor state. */
+  restoreHighlightScroll(highlight, context) {
+    highlight.scrollTop = context.scrollTop;
+    highlight.scrollLeft = context.scrollLeft;
+  }
+
+  /** Highlights the selected preview branch and dims unrelated branches. */
   updatePreviewFocus(instancePath) {
     const preview = this.services.byId("screen-preview");
     const instances = [];
-    const visit = (root, parentInstance = null) => {
-      for (const element of root.children || []) {
-        const isInstance = element.classList?.contains("material-instance") === true ||
-          element.classList?.contains("material-group") === true;
-        if (isInstance) instances.push({ element, parentInstance });
-        const nextParent = isInstance ? element : parentInstance;
-        if (element.shadowRoot) visit(element.shadowRoot, nextParent);
-        visit(element, nextParent);
-      }
-    };
-    visit(preview);
+    this.collectPreviewInstances(preview, null, instances);
+    const focus = this.getPreviewFocusContext(instancePath, instances);
+    const dimmedBranches = new Set();
+    for (const { element, parentInstance } of instances) {
+      this.resetPreviewFocus(element);
+      this.applyPreviewFocus(element, parentInstance, focus, dimmedBranches);
+    }
+  }
 
+  /** Collects the preview instances for the current editor state. */
+  collectPreviewInstances(root, parentInstance, instances) {
+    for (const element of root.children || []) {
+      const isInstance = element.classList?.contains("material-instance") === true ||
+        element.classList?.contains("material-group") === true;
+      if (isInstance) instances.push({ element, parentInstance });
+      const nextParent = isInstance ? element : parentInstance;
+      if (element.shadowRoot) this.collectPreviewInstances(element.shadowRoot, nextParent, instances);
+      this.collectPreviewInstances(element, nextParent, instances);
+    }
+  }
+
+  /** Returns the preview instance paths affected by the current spec focus. */
+  getPreviewFocusContext(instancePath, instances) {
     const focusPath = Array.isArray(instancePath) && instancePath.length
       ? JSON.stringify(instancePath)
       : null;
-    const focusPrefix = focusPath?.slice(0, -1);
     const ancestorPaths = new Set();
     if (focusPath) {
       for (let length = 1; length < instancePath.length; length += 1) {
@@ -385,88 +505,132 @@ export class SpecEditor {
     const focusTarget = focusPath
       ? instances.find(({ element }) => element.dataset.instancePath === focusPath)?.element
       : null;
-    const focusBounds = focusTarget?.getBoundingClientRect?.();
-    const isInsideFocusArea = (element) => {
-      if (!focusBounds) return false;
-      const bounds = element.getBoundingClientRect?.();
-      return bounds &&
-        bounds.left >= focusBounds.left &&
-        bounds.top >= focusBounds.top &&
-        bounds.right <= focusBounds.right &&
-        bounds.bottom <= focusBounds.bottom;
+    return {
+      focusPath,
+      focusPrefix: focusPath?.slice(0, -1),
+      ancestorPaths,
+      focusBounds: focusTarget?.getBoundingClientRect?.(),
+      isInsideFocusArea: (element) => this.isInsideFocusArea(element, focusTarget)
     };
+  }
 
-    const dimmedBranches = new Set();
-    for (const { element, parentInstance } of instances) {
-      element.classList.remove(
-        "spec-focus-target",
-        "spec-focus-ancestor",
-        "spec-focus-descendant",
-        "spec-focus-dimmed"
-      );
-      element.style.removeProperty("filter");
-      element.style.removeProperty("transition");
-      element.style.removeProperty("z-index");
-      if (!focusPath) continue;
+  /** Checks whether the point falls within the preview focus area. */
+  isInsideFocusArea(element, focusTarget) {
+    const focusBounds = focusTarget?.getBoundingClientRect?.();
+    if (!focusBounds) return false;
+    const bounds = element.getBoundingClientRect?.();
+    return bounds && bounds.left >= focusBounds.left && bounds.top >= focusBounds.top &&
+      bounds.right <= focusBounds.right && bounds.bottom <= focusBounds.bottom;
+  }
 
-      const path = element.dataset.instancePath;
-      if (path === focusPath) {
-        element.classList.add("spec-focus-target");
-        element.style.setProperty("z-index", "1");
-        element.style.setProperty("transition", "filter 180ms ease");
-      } else if (ancestorPaths.has(path)) {
-        element.classList.add("spec-focus-ancestor");
-      } else if (focusPrefix && path.startsWith(`${focusPrefix},`)) {
-        element.classList.add("spec-focus-descendant");
-      } else if (isInsideFocusArea(element)) {
-        continue;
-      } else if (!parentInstance || !dimmedBranches.has(parentInstance)) {
-        element.classList.add("spec-focus-dimmed");
-        element.style.setProperty("filter", "blur(1.5px)");
-        element.style.setProperty("transition", "filter 180ms ease");
-        dimmedBranches.add(element);
-      }
+  /** Resets the preview focus for the current editor state. */
+  resetPreviewFocus(element) {
+    element.classList.remove(
+      "spec-focus-target",
+      "spec-focus-ancestor",
+      "spec-focus-descendant",
+      "spec-focus-dimmed"
+    );
+    element.style.removeProperty("filter");
+    element.style.removeProperty("transition");
+    element.style.removeProperty("z-index");
+  }
+
+  /** Applies the preview focus to the current editor state. */
+  applyPreviewFocus(element, parentInstance, focus, dimmedBranches) {
+    if (!focus.focusPath) return;
+    const path = element.dataset.instancePath;
+    if (path === focus.focusPath) {
+      element.classList.add("spec-focus-target");
+      element.style.setProperty("z-index", "1");
+      element.style.setProperty("transition", "filter 180ms ease");
+    } else if (focus.ancestorPaths.has(path)) {
+      element.classList.add("spec-focus-ancestor");
+    } else if (focus.focusPrefix && path.startsWith(`${focus.focusPrefix},`)) {
+      element.classList.add("spec-focus-descendant");
+    } else if (!focus.isInsideFocusArea(element) &&
+        (!parentInstance || !dimmedBranches.has(parentInstance))) {
+      this.markPreviewFocusDimmed(element, dimmedBranches);
     }
   }
 
+  /** Marks the preview focus dimmed for the current editor state. */
+  markPreviewFocusDimmed(element, dimmedBranches) {
+    element.classList.add("spec-focus-dimmed");
+    element.style.setProperty("filter", "blur(1.5px)");
+    element.style.setProperty("transition", "filter 180ms ease");
+    dimmedBranches.add(element);
+  }
+
+  /** Handles source input events and applies the corresponding editor action. */
   handleSourceInput(filePath, source) {
     const { state, services } = this;
     state.specSources.set(filePath, source);
-    let elementSpecError = "";
-    let referenceError = "";
-    if (state.screens.some((entry) => filePath.startsWith(`screens/${entry.id}/specs/element-`))) {
-      try {
-        services.refreshElementSpecOwner(filePath, source);
-      } catch (error) {
-        elementSpecError = error.message || String(error);
-      }
+    const elementSpecError = this.validateEditedElementSpec(filePath, source);
+    const referenceError = this.refreshEditedSpecReferences(filePath, source);
+    if (this.updatePendingDraft(filePath, source)) return;
+    services.markEdited(filePath);
+    this.showSpecInputError(filePath, elementSpecError, referenceError);
+  }
+
+  /** Validates the edited element spec before it is applied or saved. */
+  validateEditedElementSpec(filePath, source) {
+    const isElementSpec = this.state.screens.some((entry) =>
+      filePath.startsWith(`screens/${entry.id}/specs/element-`)
+    );
+    if (!isElementSpec) return "";
+    try {
+      this.services.refreshElementSpecOwner(filePath, source);
+      return "";
+    } catch (error) {
+      return error.message || String(error);
     }
+  }
+
+  /** Updates the edited spec references for the current editor state. */
+  refreshEditedSpecReferences(filePath, source) {
     try {
       this.setPreviewReferences(filePath, source);
+      return "";
     } catch (error) {
-      referenceError = error.message || String(error);
       this.renderSourceHighlight(null);
+      return error.message || String(error);
     }
+  }
+
+  /** Updates the pending draft to reflect the latest editor state. */
+  updatePendingDraft(filePath, source) {
+    const { state, services } = this;
     const pendingDraft = state.createdSpecDrafts.get(filePath);
-    if (pendingDraft) {
-      const draftScreen = state.screens.find((entry) => entry.file === pendingDraft.screenFile);
-      if (source === pendingDraft.initialContent) {
-        if (pendingDraft.owner === "project") {
-          if (state.project.spec === filePath) delete state.project.spec;
-        } else if (pendingDraft.owner === "screen") {
-          if (draftScreen?.data.spec === filePath) delete draftScreen.data.spec;
-        } else {
-          state.elementSpecOwners.delete(filePath);
-        }
-        state.createdSpecFiles.delete(filePath);
-        services.clearEdited(filePath);
-        return;
-      }
-      if (pendingDraft.owner === "project") state.project.spec = filePath;
-      else if (pendingDraft.owner === "screen" && draftScreen) draftScreen.data.spec = filePath;
-      state.createdSpecFiles.add(filePath);
+    if (!pendingDraft) return false;
+    const draftScreen = state.screens.find((entry) => entry.file === pendingDraft.screenFile);
+    if (source === pendingDraft.initialContent) {
+      this.unlinkPendingDraft(filePath, pendingDraft, draftScreen);
+      services.clearEdited(filePath);
+      return true;
     }
-    services.markEdited(filePath);
+    if (pendingDraft.owner === "project") state.project.spec = filePath;
+    else if (pendingDraft.owner === "screen" && draftScreen) draftScreen.data.spec = filePath;
+    state.createdSpecFiles.add(filePath);
+    return false;
+  }
+
+  /** Updates the pending draft for the current editor state. */
+  unlinkPendingDraft(filePath, draft, draftScreen) {
+    const { state } = this;
+    if (draft.owner === "project") {
+      if (state.project.spec === filePath) delete state.project.spec;
+    } else if (draft.owner === "screen") {
+      if (draftScreen?.data.spec === filePath) delete draftScreen.data.spec;
+    } else {
+      state.elementSpecOwners.delete(filePath);
+    }
+    state.createdSpecFiles.delete(filePath);
+  }
+
+  /** Shows the spec input error for the current editor state. */
+  showSpecInputError(filePath, elementSpecError, referenceError) {
+    const { services } = this;
     if (elementSpecError) {
       services.showEditorMessage("Invalid behavior spec", elementSpecError);
       this.specValidationErrorFile = filePath;
@@ -479,6 +643,7 @@ export class SpecEditor {
     }
   }
 
+  /** Updates the unedited active draft for the current editor state. */
   discardUneditedActiveDraft() {
     const { state, services } = this;
     if (!state.viewingSpec || !state.activeSpecPath) return;
@@ -503,6 +668,7 @@ export class SpecEditor {
     services.renderNavigation();
   }
 
+  /** Builds the Element spec draft and ownership data for one Screen instance. */
   async createForInstance(instancePath) {
     const { state, services } = this;
     const screen = state.screens[state.activeScreenIndex];
@@ -548,6 +714,7 @@ export class SpecEditor {
     await this.render(filePath, instancePath);
   }
 
+  /** Builds a project-level behavior spec draft with its initial source. */
   async createForProject() {
     const { state, services } = this;
     if (state.project.spec) {
@@ -588,6 +755,7 @@ export class SpecEditor {
     await this.render(filePath, [], "project");
   }
 
+  /** Builds the Screen-level spec draft and associates it with the selected Screen. */
   async createForScreen() {
     const { state, services } = this;
     const screen = state.screens[state.activeScreenIndex];

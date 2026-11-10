@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+/** Creates a test window with a controllable URL and history stub. */
 function createWindow(href) {
   const location = new URL(href);
   const history = {
@@ -20,6 +21,7 @@ function createWindow(href) {
   return { location, history };
 }
 
+/** Creates the controller using the supplied test selection and window. */
 function createController(windowObject, options = {}) {
   return import("../frontend/browser/BrowserHistory.mjs").then(({ BrowserHistory }) =>
     new BrowserHistory({
@@ -32,6 +34,7 @@ function createController(windowObject, options = {}) {
   );
 }
 
+/** Checks that URL parsing recovers the expected selection fields, including nested paths. */
 test("reads editor selections and nested Element paths from the URL", async () => {
   const windowObject = createWindow(
     "http://localhost/?file=screens%2Fhome%2Fscreen.yml&view=screen&screen=home&instancePath=%5B%22layout%22%2C%22content%22%2C0%5D"
@@ -47,6 +50,7 @@ test("reads editor selections and nested Element paths from the URL", async () =
   });
 });
 
+/** Checks that history entries capture the selection without discarding unrelated state. */
 test("writes browser history while retaining unrelated history state", async () => {
   const windowObject = createWindow("http://localhost/?instancePath=%5B0%5D");
   const options = {

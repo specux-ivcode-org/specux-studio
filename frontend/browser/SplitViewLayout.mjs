@@ -1,7 +1,10 @@
 const PREVIEW_MIN_HEIGHT = 180;
 const EDITOR_MIN_HEIGHT = 220;
 
+/** Controls split, preview, and source-pane layouts and resizing. */
 export class SplitViewLayout {
+
+  /** Stores the injected collaborators and initializes the instance state. */
   constructor({
     windowObject,
     documentObject,
@@ -31,6 +34,7 @@ export class SplitViewLayout {
     this.activeDrag = null;
   }
 
+  /** Attaches the configured event listeners to the editor controls. */
   bind() {
     for (const mode of this.modes) {
       this.document.getElementById(`${this.viewIdPrefix}-${mode}`).addEventListener("click", () =>
@@ -47,6 +51,7 @@ export class SplitViewLayout {
     this.setViewMode("split");
   }
 
+  /** Sets the view mode from the supplied data. */
   setViewMode(mode) {
     if (!this.modes.includes(mode)) return;
     this.main.setAttribute(this.viewAttribute, mode);
@@ -61,6 +66,7 @@ export class SplitViewLayout {
     this.onViewModeChanged?.();
   }
 
+  /** Reads the flexible tracks and returns its editor representation. */
   readFlexibleTracks() {
     const rows = this.window.getComputedStyle(this.main).gridTemplateRows
       .split(/\s+/)
@@ -71,6 +77,7 @@ export class SplitViewLayout {
     };
   }
 
+  /** Returns the ratio limits. */
   getRatioLimits(total) {
     if (total < PREVIEW_MIN_HEIGHT + EDITOR_MIN_HEIGHT) return { min: 50, max: 50 };
     return {
@@ -79,11 +86,13 @@ export class SplitViewLayout {
     };
   }
 
+  /** Applies the ratio to the current editor state. */
   applyRatio() {
     this.main.style.setProperty(this.previewTrackProperty, `${this.ratio}fr`);
     this.main.style.setProperty(this.editorTrackProperty, `${100 - this.ratio}fr`);
   }
 
+  /** Updates the aria value to reflect the latest editor state. */
   updateAriaValue() {
     const { preview, editor } = this.readFlexibleTracks();
     const total = preview + editor;
@@ -98,6 +107,7 @@ export class SplitViewLayout {
     this.resizer.setAttribute("aria-valuenow", String(Math.round(this.ratio)));
   }
 
+  /** Starts the drag for the current editor state. */
   startDrag(event) {
     if (event.button !== 0 || this.activeDrag) return;
     event.preventDefault();
@@ -113,6 +123,7 @@ export class SplitViewLayout {
     this.document.body.classList.add("split-layout-resizing");
   }
 
+  /** Moves the drag for the current editor state. */
   moveDrag(event) {
     const drag = this.activeDrag;
     if (!drag || event.pointerId !== drag.pointerId) return;
@@ -126,6 +137,7 @@ export class SplitViewLayout {
     this.updateAriaValue();
   }
 
+  /** Ends the drag for the current editor state. */
   endDrag(event) {
     if (!this.activeDrag || event.pointerId !== this.activeDrag.pointerId) return;
     this.activeDrag = null;
@@ -135,6 +147,7 @@ export class SplitViewLayout {
     }
   }
 
+  /** Resizes the from keyboard within its configured bounds. */
   resizeFromKeyboard(event) {
     if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
     event.preventDefault();

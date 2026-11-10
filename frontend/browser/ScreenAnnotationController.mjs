@@ -2,11 +2,15 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const ANNOTATION_TOOLS = new Set(["pen", "circle", "rectangle", "arrow", "highlight", "note"]);
 const DEFAULT_CANVAS_SIZE = { width: 1440, height: 900 };
 
+/** Constrains a panel size to its configured minimum and maximum. */
 function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
+/** Creates, updates, and renders annotations for the active Screen. */
 export class ScreenAnnotationController {
+
+  /** Stores the injected collaborators and initializes the instance state. */
   constructor({ state, services }) {
     this.state = state;
     this.services = services;
@@ -34,6 +38,7 @@ export class ScreenAnnotationController {
     this.sessionResetPromise = null;
   }
 
+  /** Attaches the configured event listeners to the editor controls. */
   bind() {
     const { services } = this;
     const preview = services.byId("screen-preview");
@@ -100,6 +105,7 @@ export class ScreenAnnotationController {
     this.updateControls();
   }
 
+  /** Builds annotation context for the active editor selection. */
   getEditorAnnotationContext() {
     if (this.context?.kind !== "editor") return null;
     const previewSizes = this.contextPreviewSizes.get(this.context.key) || new Map();
@@ -135,6 +141,7 @@ export class ScreenAnnotationController {
     };
   }
 
+  /** Clears the previous file annotation state and waits for its saved annotations to be removed. */
   async fileLoaded(filePath) {
     const nextFilePath = filePath || null;
     if (nextFilePath === this.activeFilePath) return;
@@ -157,6 +164,7 @@ export class ScreenAnnotationController {
     await this.sessionResetPromise;
   }
 
+  /** Loads annotation data and coordinate context for the selected Screen. */
   async setScreen(screen) {
     const nextScreenId = screen?.id || null;
     if (screen?.file) this.activeFilePath = screen.file;
@@ -190,6 +198,7 @@ export class ScreenAnnotationController {
     }
   }
 
+  /** Sets the editor context from the supplied data. */
   setEditorContext(context) {
     const key = context?.key || null;
     this.activeFilePath = context?.file || null;
@@ -215,12 +224,14 @@ export class ScreenAnnotationController {
     this.updateControls();
   }
 
+  /** Clears the previous session annotations and resets its associated state. */
   async clearPreviousSessionAnnotations() {
     const response = await this.services.fetcher("/api/annotations", { method: "DELETE" });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
   }
 
+  /** Refreshes the active editor view from the latest project data. */
   async refresh() {
     if (!this.screenId) return;
     const version = ++this.loadVersion;
@@ -238,6 +249,7 @@ export class ScreenAnnotationController {
     this.updateControls();
   }
 
+  /** Sets the enabled from the supplied data. */
   setEnabled(enabled) {
     this.enabled = Boolean(enabled && this.context);
     this.drawing = null;
@@ -245,6 +257,7 @@ export class ScreenAnnotationController {
     this.updateControls();
   }
 
+  /** Selects the tool and updates the related editor state. */
   selectTool(tool) {
     if (!ANNOTATION_TOOLS.has(tool) || !this.context) return;
     this.tool = tool;
@@ -252,6 +265,7 @@ export class ScreenAnnotationController {
     this.setEnabled(true);
   }
 
+  /** Restores the previous editor change from the history stack. */
   undo() {
     const annotation = this.annotations.pop();
     if (!annotation) return;
@@ -262,6 +276,7 @@ export class ScreenAnnotationController {
     this.persist().catch((error) => this.reportError("Could not save annotation", error));
   }
 
+  /** Reapplies the next editor change from the history stack. */
   redo() {
     const annotation = this.undoStack.pop();
     if (!annotation) return;
@@ -272,6 +287,7 @@ export class ScreenAnnotationController {
     this.persist().catch((error) => this.reportError("Could not save annotation", error));
   }
 
+  /** Clears the selected state and resets the controls that depend on it. */
   clear() {
     if (this.annotations.length === 0) return;
     this.annotationRevision += 1;
@@ -284,6 +300,7 @@ export class ScreenAnnotationController {
     this.persist().catch((error) => this.reportError("Could not clear annotations", error));
   }
 
+  /** Persists the current editor changes to their project source. */
   persist() {
     if (this.context?.kind === "editor") {
       const operation = Promise.resolve(this.services.publishSelection?.());
@@ -315,6 +332,7 @@ export class ScreenAnnotationController {
     return operation;
   }
 
+  /** Renders the static annotations from the current editor data. */
   renderStaticAnnotations(annotationSet) {
     this.screenId = annotationSet.screenId;
     this.annotations = annotationSet.annotations;
@@ -323,10 +341,12 @@ export class ScreenAnnotationController {
     this.render();
   }
 
+  /** Displays an annotation error and updates the related status controls. */
   reportError(message, error) {
     console.error(message, error);
   }
 
+  /** Updates the controls to reflect the latest editor state. */
   updateControls() {
     const hasAnnotations = this.annotations.length > 0;
     const toolbar = this.services.byId("annotation-toolbar");
@@ -345,6 +365,7 @@ export class ScreenAnnotationController {
     this.services.byId("annotation-clear").disabled = !hasAnnotations;
   }
 
+  /** Creates and attaches the annotation overlay for the selected preview. */
   createOverlay(content, { previewId = null, className = "screen-annotation-overlay" } = {}) {
     const overlay = this.services.document.createElementNS(SVG_NAMESPACE, "svg");
     overlay.classList.add(className);
@@ -363,6 +384,7 @@ export class ScreenAnnotationController {
     return overlay;
   }
 
+  /** Renders the selected editor view and refreshes its dependent preview and controls. */
   render() {
     if (this.context?.kind === "editor") {
       const screenPreview = this.services.byId("screen-preview");
@@ -414,11 +436,21 @@ export class ScreenAnnotationController {
     }
   }
 
+  /** Renders the editor overlay from the current editor data. */
   renderEditorOverlay() {
     const previewSizes = this.contextPreviewSizes.get(this.context.key) || new Map();
     const targets = this.getEditorPreviewTargets();
     this.observeEditorPreviewTargets(targets);
     const activeIds = new Set(targets.map((target) => target.id));
+    this.hideInactiveEditorOverlays(activeIds);
+    this.editorTargets = new Map(targets.map((target) => [target.id, target]));
+    this.hideLegacyEditorOverlay();
+    for (const target of targets) this.renderEditorPreviewTarget(target, targets, previewSizes);
+    this.contextPreviewSizes.set(this.context.key, previewSizes);
+  }
+
+  /** Hides the inactive editor overlays for the current editor state. */
+  hideInactiveEditorOverlays(activeIds) {
     for (const [id, overlay] of this.editorOverlays) {
       if (activeIds.has(id)) continue;
       overlay.hidden = true;
@@ -432,7 +464,10 @@ export class ScreenAnnotationController {
     for (const [id, target] of this.editorTargets) {
       if (!activeIds.has(id)) target.scrollElement?.classList?.remove("annotation-mode");
     }
-    this.editorTargets = new Map(targets.map((target) => [target.id, target]));
+  }
+
+  /** Hides the legacy editor overlay for the current editor state. */
+  hideLegacyEditorOverlay() {
     const main = this.services.byId("main");
     main?.classList?.remove("annotation-mode");
     const legacyOverlay = main?.querySelector?.(":scope > .editor-annotation-overlay");
@@ -440,61 +475,93 @@ export class ScreenAnnotationController {
       legacyOverlay.hidden = true;
       legacyOverlay.style.pointerEvents = "none";
     }
-    for (const target of targets) {
-      const { id, element, width, height } = target;
-      let overlay = this.editorOverlays.get(id);
-      if (!overlay || overlay.parentElement !== element) {
-        overlay = this.createOverlay(element, {
-          previewId: id,
-          className: "editor-annotation-overlay"
-        });
-      }
-      this.editorOverlays.set(id, overlay);
-      previewSizes.set(id, {
-        id,
-        label: target.label,
-        coordinateSpace: "preview content pixels",
-        canvasSize: { width, height }
-      });
-      overlay.hidden = false;
-      overlay.setAttribute("viewBox", `0 0 ${width} ${height}`);
-      overlay.setAttribute("width", String(width));
-      overlay.setAttribute("height", String(height));
-      overlay.style.width = `${width}px`;
-      overlay.style.height = `${height}px`;
-      const highestMaterialLayer = id === "screen"
-        ? [...element.querySelectorAll(":scope > .material-frame")]
-          .reduce((highest, frame) => Math.max(highest, Number(frame.style.zIndex) || 0), 20)
-        : 29;
-      overlay.style.zIndex = String(highestMaterialLayer + 1);
-      overlay.style.pointerEvents = this.enabled ? "all" : "none";
-      target.scrollElement?.classList?.toggle("annotation-mode", this.enabled);
-      if (target.contentOverflowsX !== undefined) {
-        target.scrollElement?.classList?.toggle(
-          "editor-annotation-no-overflow-x",
-          !target.contentOverflowsX
-        );
-        target.scrollElement?.classList?.toggle(
-          "editor-annotation-no-overflow-y",
-          !target.contentOverflowsY
-        );
-      }
-      overlay.replaceChildren();
-      const markerId = `annotation-arrowhead-${id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-      this.renderArrowhead(overlay, markerId);
-      for (const annotation of this.annotations) {
-        if (annotation.previewId === id ||
-            (!annotation.previewId && targets[0]?.id === id)) {
-          this.renderAnnotation(annotation, overlay, markerId);
-        }
-      }
-      if (this.drawing?.previewId === id) {
-        this.renderAnnotation(this.drawing.annotation, overlay, markerId);
-      }
-    }
-    this.contextPreviewSizes.set(this.context.key, previewSizes);
   }
 
+  /** Renders the editor preview target from the current editor data. */
+  renderEditorPreviewTarget(target, targets, previewSizes) {
+    const overlay = this.getEditorOverlay(target);
+    this.updateEditorPreviewSize(target, previewSizes);
+    this.configureEditorOverlay(target, overlay);
+    this.renderEditorTargetAnnotations(target, targets, overlay);
+  }
+
+  /** Returns the editor overlay. */
+  getEditorOverlay({ id, element }) {
+    let overlay = this.editorOverlays.get(id);
+    if (!overlay || overlay.parentElement !== element) {
+      overlay = this.createOverlay(element, {
+        previewId: id,
+        className: "editor-annotation-overlay"
+      });
+    }
+    this.editorOverlays.set(id, overlay);
+    return overlay;
+  }
+
+  /** Updates the editor preview size to reflect the latest editor state. */
+  updateEditorPreviewSize(target, previewSizes) {
+    const { id, width, height, label } = target;
+    previewSizes.set(id, {
+      id,
+      label,
+      coordinateSpace: "preview content pixels",
+      canvasSize: { width, height }
+    });
+  }
+
+  /** Updates the editor overlay for the current editor state. */
+  configureEditorOverlay(target, overlay) {
+    const { id, element, width, height, scrollElement } = target;
+    overlay.hidden = false;
+    overlay.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    overlay.setAttribute("width", String(width));
+    overlay.setAttribute("height", String(height));
+    overlay.style.width = `${width}px`;
+    overlay.style.height = `${height}px`;
+    overlay.style.zIndex = String(this.getEditorOverlayZIndex(id, element));
+    overlay.style.pointerEvents = this.enabled ? "all" : "none";
+    scrollElement?.classList?.toggle("annotation-mode", this.enabled);
+    this.configureEditorOverflow(target);
+    overlay.replaceChildren();
+  }
+
+  /** Returns the editor overlay z index. */
+  getEditorOverlayZIndex(id, element) {
+    if (id !== "screen") return 30;
+    const highestMaterialLayer = [...element.querySelectorAll(":scope > .material-frame")]
+      .reduce((highest, frame) => Math.max(highest, Number(frame.style.zIndex) || 0), 20);
+    return highestMaterialLayer + 1;
+  }
+
+  /** Updates the editor overflow for the current editor state. */
+  configureEditorOverflow(target) {
+    if (target.contentOverflowsX === undefined) return;
+    target.scrollElement?.classList?.toggle(
+      "editor-annotation-no-overflow-x",
+      !target.contentOverflowsX
+    );
+    target.scrollElement?.classList?.toggle(
+      "editor-annotation-no-overflow-y",
+      !target.contentOverflowsY
+    );
+  }
+
+  /** Renders the editor target annotations from the current editor data. */
+  renderEditorTargetAnnotations(target, targets, overlay) {
+    const { id } = target;
+    const markerId = `annotation-arrowhead-${id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+    this.renderArrowhead(overlay, markerId);
+    for (const annotation of this.annotations) {
+      if (annotation.previewId === id || (!annotation.previewId && targets[0]?.id === id)) {
+        this.renderAnnotation(annotation, overlay, markerId);
+      }
+    }
+    if (this.drawing?.previewId === id) {
+      this.renderAnnotation(this.drawing.annotation, overlay, markerId);
+    }
+  }
+
+  /** Hides the editor overlays for the current editor state. */
   hideEditorOverlays() {
     this.observeEditorPreviewTargets([]);
     for (const overlay of this.editorOverlays.values()) {
@@ -518,54 +585,83 @@ export class ScreenAnnotationController {
     }
   }
 
+  /** Collects visible editor surfaces that can receive annotations. */
   getEditorPreviewTargets() {
     const document = this.services.document;
     if (!document?.querySelectorAll) return [];
     const targets = [];
     for (const element of document.querySelectorAll("[data-annotation-preview]")) {
-      if (element.hidden || element.closest?.("[hidden]")) continue;
-      const bounds = element.getBoundingClientRect?.();
-      if (bounds && bounds.width <= 0 && bounds.height <= 0) continue;
-      const id = element.dataset?.annotationPreview;
-      if (!id) continue;
-      const isScreenPreview = element.id === "screen-preview" &&
-        ["screen", "workflow", "spec", "theme"].includes(this.context?.view) &&
-        Boolean(element.querySelector?.(":scope > .form-content"));
-      const formContent = isScreenPreview
-        ? element.querySelector(":scope > .form-content")
-        : null;
-      const captureElement = formContent || element;
-      const annotationElement = formContent ||
-        element.querySelector?.(":scope > [data-annotation-canvas]") ||
-        element;
-      const scrollElement = isScreenPreview ? element : annotationElement;
-      captureElement.dataset.annotationCapturePreview = id;
-      const viewportElement = element.closest?.(".screen-preview") || element;
-      const size = formContent
-        ? this.measureCanvasSize(captureElement)
-        : this.measureEditorPreviewSize(viewportElement, annotationElement);
-      targets.push({
-        id,
-        label: element.getAttribute("aria-label") || id,
-        element: annotationElement,
-        scrollElement,
-        captureElement,
-        hostElement: element,
-        viewportElement,
-        width: size.width,
-        height: size.height,
-        contentOverflowsX: size.contentOverflowsX,
-        contentOverflowsY: size.contentOverflowsY
-      });
-      scrollElement.dataset.annotationCaptureScroll = id;
+      const target = this.createEditorPreviewTarget(element);
+      if (target) targets.push(target);
     }
     return targets;
   }
 
+  /** Builds a target descriptor for mapping annotations onto an editor preview. */
+  createEditorPreviewTarget(element) {
+    if (!this.isVisibleAnnotationPreview(element)) return null;
+    const id = element.dataset?.annotationPreview;
+    if (!id) return null;
+    const formContent = this.getScreenPreviewContent(element);
+    const captureElement = formContent || element;
+    const annotationElement = this.getAnnotationCanvas(element, formContent);
+    const isScreenPreview = Boolean(formContent);
+    const scrollElement = isScreenPreview ? element : annotationElement;
+    captureElement.dataset.annotationCapturePreview = id;
+    const viewportElement = element.closest?.(".screen-preview") || element;
+    const size = this.measurePreviewTarget(viewportElement, annotationElement, formContent);
+    scrollElement.dataset.annotationCaptureScroll = id;
+    return {
+      id,
+      label: element.getAttribute("aria-label") || id,
+      element: annotationElement,
+      scrollElement,
+      captureElement,
+      hostElement: element,
+      viewportElement,
+      width: size.width,
+      height: size.height,
+      contentOverflowsX: size.contentOverflowsX,
+      contentOverflowsY: size.contentOverflowsY
+    };
+  }
+
+  /** Checks whether the preview target is visible and can display annotations. */
+  isVisibleAnnotationPreview(element) {
+    if (element.hidden || element.closest?.("[hidden]")) return false;
+    const bounds = element.getBoundingClientRect?.();
+    return !(bounds && bounds.width <= 0 && bounds.height <= 0);
+  }
+
+  /** Returns the screen preview content. */
+  getScreenPreviewContent(element) {
+    const isScreenPreview = element.id === "screen-preview" &&
+      ["screen", "workflow", "spec", "theme"].includes(this.context?.view);
+    return isScreenPreview
+      ? element.querySelector?.(":scope > .form-content") || null
+      : null;
+  }
+
+  /** Returns the coordinate dimensions used to store an annotation set. */
+  getAnnotationCanvas(element, formContent) {
+    return formContent ||
+      element.querySelector?.(":scope > [data-annotation-canvas]") ||
+      element;
+  }
+
+  /** Measures the preview target for the current editor state. */
+  measurePreviewTarget(viewportElement, annotationElement, formContent) {
+    return formContent
+      ? this.measureCanvasSize(formContent)
+      : this.measureEditorPreviewSize(viewportElement, annotationElement);
+  }
+
+  /** Returns the preview capture targets. */
   getPreviewCaptureTargets() {
     return this.getEditorPreviewTargets();
   }
 
+  /** Updates the editor preview targets for the current editor state. */
   observeEditorPreviewTargets(targets) {
     if (!this.resizeObserver) return;
     const nextTargets = new Set(targets.map((target) => target.viewportElement));
@@ -582,6 +678,7 @@ export class ScreenAnnotationController {
     this.editorResizeTargets = nextTargets;
   }
 
+  /** Measures the editor preview size for the current editor state. */
   measureEditorPreviewSize(viewportElement, annotationElement) {
     const overlay = annotationElement.querySelector?.(
       ":scope > .editor-annotation-overlay"
@@ -589,30 +686,28 @@ export class ScreenAnnotationController {
     const overlayDisplay = overlay?.style.display;
     if (overlay) overlay.style.display = "none";
     try {
-      const viewportBounds = viewportElement.getBoundingClientRect?.();
-      const viewportWidth = viewportElement.clientWidth || viewportBounds?.width || 0;
-      const viewportHeight = viewportElement.clientHeight || viewportBounds?.height || 0;
-      const contentWidth = annotationElement.scrollWidth || annotationElement.clientWidth || 0;
-      const contentHeight = annotationElement.scrollHeight || annotationElement.clientHeight || 0;
-      const width = Math.max(
-        contentWidth,
-        viewportWidth
-      );
-      const height = Math.max(
-        contentHeight,
-        viewportHeight
-      );
-      return {
-        width: Math.max(1, width),
-        height: Math.max(1, height),
-        contentOverflowsX: contentWidth > viewportWidth,
-        contentOverflowsY: contentHeight > viewportHeight
-      };
+      return this.getEditorPreviewSize(viewportElement, annotationElement);
     } finally {
       if (overlay) overlay.style.display = overlayDisplay;
     }
   }
 
+  /** Returns the editor preview size. */
+  getEditorPreviewSize(viewportElement, annotationElement) {
+    const viewportBounds = viewportElement.getBoundingClientRect?.();
+    const viewportWidth = viewportElement.clientWidth || viewportBounds?.width || 0;
+    const viewportHeight = viewportElement.clientHeight || viewportBounds?.height || 0;
+    const contentWidth = annotationElement.scrollWidth || annotationElement.clientWidth || 0;
+    const contentHeight = annotationElement.scrollHeight || annotationElement.clientHeight || 0;
+    return {
+      width: Math.max(1, contentWidth, viewportWidth),
+      height: Math.max(1, contentHeight, viewportHeight),
+      contentOverflowsX: contentWidth > viewportWidth,
+      contentOverflowsY: contentHeight > viewportHeight
+    };
+  }
+
+  /** Measures the canvas size for the current editor state. */
   measureCanvasSize(content) {
     const contentRect = content.getBoundingClientRect();
     const scaleX = contentRect.width / (content.offsetWidth || contentRect.width || 1);
@@ -627,6 +722,7 @@ export class ScreenAnnotationController {
     return { width: Math.ceil(width), height: Math.ceil(height) };
   }
 
+  /** Renders the arrowhead from the current editor data. */
   renderArrowhead(overlay = this.overlay, markerId = "annotation-arrowhead") {
     const defs = this.services.document.createElementNS(SVG_NAMESPACE, "defs");
     const marker = this.svgElement("marker", {
@@ -646,83 +742,109 @@ export class ScreenAnnotationController {
     overlay.append(defs);
   }
 
+  /** Renders the annotation from the current editor data. */
   renderAnnotation(annotation, overlay = this.overlay, markerId = "annotation-arrowhead") {
-    const points = annotation.points;
     const group = this.svgElement("g", { "data-annotation-id": annotation.id });
     const title = this.svgElement("title");
     title.textContent = `${annotation.tool} annotation${annotation.text ? `: ${annotation.text}` : ""}`;
     group.append(title);
-    if (annotation.tool === "circle") {
-      const first = points[0];
-      const second = points[points.length - 1];
-      group.append(this.svgElement("ellipse", {
-        cx: String((first.x + second.x) / 2),
-        cy: String((first.y + second.y) / 2),
-        rx: String(Math.abs(second.x - first.x) / 2),
-        ry: String(Math.abs(second.y - first.y) / 2),
-        class: "annotation-shape",
-        fill: "rgba(225, 29, 72, 0.1)",
-        stroke: "#e11d48",
-        "stroke-width": "3",
-        "stroke-linecap": "round",
-        "stroke-linejoin": "round",
-        "vector-effect": "non-scaling-stroke"
-      }));
-    } else if (annotation.tool === "rectangle") {
-      const first = points[0];
-      const second = points[points.length - 1];
-      group.append(this.svgElement("rect", {
-        x: String(Math.min(first.x, second.x)),
-        y: String(Math.min(first.y, second.y)),
-        width: String(Math.abs(second.x - first.x)),
-        height: String(Math.abs(second.y - first.y)),
-        class: "annotation-shape",
-        fill: "rgba(225, 29, 72, 0.1)",
-        stroke: "#e11d48",
-        "stroke-width": "3",
-        "stroke-linecap": "round",
-        "stroke-linejoin": "round",
-        "vector-effect": "non-scaling-stroke"
-      }));
-    } else if (annotation.tool === "arrow") {
-      const first = points[0];
-      const second = points[points.length - 1];
-      group.append(this.svgElement("line", {
-        x1: String(first.x),
-        y1: String(first.y),
-        x2: String(second.x),
-        y2: String(second.y),
-        class: "annotation-shape annotation-arrow",
-        fill: "none",
-        stroke: "#e11d48",
-        "stroke-width": "3",
-        "stroke-linecap": "round",
-        "stroke-linejoin": "round",
-        "marker-end": `url(#${markerId})`,
-        "vector-effect": "non-scaling-stroke"
-      }));
-    } else if (annotation.tool === "note") {
-      this.renderNote(group, points[0], annotation.text || "");
-    } else {
-      const pathData = points.map((point, index) =>
-        `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`
-      ).join(" ");
-      const isHighlight = annotation.tool === "highlight";
-      group.append(this.svgElement("path", {
-        d: pathData,
-        class: isHighlight ? "annotation-highlight" : "annotation-pen",
-        fill: "none",
-        stroke: isHighlight ? "#facc15" : "#e11d48",
-        "stroke-width": isHighlight ? "22" : "3",
-        "stroke-linecap": "round",
-        "stroke-linejoin": "round",
-        opacity: isHighlight ? "0.38" : "1",
-        "vector-effect": "non-scaling-stroke"
-      }));
-    }
+    this.renderAnnotationShape(annotation, group, markerId);
     overlay.append(group);
   }
 
+  /** Renders the annotation shape from the current editor data. */
+  renderAnnotationShape(annotation, group, markerId) {
+    const renderers = {
+      circle: () => this.renderCircleAnnotation(group, annotation.points),
+      rectangle: () => this.renderRectangleAnnotation(group, annotation.points),
+      arrow: () => this.renderArrowAnnotation(group, annotation.points, markerId),
+      note: () => this.renderNote(group, annotation.points[0], annotation.text || "")
+    };
+    if (renderers[annotation.tool]) {
+      renderers[annotation.tool]();
+      return;
+    }
+    this.renderFreehandAnnotation(group, annotation);
+  }
+
+  /** Renders the circle annotation from the current editor data. */
+  renderCircleAnnotation(group, points) {
+    const first = points[0];
+    const second = points[points.length - 1];
+    group.append(this.svgElement("ellipse", {
+      cx: String((first.x + second.x) / 2),
+      cy: String((first.y + second.y) / 2),
+      rx: String(Math.abs(second.x - first.x) / 2),
+      ry: String(Math.abs(second.y - first.y) / 2),
+      class: "annotation-shape",
+      fill: "rgba(225, 29, 72, 0.1)",
+      stroke: "#e11d48",
+      "stroke-width": "3",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      "vector-effect": "non-scaling-stroke"
+    }));
+  }
+
+  /** Renders the rectangle annotation from the current editor data. */
+  renderRectangleAnnotation(group, points) {
+    const first = points[0];
+    const second = points[points.length - 1];
+    group.append(this.svgElement("rect", {
+      x: String(Math.min(first.x, second.x)),
+      y: String(Math.min(first.y, second.y)),
+      width: String(Math.abs(second.x - first.x)),
+      height: String(Math.abs(second.y - first.y)),
+      class: "annotation-shape",
+      fill: "rgba(225, 29, 72, 0.1)",
+      stroke: "#e11d48",
+      "stroke-width": "3",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      "vector-effect": "non-scaling-stroke"
+    }));
+  }
+
+  /** Renders the arrow annotation from the current editor data. */
+  renderArrowAnnotation(group, points, markerId) {
+    const first = points[0];
+    const second = points[points.length - 1];
+    group.append(this.svgElement("line", {
+      x1: String(first.x),
+      y1: String(first.y),
+      x2: String(second.x),
+      y2: String(second.y),
+      class: "annotation-shape annotation-arrow",
+      fill: "none",
+      stroke: "#e11d48",
+      "stroke-width": "3",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      "marker-end": `url(#${markerId})`,
+      "vector-effect": "non-scaling-stroke"
+    }));
+  }
+
+  /** Renders the freehand annotation from the current editor data. */
+  renderFreehandAnnotation(group, annotation) {
+    const pathData = annotation.points.map((point, index) =>
+      `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`
+    ).join(" ");
+    const isHighlight = annotation.tool === "highlight";
+    group.append(this.svgElement("path", {
+      d: pathData,
+      class: isHighlight ? "annotation-highlight" : "annotation-pen",
+      fill: "none",
+      stroke: isHighlight ? "#facc15" : "#e11d48",
+      "stroke-width": isHighlight ? "22" : "3",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      opacity: isHighlight ? "0.38" : "1",
+      "vector-effect": "non-scaling-stroke"
+    }));
+  }
+
+  /** Renders the note from the current editor data. */
   renderNote(group, point, text) {
     const lines = text.match(/.{1,36}(\s|$)/g)?.map((line) => line.trim()) || [text];
     const visibleLines = lines.slice(0, 4);
@@ -755,36 +877,47 @@ export class ScreenAnnotationController {
     });
   }
 
+  /** Updates the element for the current editor state. */
   svgElement(name, attributes = {}) {
     const element = this.services.document.createElementNS(SVG_NAMESPACE, name);
     for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, value);
     return element;
   }
 
+  /** Converts pointer coordinates into the coordinate space of the targeted preview. */
   pointFromEvent(event, previewId = null) {
     if (this.context?.kind === "editor") {
-      const target = previewId ? this.editorTargets.get(previewId) : null;
-      if (target) {
-        const rect = target.element.getBoundingClientRect();
-        const scaleX = rect.width / (target.element.offsetWidth || rect.width || 1);
-        const scaleY = rect.height / (target.element.offsetHeight || rect.height || 1);
-        const scrollLeft = target.element === target.scrollElement
-          ? target.scrollElement.scrollLeft
-          : 0;
-        const scrollTop = target.element === target.scrollElement
-          ? target.scrollElement.scrollTop
-          : 0;
-        return {
-          x: clamp((event.clientX - rect.left) / (scaleX || 1) + scrollLeft, 0, target.width),
-          y: clamp((event.clientY - rect.top) / (scaleY || 1) + scrollTop, 0, target.height)
-        };
-      }
-      const rect = this.services.byId("main").getBoundingClientRect();
-      return {
-        x: clamp((event.clientX - rect.left) * this.renderWidth / (rect.width || 1), 0, this.renderWidth),
-        y: clamp((event.clientY - rect.top) * this.renderHeight / (rect.height || 1), 0, this.renderHeight)
-      };
+      return this.pointFromEditorEvent(event, previewId);
     }
+    return this.pointFromScreenEvent(event);
+  }
+
+  /** Maps an editor pointer event to its annotation-canvas coordinates. */
+  pointFromEditorEvent(event, previewId) {
+    const target = previewId ? this.editorTargets.get(previewId) : null;
+    if (target) return this.pointWithinEditorPreview(event, target);
+    const rect = this.services.byId("main").getBoundingClientRect();
+    return {
+      x: clamp((event.clientX - rect.left) * this.renderWidth / (rect.width || 1), 0, this.renderWidth),
+      y: clamp((event.clientY - rect.top) * this.renderHeight / (rect.height || 1), 0, this.renderHeight)
+    };
+  }
+
+  /** Checks whether the point falls inside the specified editor preview. */
+  pointWithinEditorPreview(event, target) {
+    const rect = target.element.getBoundingClientRect();
+    const scaleX = rect.width / (target.element.offsetWidth || rect.width || 1);
+    const scaleY = rect.height / (target.element.offsetHeight || rect.height || 1);
+    const scrollLeft = target.element === target.scrollElement ? target.scrollElement.scrollLeft : 0;
+    const scrollTop = target.element === target.scrollElement ? target.scrollElement.scrollTop : 0;
+    return {
+      x: clamp((event.clientX - rect.left) / (scaleX || 1) + scrollLeft, 0, target.width),
+      y: clamp((event.clientY - rect.top) / (scaleY || 1) + scrollTop, 0, target.height)
+    };
+  }
+
+  /** Maps a Screen canvas event to absolute canvas coordinates. */
+  pointFromScreenEvent(event) {
     const content = this.services.byId("screen-preview").querySelector(":scope > .form-content");
     const rect = content.getBoundingClientRect();
     const scaleX = rect.width / (content.offsetWidth || rect.width || 1);
@@ -803,6 +936,7 @@ export class ScreenAnnotationController {
     };
   }
 
+  /** Finds the preview target and target-relative point beneath the pointer. */
   targetAtPoint(point) {
     if (this.context?.kind === "editor") return null;
     const preview = this.services.byId("screen-preview");
@@ -812,6 +946,12 @@ export class ScreenAnnotationController {
     const scaleY = rect.height / (content.offsetHeight || rect.height || 1);
     const clientX = rect.left + point.x * (scaleX || 1);
     const clientY = rect.top + point.y * (scaleY || 1);
+    const node = this.findNodeAtPreviewPoint(clientX, clientY);
+    return this.getPlacementTarget(node);
+  }
+
+  /** Finds the workflow node under the supplied preview point. */
+  findNodeAtPreviewPoint(clientX, clientY) {
     this.overlay.style.pointerEvents = "none";
     let node;
     try {
@@ -824,41 +964,54 @@ export class ScreenAnnotationController {
     } finally {
       this.overlay.style.pointerEvents = this.enabled ? "all" : "none";
     }
+    return node;
+  }
+
+  /** Returns the placement target. */
+  getPlacementTarget(node) {
     const hitNode = node;
     while (node) {
       if (node.classList?.contains("material-instance")) {
-        let instancePath;
-        try {
-          instancePath = JSON.parse(node.dataset.specuxInstancePath || node.dataset.instancePath || "[]");
-        } catch {
-          return null;
-        }
-        let contextText;
-        let contextNode = hitNode;
-        while (contextNode && contextNode !== node) {
-          const text = (contextNode.innerText || contextNode.textContent || "")
-            .replace(/\s+/g, " ")
-            .trim();
-          if (text.length >= 3 && text.length <= 500) {
-            contextText = text;
-            break;
-          }
-          contextNode = contextNode.parentElement || contextNode.getRootNode?.().host || null;
-        }
-        return {
-          instancePath,
-          ...(node.dataset.materialId ? { materialId: node.dataset.materialId } : {}),
-          ...(node.dataset.materialSrc ? { materialSrc: node.dataset.materialSrc } : {}),
-          ...(node.dataset.specuxElementId ? { elementId: node.dataset.specuxElementId } : {}),
-          ...(node.dataset.specuxInstanceName ? { name: node.dataset.specuxInstanceName } : {}),
-          ...(contextText ? { text: contextText } : {})
-        };
+        return this.createAnnotationTarget(node, hitNode);
       }
       node = node.parentElement || node.getRootNode?.().host || null;
     }
     return null;
   }
 
+  /** Builds the coordinate descriptor for the selected annotation preview. */
+  createAnnotationTarget(node, hitNode) {
+    let instancePath;
+    try {
+      instancePath = JSON.parse(node.dataset.specuxInstancePath || node.dataset.instancePath || "[]");
+    } catch {
+      return null;
+    }
+    const text = this.getAnnotationContextText(hitNode, node);
+    return {
+      instancePath,
+      ...(node.dataset.materialId ? { materialId: node.dataset.materialId } : {}),
+      ...(node.dataset.materialSrc ? { materialSrc: node.dataset.materialSrc } : {}),
+      ...(node.dataset.specuxElementId ? { elementId: node.dataset.specuxElementId } : {}),
+      ...(node.dataset.specuxInstanceName ? { name: node.dataset.specuxInstanceName } : {}),
+      ...(text ? { text } : {})
+    };
+  }
+
+  /** Returns the annotation context text. */
+  getAnnotationContextText(hitNode, materialNode) {
+    let contextNode = hitNode;
+    while (contextNode && contextNode !== materialNode) {
+      const text = (contextNode.innerText || contextNode.textContent || "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (text.length >= 3 && text.length <= 500) return text;
+      contextNode = contextNode.parentElement || contextNode.getRootNode?.().host || null;
+    }
+    return "";
+  }
+
+  /** Converts a pointer location to coordinates relative to its annotation target. */
   targetPoint(annotation) {
     if (annotation.tool === "circle" || annotation.tool === "rectangle" || annotation.tool === "arrow") {
       const first = annotation.points[0];
@@ -868,11 +1021,13 @@ export class ScreenAnnotationController {
     return annotation.points[Math.floor(annotation.points.length / 2)];
   }
 
+  /** Generates an identifier for a persisted annotation. */
   createId() {
     return this.services.window.crypto?.randomUUID?.() ||
       `annotation-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
+  /** Handles pointer down events for the related editor control. */
   onPointerDown(event, overlay = event.currentTarget || this.overlay) {
     if (!this.enabled || !this.context || event.button !== 0) return;
     event.preventDefault();
@@ -881,24 +1036,34 @@ export class ScreenAnnotationController {
       : null;
     const point = this.pointFromEvent(event, previewId);
     if (this.tool === "note") {
-      const text = this.services.prompt("Annotation note for the AI:", "");
-      if (!text?.trim()) return;
-      const target = this.targetAtPoint(point);
-      this.annotations.push({
-        id: this.createId(),
-        tool: this.tool,
-        points: [point],
-        ...(previewId ? { previewId } : {}),
-        text: text.trim(),
-        ...(target ? { target } : {})
-      });
-      this.annotationRevision += 1;
-      this.redoStack = [];
-      this.render();
-      this.updateControls();
-      this.persist().catch((error) => this.reportError("Could not publish annotation", error));
+      this.createNoteAnnotation(point, previewId);
       return;
     }
+    this.startAnnotationDrawing(event, overlay, point, previewId);
+  }
+
+  /** Creates a note annotation at the pointer location with its initial text. */
+  createNoteAnnotation(point, previewId) {
+    const text = this.services.prompt("Annotation note for the AI:", "");
+    if (!text?.trim()) return;
+    const target = this.targetAtPoint(point);
+    this.annotations.push({
+      id: this.createId(),
+      tool: this.tool,
+      points: [point],
+      ...(previewId ? { previewId } : {}),
+      text: text.trim(),
+      ...(target ? { target } : {})
+    });
+    this.annotationRevision += 1;
+    this.redoStack = [];
+    this.render();
+    this.updateControls();
+    this.persist().catch((error) => this.reportError("Could not publish annotation", error));
+  }
+
+  /** Starts the annotation drawing for the current editor state. */
+  startAnnotationDrawing(event, overlay, point, previewId) {
     const annotation = {
       id: this.createId(),
       tool: this.tool,
@@ -910,6 +1075,7 @@ export class ScreenAnnotationController {
     this.render();
   }
 
+  /** Handles pointer move events for the related editor control. */
   onPointerMove(event) {
     if (!this.drawing || event.pointerId !== this.drawing.pointerId) return;
     const points = this.drawing.annotation.points;
@@ -926,6 +1092,7 @@ export class ScreenAnnotationController {
     this.render();
   }
 
+  /** Handles pointer up events for the related editor control. */
   onPointerUp(event) {
     if (!this.drawing || event.pointerId !== this.drawing.pointerId) return;
     const points = this.drawing.annotation.points;

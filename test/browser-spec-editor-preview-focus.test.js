@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+/** Creates an Element preview fixture with an instance path and optional bounds. */
 function createInstance(path, children = [], shadowRoot = null, bounds = null) {
   const classes = new Set(["material-instance"]);
   const styles = new Map();
@@ -23,6 +24,7 @@ function createInstance(path, children = [], shadowRoot = null, bounds = null) {
   return instance;
 }
 
+/** Creates a control fixture that records registered keyboard and pointer handlers. */
 function createControl() {
   return {
     listeners: new Map(),
@@ -32,6 +34,7 @@ function createControl() {
   };
 }
 
+/** Provides the DOM lookups and navigation stubs used by SpecEditor tests. */
 function createEditorServices(preview, calls = []) {
   const elements = new Map([
     ["screen-preview", preview],
@@ -47,6 +50,7 @@ function createEditorServices(preview, calls = []) {
   };
 }
 
+/** Creates a source node fixture that records highlighted text and selection. */
 function createHighlightNode(tagName, ownerDocument) {
   const classes = new Set();
   let textContent = "";
@@ -81,6 +85,7 @@ function createHighlightNode(tagName, ownerDocument) {
   };
 }
 
+/** Selecting an Element spec focuses its instance path and dims branches outside the target. */
 test("focuses an Element spec target and dims unrelated preview branches", async () => {
   const { SpecEditor } = await import("../frontend/browser/SpecEditor.mjs");
   const selectedChild = createInstance([0, "navigation", 0, "links", 0]);
@@ -140,6 +145,7 @@ test("focuses an Element spec target and dims unrelated preview branches", async
   assert.equal(insideSelectedArea.style.getPropertyValue("filter"), "");
 });
 
+/** The source overlay marks both the linked text and the Markdown section that contains it. */
 test("highlights the selected Spec link and its section in the source overlay", async () => {
   const { SpecEditor } = await import("../frontend/browser/SpecEditor.mjs");
   const filePath = "screens/home/specs/home.md";
@@ -215,6 +221,7 @@ test("highlights the selected Spec link and its section in the source overlay", 
   assert.equal(highlight.scrollLeft, 18);
 });
 
+/** Checks that selection and preview state remain consistent through the interaction. */
 test("keeps selected source text visibly highlighted when the editor loses focus", async () => {
   const { SpecEditor } = await import("../frontend/browser/SpecEditor.mjs");
   const filePath = "screens/home/specs/home.md";
@@ -275,6 +282,7 @@ test("keeps selected source text visibly highlighted when the editor loses focus
   assert.equal(published, 1);
 });
 
+/** Checks that selection and preview state remain consistent through the interaction. */
 test("keeps all descendants clear when a container Element is focused", async () => {
   const { SpecEditor } = await import("../frontend/browser/SpecEditor.mjs");
   const nestedChild = createInstance([0, "navigation", 0]);
@@ -302,6 +310,7 @@ test("keeps all descendants clear when a container Element is focused", async ()
   assert.equal(unrelated.style.getPropertyValue("filter"), "blur(1.5px)");
 });
 
+/** Arrow-key movement wraps across Screen and workflow links and activates the highlighted reference. */
 test("navigates Screen and workflow links with a wrapping up/down selector", async () => {
   const { SpecEditor } = await import("../frontend/browser/SpecEditor.mjs");
   const preview = { children: [] };

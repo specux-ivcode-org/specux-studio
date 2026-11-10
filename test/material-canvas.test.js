@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+/** Creates a DOM element with the supplied content and attributes. */
 function createElement(tagName) {
   const listeners = new Map();
   const attributes = new Map();
@@ -78,6 +79,7 @@ function createElement(tagName) {
   };
 }
 
+/** Creates a pointer event fixture with the requested canvas coordinates and buttons. */
 function createPointerEvent({ pointerId = 1, clientX, clientY, target, path } = {}) {
   return {
     button: 0,
@@ -91,6 +93,7 @@ function createPointerEvent({ pointerId = 1, clientX, clientY, target, path } = 
   };
 }
 
+/** Creates a DOM document stub for source-rendering tests. */
 function createDocument() {
   return {
     createElement,
@@ -100,7 +103,13 @@ function createDocument() {
   };
 }
 
-async function createHarness(scaleType = "xy", viewingWorkflow = false, viewingTheme = false) {
+/** Builds the fake DOM, storage, and panel controls used by the controller tests. */
+async function createHarness(
+  scaleType = "xy",
+  viewingWorkflow = false,
+  viewingTheme = false,
+  viewingSpec = false
+) {
   const content = createElement("div");
   content.offsetWidth = 1000;
   content.offsetHeight = 800;
@@ -119,7 +128,7 @@ async function createHarness(scaleType = "xy", viewingWorkflow = false, viewingT
   const calls = { edited: 0, selected: 0, inspector: 0 };
   const { MaterialCanvas } = await import("../frontend/browser/MaterialCanvas.mjs");
   const canvas = new MaterialCanvas({
-    state: { isRenderOnly: false, viewingWorkflow, viewingTheme, scaleType },
+    state: { isRenderOnly: false, viewingWorkflow, viewingTheme, viewingSpec, scaleType },
     services: {
       document: createDocument(),
       markEdited() { calls.edited += 1; },
@@ -132,6 +141,7 @@ async function createHarness(scaleType = "xy", viewingWorkflow = false, viewingT
   return { canvas, content, frame, host, instance, calls, screen };
 }
 
+/** Creates connected canvas frames for multi-selection interaction tests. */
 async function createMultiHarness(scaleType = "xy") {
   const content = createElement("div");
   content.offsetWidth = 1000;
@@ -166,6 +176,7 @@ async function createMultiHarness(scaleType = "xy") {
   return { canvas, content, frames, placements, calls };
 }
 
+/** Checks the moved placement position and its persisted geometry. */
 test("moves a selected material in canvas coordinates and persists its position", async () => {
   const { frame, host, instance, calls } = await createHarness();
   host.listeners.get("pointerdown")(createPointerEvent({
@@ -192,6 +203,7 @@ test("moves a selected material in canvas coordinates and persists its position"
   assert.equal(calls.inspector, 1);
 });
 
+/** Workflow preview rendering omits placement selection and transform affordances. */
 test("workflow preview does not create selection or transform controls", async () => {
   const { frame, host } = await createHarness("xy", true);
 
@@ -203,6 +215,19 @@ test("workflow preview does not create selection or transform controls", async (
   assert.equal(host.listeners.has("click"), false);
 });
 
+/** Behavior spec preview rendering omits placement selection and transform affordances. */
+test("spec preview does not create selection or transform controls", async () => {
+  const { frame, host } = await createHarness("xy", false, false, true);
+
+  assert.deepEqual(frame.querySelectorAll(".material-control"), []);
+  assert.equal(frame.listeners.has("pointerdown"), false);
+  assert.equal(frame.listeners.has("pointermove"), false);
+  assert.equal(frame.listeners.has("pointerup"), false);
+  assert.equal(host.listeners.has("pointerdown"), false);
+  assert.equal(host.listeners.has("click"), false);
+});
+
+/** Theme color sampling consumes preview interaction without changing Screen placement selection or geometry. */
 test("Theme preview does not select or transform Screen placements", async () => {
   const { frame, host, instance, calls } = await createHarness("xy", false, true);
 
@@ -216,6 +241,7 @@ test("Theme preview does not select or transform Screen placements", async () =>
   assert.equal(calls.edited, 0);
 });
 
+/** Exercises preview resizing and checks the updated dimensions and saved source. */
 test("resizes and rotates materials with pointer handles", async () => {
   const { frame, instance, calls } = await createHarness();
   const southeast = frame.querySelectorAll(".material-resize-control")
@@ -289,6 +315,7 @@ test("resizes and rotates materials with pointer handles", async () => {
   assert.deepEqual(transform.position, { x: 5, y: 25 });
 });
 
+/** Transform resizing persists scale components without rewriting the placement's declared dimensions. */
 test("transform resize saves scale factors without changing placement dimensions", async () => {
   const { frame, instance } = await createHarness("transform");
   const east = frame.querySelectorAll(".material-resize-control")
@@ -309,6 +336,7 @@ test("transform resize saves scale factors without changing placement dimensions
   assert.equal(frame.style.transform, "rotate(0deg) scale(1.2, 1)");
 });
 
+/** Exercises preview resizing and checks the updated dimensions and saved source. */
 test("resizes all selected placements from their combined bounds in X/Y mode", async () => {
   const { frames, placements } = await createMultiHarness();
   const east = frames[0].querySelectorAll(".material-resize-control")
@@ -330,6 +358,7 @@ test("resizes all selected placements from their combined bounds in X/Y mode", a
   assert.ok(Math.abs(placements[1].position.x - 340) < 1e-10);
 });
 
+/** Checks that selection and preview state remain consistent through the interaction. */
 test("keeps multi-selection resize dimensions when a placement is moved afterward", async () => {
   const { frames, placements } = await createMultiHarness();
   const east = frames[0].querySelectorAll(".material-resize-control")
@@ -366,6 +395,7 @@ test("keeps multi-selection resize dimensions when a placement is moved afterwar
   assert.ok(Math.abs(placements[0].position.x - 120) < 1e-10);
 });
 
+/** Multi-selection scaling updates each transform while preserving each placement's width and height. */
 test("transform-resizes all selected placements without changing their dimensions", async () => {
   const { frames, placements } = await createMultiHarness("transform");
   const east = frames[0].querySelectorAll(".material-resize-control")
@@ -411,6 +441,7 @@ test("transform-resizes all selected placements without changing their dimension
   assert.ok(Math.abs(placements[0].position.x - 130) < 1e-10);
 });
 
+/** The rotation pivot is the center of the combined bounds for all selected placements. */
 test("rotates all selected placements around their shared bounds center", async () => {
   const { frames, placements } = await createMultiHarness();
   const rotate = frames[0].querySelector(".material-rotate-control");
@@ -432,6 +463,7 @@ test("rotates all selected placements around their shared bounds center", async 
   assert.ok(Math.abs(placements[1].position.y - 200) < 1e-10);
 });
 
+/** Selection outlines follow transformed bounds but are not themselves transformed. */
 test("sizes selection outlines to transformed bounds without transforming them", async () => {
   const { canvas, frame, host } = await createHarness();
   canvas.applyTransform(frame, host, {
@@ -471,7 +503,10 @@ test("sizes selection outlines to transformed bounds without transforming them",
   assert.equal(frame.querySelector(".material-rotate-control").style.top, "25px");
 });
 
+/** Group X/Y resizing saves child geometry, whereas transform resizing saves group scale. */
 test("X/Y resizing a group persists descendant geometry while transform resizing persists scale", async () => {
+
+  /** Creates a grouped placement fixture and its canvas collaborators. */
   async function createGroupHarness(scaleType) {
     const { MaterialCanvas } = await import("../frontend/browser/MaterialCanvas.mjs");
     const canvas = new MaterialCanvas({
@@ -549,6 +584,7 @@ test("X/Y resizing a group persists descendant geometry while transform resizing
   assert.deepEqual(transformed.child.size, { width: 100, height: 40 });
 });
 
+/** Checks that selection and preview state remain consistent through the interaction. */
 test("keeps grouped Material placements from being transformed independently", async () => {
   const { MaterialCanvas } = await import("../frontend/browser/MaterialCanvas.mjs");
   const canvas = new MaterialCanvas({
@@ -625,6 +661,7 @@ test("keeps grouped Material placements from being transformed independently", a
   assert.equal(Boolean(nestedGroupFrame.querySelector(".material-rotate-control")), false);
 });
 
+/** A group with automatic width spans the canvas rather than collapsing to child content. */
 test("gives unsized groups the full canvas width", async () => {
   const { MaterialCanvas } = await import("../frontend/browser/MaterialCanvas.mjs");
   const host = createElement("div");
@@ -650,6 +687,7 @@ test("gives unsized groups the full canvas width", async () => {
   assert.equal(host.style.width, "100%");
 });
 
+/** Canvas stacking follows layer order and remains stable for placements in the same layer. */
 test("stacks placements by layer order while preserving material order within each layer", async () => {
   const { MaterialCanvas } = await import("../frontend/browser/MaterialCanvas.mjs");
   const canvas = new MaterialCanvas({
@@ -694,6 +732,7 @@ test("stacks placements by layer order while preserving material order within ea
   assert.ok(Number(backFrame.style.zIndex) > Number(baseFrame.style.zIndex));
 });
 
+/** Legacy layer definitions are normalized without assigning unlayered placements implicitly. */
 test("normalizes legacy layer lists without inventing placement assignments", async () => {
   const { BASE_LAYER_ID, normalizeScreenLayers } =
     await import("../shared/ScreenLayers.mjs");
@@ -718,6 +757,7 @@ test("normalizes legacy layer lists without inventing placement assignments", as
   assert.equal(normalizeScreenLayers(screen), false);
 });
 
+/** Instances share the Label template while retaining independent variable values and transforms. */
 test("adds Label instances from one reusable template with independent variables and transforms", async () => {
   const { ScreenMaterialController } = await import("../frontend/browser/ScreenMaterialController.mjs");
   const screen = {
@@ -803,6 +843,7 @@ test("adds Label instances from one reusable template with independent variables
   );
 });
 
+/** Base follows normal layer behavior, including removal of its placements when deleted. */
 test("treats Base as an ordinary layer and deletes layers with placements", async () => {
   const { ScreenMaterialController } = await import("../frontend/browser/ScreenMaterialController.mjs");
   const screen = {
@@ -867,6 +908,7 @@ test("treats Base as an ordinary layer and deletes layers with placements", asyn
   assert.equal(calls.rendered, 11);
 });
 
+/** Deleting a layer removes its placements and leaves selection paths valid for survivors. */
 test("deleting a layer removes its placements and keeps surviving selection valid", async () => {
   const { ScreenMaterialController } = await import("../frontend/browser/ScreenMaterialController.mjs");
   const screen = {
@@ -927,6 +969,7 @@ test("deleting a layer removes its placements and keeps surviving selection vali
   assert.deepEqual(screen.data.materials.map(({ id }) => id), ["backup-item"]);
 });
 
+/** Placement ordering changes only within the selected layer. */
 test("reorders placements within their layer without changing other layers", async () => {
   const { ScreenMaterialController } = await import("../frontend/browser/ScreenMaterialController.mjs");
   const screen = {
@@ -968,6 +1011,7 @@ test("reorders placements within their layer without changing other layers", asy
   assert.deepEqual(selections, [[2], [3]]);
 });
 
+/** Drop position selects the new layer or placement order without losing the selected placement. */
 test("reorders layers and placements by drop position while preserving placement selection", async () => {
   const { ScreenMaterialController } = await import("../frontend/browser/ScreenMaterialController.mjs");
   const screen = {
@@ -1026,8 +1070,11 @@ test("reorders layers and placements by drop position while preserving placement
   assert.equal(renders, 4);
 });
 
+/** The inspector places compact layer rows before the selected layer's placement rows. */
 test("shows one-line layers above placements for the selected layer", async () => {
   const { InspectorRenderer } = await import("../frontend/browser/InspectorRenderer.mjs");
+
+  /** Creates a DOM element with the supplied content and attributes. */
   function element(tagName, className = "", textContent = "") {
     const listeners = new Map();
     const attributes = new Map();
@@ -1204,8 +1251,11 @@ test("shows one-line layers above placements for the selected layer", async () =
   assert.equal(singleLayerDelete.title, "At least one layer must remain");
 });
 
+/** Inspector fields combine Screen defaults with state overrides; resetting one property preserves sibling overrides. */
 test("combines Screen and Screen State properties and resets one state change", async () => {
   const { InspectorRenderer } = await import("../frontend/browser/InspectorRenderer.mjs");
+
+  /** Creates a DOM element with the supplied content and attributes. */
   function element(tagName, className = "", textContent = "") {
     const listeners = new Map();
     const attributes = new Map();
@@ -1287,6 +1337,8 @@ test("combines Screen and Screen State properties and resets one state change", 
   });
 
   renderer.renderScreenProperties(panel, screen.data);
+
+  /** Finds the Element instance represented by a selected path. */
   const findElement = (node, predicate) => {
     if (predicate(node)) return node;
     for (const child of node.children || []) {
@@ -1349,6 +1401,7 @@ test("combines Screen and Screen State properties and resets one state change", 
   assert.deepEqual(deletedStates, ["dialog"]);
 });
 
+/** Multiple placements reference one Material source but maintain independent transforms. */
 test("reuses one Material file with independent placement transforms", async () => {
   const { ScreenMaterialController } = await import("../frontend/browser/ScreenMaterialController.mjs");
   const screen = { id: "home", file: "screens/home/screen.yml", data: { materials: [] } };
@@ -1404,6 +1457,7 @@ test("reuses one Material file with independent placement transforms", async () 
   assert.equal(calls.renders, 2);
 });
 
+/** New placements receive the expected default dimensions for their Material kind. */
 test("places each supported Material kind with its own default dimensions", async () => {
   const { ScreenMaterialController } = await import("../frontend/browser/ScreenMaterialController.mjs");
   const expectedSizes = {
@@ -1444,6 +1498,7 @@ test("places each supported Material kind with its own default dimensions", asyn
   }
 });
 
+/** Checks that the preview output reflects the supplied project and selection data. */
 test("renders Label and Button instances with their placement-specific text", async () => {
   const { ScreenMaterialRenderer } = await import("../frontend/browser/ScreenMaterialRenderer.mjs");
   const calls = [];
@@ -1509,6 +1564,7 @@ test("renders Label and Button instances with their placement-specific text", as
   assert.deepEqual(calls, [[0], [1]]);
 });
 
+/** Checks that selection and preview state remain consistent through the interaction. */
 test("keeps the active Material highlighted without selection interactions in workflow preview", async () => {
   const { ScreenMaterialRenderer } = await import("../frontend/browser/ScreenMaterialRenderer.mjs");
   const materialFiles = new Map([

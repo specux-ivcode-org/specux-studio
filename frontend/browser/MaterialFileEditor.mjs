@@ -3,7 +3,10 @@ import { getMaterialDefaultSize } from "./MaterialDefaults.mjs";
 const MIN_PREVIEW_SIZE = 24;
 const PREVIEW_RESIZE_DIRECTIONS = ["e", "s", "se"];
 
+/** Manages Material source editing, preview sizing, and source highlighting. */
 export class MaterialFileEditor {
+
+  /** Stores the injected collaborators and initializes the instance state. */
   constructor({ state, services }) {
     this.state = state;
     this.services = services;
@@ -35,6 +38,8 @@ export class MaterialFileEditor {
           sourceEditor.scrollLeft = sourceHighlight.scrollLeft;
         }
       });
+
+      /** Publishes the text selection for the current editor state. */
       const publishTextSelection = () => {
         if (this.state.viewingMaterialFile) this.services.publishSelection();
       };
@@ -50,6 +55,7 @@ export class MaterialFileEditor {
     }
   }
 
+  /** Renders the selected editor view and refreshes its dependent preview and controls. */
   async render(filePath) {
     const { state, services } = this;
     const material = state.materialFiles.get(filePath);
@@ -105,74 +111,114 @@ export class MaterialFileEditor {
     services.renderInspector();
   }
 
+  /** Renders the source highlight from the current editor data. */
   renderSourceHighlight(preserveSelection = false) {
     const { state, services } = this;
     const highlight = services.byId("material-source-highlight");
     const sourceEditor = services.byId("material-document-source");
     if (!highlight || !sourceEditor) return;
-
-    const scrollTop = preserveSelection && Number.isFinite(sourceEditor.scrollTop)
-      ? sourceEditor.scrollTop
-      : highlight.scrollTop;
-    const scrollLeft = preserveSelection && Number.isFinite(sourceEditor.scrollLeft)
-      ? sourceEditor.scrollLeft
-      : highlight.scrollLeft;
-    const material = state.materialFiles.get(state.activeMaterialFilePath);
-    const storedSource = material?.documentSource || "";
-    const source = preserveSelection ? sourceEditor.value : storedSource;
-    const selectionStart = preserveSelection && Number.isInteger(sourceEditor.selectionStart)
-      ? sourceEditor.selectionStart
-      : -1;
-    const selectionEnd = preserveSelection && Number.isInteger(sourceEditor.selectionEnd)
-      ? sourceEditor.selectionEnd
-      : -1;
-    const hasSelection = selectionStart >= 0 &&
-      selectionEnd > selectionStart &&
-      selectionEnd <= source.length;
-    const { ownerDocument } = highlight;
+    const renderState = this.getHighlightRenderState(highlight, sourceEditor, preserveSelection);
     highlight.replaceChildren();
+    this.renderHighlightedLines(highlight, renderState);
+    this.restoreHighlightScroll(highlight, renderState);
+  }
+
+  /** Returns the highlight render state. */
+  getHighlightRenderState(highlight, sourceEditor, preserveSelection) {
+    const material = this.state.materialFiles.get(this.state.activeMaterialFilePath);
+    const source = preserveSelection
+      ? sourceEditor.value
+      : material?.documentSource || "";
+    return {
+      source,
+      preserveSelection,
+      scrollTop: preserveSelection && Number.isFinite(sourceEditor.scrollTop)
+        ? sourceEditor.scrollTop
+        : highlight.scrollTop,
+      scrollLeft: preserveSelection && Number.isFinite(sourceEditor.scrollLeft)
+        ? sourceEditor.scrollLeft
+        : highlight.scrollLeft,
+      selectionStart: this.getSelectionOffset(sourceEditor, "selectionStart", preserveSelection),
+      selectionEnd: this.getSelectionOffset(sourceEditor, "selectionEnd", preserveSelection)
+    };
+  }
+
+  /** Returns the selection offset. */
+  getSelectionOffset(sourceEditor, property, preserveSelection) {
+    return preserveSelection && Number.isInteger(sourceEditor[property])
+      ? sourceEditor[property]
+      : -1;
+  }
+
+  /** Renders the highlighted lines from the current editor data. */
+  renderHighlightedLines(highlight, renderState) {
+    const { source, selectionStart, selectionEnd } = renderState;
+    const hasSelection = selectionStart >= 0 && selectionEnd > selectionStart &&
+      selectionEnd <= source.length;
     let lineOffset = 0;
     for (const text of source.split(/\r?\n/)) {
-      const line = ownerDocument.createElement("span");
+      const line = highlight.ownerDocument.createElement("span");
       line.className = "material-source-line";
-      const selectedOnLine = hasSelection &&
-        selectionStart < lineOffset + text.length &&
-        selectionEnd > lineOffset;
-      if (selectedOnLine) {
-        const boundaries = [0, text.length];
-        for (const offset of [selectionStart, selectionEnd]) {
-          if (offset > lineOffset && offset < lineOffset + text.length) {
-            boundaries.push(offset - lineOffset);
-          }
-        }
-        boundaries.sort((left, right) => left - right);
-        const uniqueBoundaries = [...new Set(boundaries)];
-        for (let index = 0; index < uniqueBoundaries.length - 1; index += 1) {
-          const start = uniqueBoundaries[index];
-          const end = uniqueBoundaries[index + 1];
-          const segment = ownerDocument.createElement("span");
-          if (hasSelection &&
-              selectionStart < lineOffset + end &&
-              selectionEnd > lineOffset + start) {
-            segment.className = "material-source-text-selection";
-          }
-          segment.textContent = text.slice(start, end);
-          line.append(segment);
-        }
+      if (this.isSelectionOnLine(hasSelection, selectionStart, selectionEnd, lineOffset, text)) {
+        this.renderSelectedLine(line, text, selectionStart, selectionEnd, lineOffset);
       } else {
         line.textContent = text;
       }
       highlight.append(line);
-      const lineEnd = lineOffset + text.length;
-      const separator = source.slice(lineEnd).match(/^\r\n|^\r|\n/)?.[0] || "";
-      lineOffset = lineEnd + separator.length;
-    }
-    if (preserveSelection) {
-      highlight.scrollTop = scrollTop;
-      highlight.scrollLeft = scrollLeft;
+      lineOffset = this.getNextLineOffset(source, lineOffset, text.length);
     }
   }
 
+  /** Checks whether the text selection overlaps the requested source line. */
+  isSelectionOnLine(hasSelection, selectionStart, selectionEnd, lineOffset, text) {
+    return hasSelection &&
+      selectionStart < lineOffset + text.length &&
+      selectionEnd > lineOffset;
+  }
+
+  /** Renders the selected line from the current editor data. */
+  renderSelectedLine(line, text, selectionStart, selectionEnd, lineOffset) {
+    const boundaries = [0, text.length];
+    for (const offset of [selectionStart, selectionEnd]) {
+      if (offset > lineOffset && offset < lineOffset + text.length) {
+        boundaries.push(offset - lineOffset);
+      }
+    }
+    boundaries.sort((left, right) => left - right);
+    const uniqueBoundaries = [...new Set(boundaries)];
+    for (let index = 0; index < uniqueBoundaries.length - 1; index += 1) {
+      this.appendSourceSegment(
+        line, text, uniqueBoundaries[index], uniqueBoundaries[index + 1],
+        selectionStart, selectionEnd, lineOffset
+      );
+    }
+  }
+
+  /** Adds the source segment for the current editor state. */
+  appendSourceSegment(line, text, start, end, selectionStart, selectionEnd, lineOffset) {
+    const segment = line.ownerDocument.createElement("span");
+    if (selectionStart < lineOffset + end && selectionEnd > lineOffset + start) {
+      segment.className = "material-source-text-selection";
+    }
+    segment.textContent = text.slice(start, end);
+    line.append(segment);
+  }
+
+  /** Returns the next line offset. */
+  getNextLineOffset(source, lineOffset, textLength) {
+    const lineEnd = lineOffset + textLength;
+    const separator = source.slice(lineEnd).match(/^\r\n|^\r|\n/)?.[0] || "";
+    return lineEnd + separator.length;
+  }
+
+  /** Restores the highlight scroll for the current editor state. */
+  restoreHighlightScroll(highlight, renderState) {
+    if (!renderState.preserveSelection) return;
+    highlight.scrollTop = renderState.scrollTop;
+    highlight.scrollLeft = renderState.scrollLeft;
+  }
+
+  /** Handles source input events and applies the corresponding editor action. */
   handleSourceInput(material, source) {
     const { state, services } = this;
     material.documentSource = source;
@@ -197,6 +243,7 @@ export class MaterialFileEditor {
     }, 250);
   }
 
+  /** Parses the document into structured editor data. */
   async parseDocument(material, source, version) {
     const { state, services } = this;
     const filePath = material.file;
@@ -227,6 +274,7 @@ export class MaterialFileEditor {
     }
   }
 
+  /** Sets the document status from the supplied data. */
   setDocumentStatus(material, message, isError = false) {
     material.documentStatus = { message, isError };
     if (!this.state.viewingMaterialFile ||
@@ -236,6 +284,7 @@ export class MaterialFileEditor {
     status.classList.toggle("error", isError);
   }
 
+  /** Renders the preview from the current editor data. */
   renderPreview(material) {
     const { services } = this;
     const preview = services.byId("screen-preview");
@@ -280,6 +329,7 @@ export class MaterialFileEditor {
     }
   }
 
+  /** Handles preview pointer down events for the related editor control. */
   onPreviewPointerDown(event) {
     if (!this.state.viewingMaterialFile || event.button !== 0) return;
     const resizeHandle = event.target?.closest?.(".material-file-preview-resize-control");
@@ -297,6 +347,7 @@ export class MaterialFileEditor {
     this.removePreviewSelection();
   }
 
+  /** Handles preview key down events for the related editor control. */
   onPreviewKeyDown(event) {
     if (!this.state.viewingMaterialFile) return;
     if (event.key === "Escape" && this.selectedPreviewFilePath) {
@@ -312,6 +363,7 @@ export class MaterialFileEditor {
     this.renderPreviewSelection(sample);
   }
 
+  /** Renders the preview selection from the current editor data. */
   renderPreviewSelection(sample) {
     if (sample.querySelector(":scope > .material-file-preview-selection")) return;
     const selection = this.services.document.createElement("div");
@@ -339,23 +391,32 @@ export class MaterialFileEditor {
     sample.append(selection);
   }
 
+  /** Removes the preview selection for the current editor state. */
   removePreviewSelection() {
     const preview = this.services.byId("screen-preview");
     preview?.querySelector?.(".material-file-preview-selection")?.remove();
   }
 
+  /** Updates the preview resize for the current editor state. */
   beginPreviewResize(event, handle) {
+    const gesture = this.getPreviewResizeGesture(event, handle);
+    if (!gesture) return;
+    this.previewResizeGesture = gesture;
+    event.preventDefault();
+    event.stopPropagation();
+    handle.setPointerCapture?.(event.pointerId);
+  }
+
+  /** Returns the preview resize gesture. */
+  getPreviewResizeGesture(event, handle) {
     const filePath = this.state.activeMaterialFilePath;
-    const material = this.state.materialFiles.get(filePath);
-    if (!material || this.state.invalidYamlFiles?.has(filePath)) return;
-    const sample = handle.closest(".material-file-preview-sample");
-    if (!sample) return;
-    const size = material.data["preview-size"] || getMaterialDefaultSize(material.data.type);
-    if (!size) return;
+    const target = this.getPreviewResizeTarget(filePath, handle);
+    if (!target) return;
+    const { material, sample, size } = target;
     const bounds = sample.getBoundingClientRect();
     const scaleX = bounds.width / (sample.offsetWidth || bounds.width || 1);
     const scaleY = bounds.height / (sample.offsetHeight || bounds.height || 1);
-    this.previewResizeGesture = {
+    return {
       pointerId: event.pointerId,
       handle,
       sample,
@@ -371,11 +432,19 @@ export class MaterialFileEditor {
       scaleY: scaleY || 1,
       changed: false
     };
-    event.preventDefault();
-    event.stopPropagation();
-    handle.setPointerCapture?.(event.pointerId);
   }
 
+  /** Returns the preview resize target. */
+  getPreviewResizeTarget(filePath, handle) {
+    const material = this.state.materialFiles.get(filePath);
+    if (!material || this.state.invalidYamlFiles?.has(filePath)) return null;
+    const sample = handle.closest(".material-file-preview-sample");
+    if (!sample) return null;
+    const size = material.data["preview-size"] || getMaterialDefaultSize(material.data.type);
+    return size ? { material, sample, size } : null;
+  }
+
+  /** Handles preview pointer move events for the related editor control. */
   onPreviewPointerMove(event) {
     const gesture = this.previewResizeGesture;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
@@ -399,6 +468,7 @@ export class MaterialFileEditor {
     this.dispatchPreviewResizeEvent();
   }
 
+  /** Ends the preview resize for the current editor state. */
   endPreviewResize(event) {
     const gesture = this.previewResizeGesture;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
@@ -419,53 +489,75 @@ export class MaterialFileEditor {
     this.dispatchPreviewResizeEvent();
   }
 
+  /** Rewrites Material preview-size values while retaining other source text. */
   updatePreviewSizeSource(source, filePath, size) {
     const { validation } = this.services;
     const { header, body } = validation.splitMaterialDocument(source, filePath);
     const lines = header.split(/\r?\n/);
     const propertyIndex = lines.findIndex((line) => /^\s*preview-size\s*:/.test(line));
+    this.writePreviewSize(lines, propertyIndex, size);
+    return validation.formatMaterialDocument(lines.join("\n"), body);
+  }
+
+  /** Updates or inserts the preview-size declaration in the Material source. */
+  writePreviewSize(lines, propertyIndex, size) {
     if (propertyIndex < 0) {
       lines.push(
         "preview-size:",
         `  width: ${size.width}`,
         `  height: ${size.height}`
       );
-    } else {
-      const line = lines[propertyIndex];
-      const inline = line.match(/^(\s*preview-size\s*:\s*)\{[^}]*\}(\s*(?:#.*)?)$/);
-      if (inline) {
-        lines[propertyIndex] =
-          `${inline[1]}{ width: ${size.width}, height: ${size.height} }${inline[2]}`;
-      } else {
-        let end = propertyIndex + 1;
-        while (end < lines.length &&
-            (!lines[end].trim() || /^\s/.test(lines[end]) || /^\s*#/.test(lines[end]))) {
-          end += 1;
-        }
-        let widthFound = false;
-        let heightFound = false;
-        let childIndent = "  ";
-        for (let index = propertyIndex + 1; index < end; index += 1) {
-          const child = lines[index].match(/^(\s+)(width|height)(\s*:\s*)([^#]*?)(\s+#.*)?$/);
-          if (!child) continue;
-          childIndent = child[1];
-          if (child[2] === "width") {
-            lines[index] = `${child[1]}${child[2]}${child[3]}${size.width}${child[5] || ""}`;
-            widthFound = true;
-          } else {
-            lines[index] = `${child[1]}${child[2]}${child[3]}${size.height}${child[5] || ""}`;
-            heightFound = true;
-          }
-        }
-        const missing = [];
-        if (!widthFound) missing.push(`${childIndent}width: ${size.width}`);
-        if (!heightFound) missing.push(`${childIndent}height: ${size.height}`);
-        lines.splice(end, 0, ...missing);
-      }
+      return;
     }
-    return validation.formatMaterialDocument(lines.join("\n"), body);
+    const line = lines[propertyIndex];
+    const inline = line.match(/^(\s*preview-size\s*:\s*)\{[^}]*\}(\s*(?:#.*)?)$/);
+    if (inline) {
+      lines[propertyIndex] =
+        `${inline[1]}{ width: ${size.width}, height: ${size.height} }${inline[2]}`;
+      return;
+    }
+    this.writePreviewSizeBlock(lines, propertyIndex, size);
   }
 
+  /** Writes dimensions into an existing or newly created preview-size block. */
+  writePreviewSizeBlock(lines, propertyIndex, size) {
+    const end = this.findPreviewSizeBlockEnd(lines, propertyIndex);
+    const found = this.updatePreviewSizeDimensions(lines, propertyIndex, end, size);
+    const missing = [];
+    if (!found.width) missing.push(`${found.indent}width: ${size.width}`);
+    if (!found.height) missing.push(`${found.indent}height: ${size.height}`);
+    lines.splice(end, 0, ...missing);
+  }
+
+  /** Finds the end of the preview-size mapping without consuming the next top-level key. */
+  findPreviewSizeBlockEnd(lines, propertyIndex) {
+    let end = propertyIndex + 1;
+    while (end < lines.length &&
+        (!lines[end].trim() || /^\s/.test(lines[end]) || /^\s*#/.test(lines[end]))) {
+      end += 1;
+    }
+    return end;
+  }
+
+  /** Updates the preview size dimensions to reflect the latest editor state. */
+  updatePreviewSizeDimensions(lines, propertyIndex, end, size) {
+    const found = { width: false, height: false, indent: "  " };
+    for (let index = propertyIndex + 1; index < end; index += 1) {
+      const child = lines[index].match(/^(\s+)(width|height)(\s*:\s*)([^#]*?)(\s+#.*)?$/);
+      if (child) this.updatePreviewSizeDimension(lines, index, child, size, found);
+    }
+    return found;
+  }
+
+  /** Updates the preview size dimension to reflect the latest editor state. */
+  updatePreviewSizeDimension(lines, index, match, size, found) {
+    const [, indent, property, separator, , comment = ""] = match;
+    found.indent = indent;
+    lines[index] = `${indent}${property}${separator}${size[property]}${comment}`;
+    found[property] = true;
+  }
+
+  /** Dispatches the preview resize event for the current editor state. */
   dispatchPreviewResizeEvent() {
     const EventClass = this.services.window?.Event || globalThis.Event;
     const preview = this.services.byId("screen-preview");

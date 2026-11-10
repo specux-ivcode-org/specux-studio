@@ -1,6 +1,7 @@
 const SELECTION_TOOLS = new Set(["select", "marquee"]);
 const SCALE_TYPES = new Set(["xy", "transform"]);
 
+/** Returns the marquee selected paths. */
 export function getMarqueeSelectedPaths(candidates, selection, startPoint) {
   return candidates
     .filter(({ bounds }) => {
@@ -17,7 +18,10 @@ export function getMarqueeSelectedPaths(candidates, selection, startPoint) {
     .map(({ path }) => path);
 }
 
+/** Manages Screen selection and the associated editor navigation state. */
 export class ScreenSelectionController {
+
+  /** Stores the injected collaborators and initializes the instance state. */
   constructor({ state, services }) {
     this.state = state;
     this.services = services;
@@ -29,6 +33,7 @@ export class ScreenSelectionController {
     this.drawing = null;
   }
 
+  /** Attaches the configured event listeners to the editor controls. */
   bind() {
     this.services.document.querySelectorAll("[data-selection-tool]").forEach((button) => {
       button.addEventListener("click", () => this.selectTool(button.dataset.selectionTool));
@@ -41,6 +46,7 @@ export class ScreenSelectionController {
     this.updateControls();
   }
 
+  /** Sets the screen from the supplied data. */
   setScreen(screen) {
     this.screenId = screen?.id || null;
     this.drawing = null;
@@ -48,6 +54,7 @@ export class ScreenSelectionController {
     this.updateControls();
   }
 
+  /** Selects the tool and updates the related editor state. */
   selectTool(tool) {
     if (!SELECTION_TOOLS.has(tool) || !this.screenId || this.isInteractionDisabled()) return;
     this.tool = tool;
@@ -57,6 +64,7 @@ export class ScreenSelectionController {
     this.updateControls();
   }
 
+  /** Updates the controls to reflect the latest editor state. */
   updateControls() {
     this.services.document.querySelectorAll("[data-selection-tool]").forEach((button) => {
       button.disabled = !this.screenId || this.isInteractionDisabled();
@@ -68,16 +76,22 @@ export class ScreenSelectionController {
     });
   }
 
+  /** Selects the scale type and updates the related editor state. */
   selectScaleType(scaleType) {
     if (!SCALE_TYPES.has(scaleType) || !this.screenId || this.isInteractionDisabled()) return;
     this.scaleType = scaleType;
     this.updateControls();
   }
 
+  /** Checks whether the active view disables Screen selection interactions. */
   isInteractionDisabled() {
-    return this.state.isRenderOnly || this.state.viewingWorkflow || this.state.viewingTheme;
+    return this.state.isRenderOnly ||
+      this.state.viewingWorkflow ||
+      this.state.viewingTheme ||
+      this.state.viewingSpec;
   }
 
+  /** Renders the selected editor view and refreshes its dependent preview and controls. */
   render() {
     const preview = this.services.byId("screen-preview");
     const content = preview?.querySelector(":scope > .form-content");
@@ -96,6 +110,7 @@ export class ScreenSelectionController {
     this.clearRectangle();
   }
 
+  /** Creates and attaches the annotation overlay for the selected preview. */
   createOverlay(content) {
     const overlay = this.services.document.createElement("div");
     overlay.className = "screen-selection-overlay";
@@ -114,6 +129,7 @@ export class ScreenSelectionController {
     return overlay;
   }
 
+  /** Handles pointer down events for the related editor control. */
   onPointerDown(event) {
     if (this.isInteractionDisabled() ||
         !this.overlay ||
@@ -133,6 +149,7 @@ export class ScreenSelectionController {
     this.updateRectangle();
   }
 
+  /** Handles pointer move events for the related editor control. */
   onPointerMove(event) {
     if (this.isInteractionDisabled()) {
       this.drawing = null;
@@ -147,6 +164,7 @@ export class ScreenSelectionController {
     this.updateRectangle();
   }
 
+  /** Handles pointer up events for the related editor control. */
   onPointerUp(event) {
     if (this.isInteractionDisabled()) {
       this.drawing = null;
@@ -176,6 +194,7 @@ export class ScreenSelectionController {
     );
   }
 
+  /** Handles context menu events for the related editor control. */
   onContextMenu(event) {
     if (this.isInteractionDisabled()) return;
     const directFrame = event.composedPath?.().find((node) =>
@@ -194,6 +213,7 @@ export class ScreenSelectionController {
     this.services.openPlacementContextMenu?.(event, path);
   }
 
+  /** Updates the rectangle to reflect the latest editor state. */
   updateRectangle() {
     if (!this.drawing || !this.rectangle || !this.overlay) return;
     const content = this.overlay.parentElement;
@@ -208,6 +228,7 @@ export class ScreenSelectionController {
     this.rectangle.hidden = !this.drawing.moved;
   }
 
+  /** Clears the rectangle and resets its associated state. */
   clearRectangle() {
     if (!this.rectangle) return;
     this.rectangle.hidden = true;
@@ -215,6 +236,7 @@ export class ScreenSelectionController {
     this.rectangle.style.height = "0";
   }
 
+  /** Updates the rect for the current editor state. */
   clientRect(start, end) {
     return {
       left: Math.min(start.x, end.x),
@@ -224,6 +246,7 @@ export class ScreenSelectionController {
     };
   }
 
+  /** Parses the dataset path used to identify a nested placement. */
   readPath(value) {
     try {
       const path = JSON.parse(value || "null");
