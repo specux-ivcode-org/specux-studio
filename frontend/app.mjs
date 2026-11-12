@@ -17,6 +17,7 @@ import { ScreenAnnotationController } from "./browser/ScreenAnnotationController
 import { ScreenSelectionController } from "./browser/ScreenSelectionController.mjs";
 import { ScreenRulerController } from "./browser/ScreenRulerController.mjs";
 import { ScreenCanvasViewportController } from "./browser/ScreenCanvasViewportController.mjs";
+import { MaterialCanvasViewportController } from "./browser/MaterialCanvasViewportController.mjs";
 import { ScreenYamlEditor } from "./browser/ScreenYamlEditor.mjs";
 import { MaterialCanvas } from "./browser/MaterialCanvas.mjs";
 import { ScreenMaterialController } from "./browser/ScreenMaterialController.mjs";
@@ -451,6 +452,7 @@ const materialFileEditor = new MaterialFileEditor({
     publishSelection: () => publishSelection(),
     hideEditorMessage,
     setMaterialViewMode: (mode) => materialViewLayout.setViewMode(mode),
+    centerMaterialCanvas: () => materialCanvasViewportController.centerMaterial(),
     renderInspector,
     renderNavigation,
     updateSaveControls,
@@ -750,6 +752,10 @@ const screenCanvasViewportController = new ScreenCanvasViewportController({
   renderRulers: () => screenRulerController.render(),
   isRenderOnly
 });
+const materialCanvasViewportController = new MaterialCanvasViewportController({
+  documentObject: document,
+  renderRulers: () => screenRulerController.render()
+});
 const responsiveToolbarController = new ResponsiveToolbarController({
   documentObject: document,
   windowObject: window,
@@ -768,6 +774,7 @@ const responsiveToolbarController = new ResponsiveToolbarController({
 });
 if (!isRenderOnly) screenRulerController.bind();
 if (!isRenderOnly) screenCanvasViewportController.bind();
+if (!isRenderOnly) materialCanvasViewportController.bind();
 if (!isRenderOnly) responsiveToolbarController.bind();
 if (!isRenderOnly) screenAnnotationController.bind();
 if (!isRenderOnly) screenSelectionController.bind();

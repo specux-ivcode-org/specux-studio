@@ -53,6 +53,7 @@ export class ScreenRulerController {
   bind() {
     if (!this.frame || !this.preview || !this.horizontalRuler || !this.verticalRuler) return;
     this.preview.addEventListener("scroll", this.scheduleRender, { passive: true });
+    this.preview.addEventListener("material-preview-resized", this.scheduleRender);
     this.window.addEventListener("resize", this.scheduleRender);
 
     const ResizeObserverClass = this.window.ResizeObserver;

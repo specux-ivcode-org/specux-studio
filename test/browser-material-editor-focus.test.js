@@ -182,3 +182,62 @@ test("Material preview resizing dispatches the overlay resize event", async () =
 
   assert.deepEqual(eventTypes, ["material-preview-resized"]);
 });
+
+/** Material files open with source and canvas visible in Split mode. */
+test("opens Material files in Split mode", async () => {
+  const { MaterialFileEditor } = await import("../frontend/browser/MaterialFileEditor.mjs");
+  const path = "materials/button.stml";
+  const material = {
+    data: { name: "Button" },
+    documentSource: "name: Button"
+  };
+  const mainClasses = new Set();
+  const createElement = () => ({
+    classList: {
+      add: (value) => mainClasses.add(value),
+      remove: (value) => mainClasses.delete(value)
+    },
+    setAttribute() {},
+    hidden: false
+  });
+  const elements = new Map([
+    ["main", createElement()],
+    ["spec-editor-panel", createElement()],
+    ["spec-source", createElement()],
+    ["screen-heading", createElement()],
+    ["screen-stage", createElement()],
+    ["breadcrumb", createElement()],
+    ["material-document-editor-panel", createElement()],
+    ["material-document-editor-heading", createElement()],
+    ["material-document-source", createElement()]
+  ]);
+  const viewModes = [];
+  const operations = [];
+  const editor = new MaterialFileEditor({
+    state: {
+      materialFiles: new Map([[path, material]]),
+      invalidYamlFiles: new Map(),
+      previewVersion: 0
+    },
+    services: {
+      byId: (id) => elements.get(id),
+      discardUneditedActiveSpecDraft() {},
+      hidePreviewStateControls() {},
+      updateScreenDomContext() {},
+      hideEditorMessage() {},
+      updateNavigationSelection() {},
+      setMaterialViewMode: (mode) => viewModes.push(mode),
+      centerMaterialCanvas: () => operations.push("center"),
+      renderInspector() {}
+    }
+  });
+  editor.renderSourceHighlight = () => {};
+  editor.setDocumentStatus = () => {};
+  editor.renderPreview = () => operations.push("preview");
+
+  await editor.render(path);
+
+  assert.deepEqual(viewModes, ["split"]);
+  assert.deepEqual(operations, ["preview", "center"]);
+  assert.equal(mainClasses.has("material-editing"), true);
+});

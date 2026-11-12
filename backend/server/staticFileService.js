@@ -44,6 +44,7 @@ const EDITOR_ASSETS = new Set([
   "/browser/EditorEventController.mjs",
   "/styles.css",
   "/browser/BrowserHistory.mjs",
+  "/browser/MaterialCanvasViewportController.mjs",
   "/browser/EditorNavigation.mjs",
   "/browser/InspectorRenderer.mjs",
   "/browser/MaterialFileEditor.mjs",

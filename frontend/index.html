@@ -190,28 +190,70 @@
       </div>
       <div class="material-view-toolbar" aria-label="Material preview layout">
         <h2 class="material-view-heading" id="material-view-heading">Preview</h2>
-        <div class="screen-view-selector material-view-selector" role="group" aria-label="Material view">
-          <button
-            class="screen-view-button"
-            id="material-view-split"
-            type="button"
-            aria-pressed="true"
-            aria-controls="screen-stage material-document-editor-panel"
-          >Split</button>
-          <button
-            class="screen-view-button"
-            id="material-view-preview"
-            type="button"
-            aria-pressed="false"
-            aria-controls="screen-stage material-document-editor-panel"
-          >Preview</button>
-          <button
-            class="screen-view-button"
-            id="material-view-source"
-            type="button"
-            aria-pressed="false"
-            aria-controls="screen-stage material-document-editor-panel"
-          >Source</button>
+        <div class="material-toolbar-actions">
+          <div class="screen-zoom-controls material-zoom-controls" role="group" aria-label="Material canvas">
+            <button
+              class="screen-zoom-button"
+              id="material-canvas-zoom-out"
+              type="button"
+              aria-label="Zoom out"
+              title="Zoom out"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 8h10"></path>
+              </svg>
+            </button>
+            <button
+              class="screen-zoom-button screen-zoom-value"
+              id="material-canvas-zoom-reset"
+              type="button"
+              aria-label="Reset canvas zoom to 100%"
+              title="Reset canvas zoom to 100%"
+            >100%</button>
+            <button
+              class="screen-zoom-button"
+              id="material-canvas-zoom-in"
+              type="button"
+              aria-label="Zoom in"
+              title="Zoom in"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 8h10M8 3v10"></path>
+              </svg>
+            </button>
+            <button
+              class="screen-zoom-button screen-grid-toggle"
+              id="material-canvas-grid-toggle"
+              type="button"
+              aria-label="Material canvas grid"
+              aria-controls="screen-preview"
+              aria-pressed="true"
+              title="Hide Material canvas grid"
+            >Grid</button>
+          </div>
+          <div class="screen-view-selector material-view-selector" role="group" aria-label="Material view">
+            <button
+              class="screen-view-button"
+              id="material-view-split"
+              type="button"
+              aria-pressed="true"
+              aria-controls="screen-stage material-document-editor-panel"
+            >Split</button>
+            <button
+              class="screen-view-button"
+              id="material-view-preview"
+              type="button"
+              aria-pressed="false"
+              aria-controls="screen-stage material-document-editor-panel"
+            >Preview</button>
+            <button
+              class="screen-view-button"
+              id="material-view-source"
+              type="button"
+              aria-pressed="false"
+              aria-controls="screen-stage material-document-editor-panel"
+            >Source</button>
+          </div>
         </div>
       </div>
       <div class="workflow-view-toolbar" aria-label="Workflow preview layout">
@@ -445,13 +487,13 @@
             class="screen-ruler screen-ruler-x"
             id="screen-ruler-x"
             role="img"
-            aria-label="Screen canvas X ruler in pixels"
+            aria-label="Canvas X ruler in pixels"
           ></canvas>
           <canvas
             class="screen-ruler screen-ruler-y"
             id="screen-ruler-y"
             role="img"
-            aria-label="Screen canvas Y ruler in pixels"
+            aria-label="Canvas Y ruler in pixels"
           ></canvas>
           <article class="screen-preview loading" id="screen-preview" data-annotation-preview="screen" aria-label="Rendered Screen preview">
             <div class="loading-message">Reading project files...</div>

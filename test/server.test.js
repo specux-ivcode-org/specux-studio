@@ -86,6 +86,10 @@ async function withServer(run) {
     "export class ScreenCanvasViewportController {}\n"
   );
   await fs.writeFile(
+    path.join(rootDirectory, "browser", "MaterialCanvasViewportController.mjs"),
+    "export class MaterialCanvasViewportController {}\n"
+  );
+  await fs.writeFile(
     path.join(rootDirectory, "browser", "ProjectFileTree.mjs"),
     "export class ProjectFileTree {}\n"
   );
@@ -198,6 +202,7 @@ test("serves the editor root and the example project", async () => {
     const screenSelectionControllerModule = await fetch(`${baseUrl}/browser/ScreenSelectionController.mjs`);
     const screenRulerControllerModule = await fetch(`${baseUrl}/browser/ScreenRulerController.mjs`);
     const screenCanvasViewportControllerModule = await fetch(`${baseUrl}/browser/ScreenCanvasViewportController.mjs`);
+    const materialCanvasViewportControllerModule = await fetch(`${baseUrl}/browser/MaterialCanvasViewportController.mjs`);
     const screenYamlEditorModule = await fetch(`${baseUrl}/browser/ScreenYamlEditor.mjs`);
     const retiredAssetEditorModule = await fetch(`${baseUrl}/browser/AssetEditor.mjs`);
     const screenControllerModule = await fetch(`${baseUrl}/browser/ScreenController.mjs`);
@@ -276,6 +281,7 @@ test("serves the editor root and the example project", async () => {
     assert.equal(screenSelectionControllerModule.status, 200);
     assert.equal(screenRulerControllerModule.status, 200);
     assert.equal(screenCanvasViewportControllerModule.status, 200);
+    assert.equal(materialCanvasViewportControllerModule.status, 200);
     assert.equal(screenYamlEditorModule.status, 200);
     assert.equal(screenControllerModule.status, 200);
     assert.equal(specEditorModule.status, 200);

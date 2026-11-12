@@ -108,6 +108,7 @@ export class MaterialFileEditor {
       Boolean(error)
     );
     this.renderPreview(material);
+    services.centerMaterialCanvas();
     services.renderInspector();
   }
 

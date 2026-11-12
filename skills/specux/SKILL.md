@@ -1,86 +1,64 @@
 ---
 name: specux
-description: Create, inspect, and update SpecUX projects using the version-matched SpecUX CLI reference. Use when asked to build or revise SpecUX Screens, assets, Themes, behavior specs, workflows, or project files.
+description: Explain SpecUX concepts, project structure, artifact responsibilities, versioning, and CLI capabilities. Use for general SpecUX questions that are not specifically UX design, implementation planning, or application building.
 ---
 
-# SpecUX
+# SpecUX Context
 
-SpecUX is a versioned, file-based standard for describing application Screens, reusable or Screen-specific asset templates, Themes, and intended UI behavior. A SpecUX project is identified by its `project.yml`; the project-local `specux` CLI initializes, explains, validates, and renders those files. Always work with the CLI version that supports the project's declared SpecUX format version.
+Use this skill to explain the SpecUX standard and help users understand how a SpecUX project is organized and validated. For a specific action, use the matching focused skill: `specux-design` for collaborative UX design, `specux-plan` for implementation task breakdowns, and `specux-apply` for building the application UI and behavior.
 
-## Set up SpecUX
+## Core concepts
 
-Keep the CLI and skill project-local, not global, so different projects on one machine can use different SpecUX versions. Install both from the <copilot-ref kind="repo" target-id="https://github.com/specux-ivcode-org/specux-studio" label="specux-ivcode-org/specux-studio" /> repository.
+SpecUX is a versioned, file-based standard for describing application Screens, reusable visual Materials, Themes, user workflows, and functional behavior requirements. A project is identified by `project.yml`, which declares its SpecUX format version and references project artifacts. It may be in the workspace root or in a `specux/` subdirectory.
 
-1. Identify the user's intended workspace. Look for `project.yml` in the current directory, its parents, and an `specux/` subdirectory. If more than one exists, select the one the user is asking about.
-2. Check whether the SpecUX CLI is installed in the workspace's npm dependencies and whether that installed CLI is usable:
+- **Screens** describe visual compositions and placements.
+- **Materials** are reusable visual templates. They are visual-only and do not define application actions or behavior.
+- **Themes** define visual tokens for consistent presentation.
+- **Workflows** describe user actions, choices, and destinations.
+- **Specs** define observable functional requirements and constraints.
 
-   ```sh
-   npm ls specux-editor --depth=0
-   npx --no-install specux version
-   ```
+Keep these responsibilities distinct: a workflow is not a functional contract, and a spec is not a Screen layout or an action-by-action flow. Use a project-, Screen-, or Element-level spec according to where behavior belongs.
 
-   The second command prints the SpecUX format version supported by the installed CLI. A successful check does not by itself prove compatibility; compare it with the project's `specux` value in the next step.
-3. If `project.yml` exists, read its `specux` value. This is the required format version. If the version is missing or unreadable, stop and ask the user; never change it just to fit an installed CLI. If the local CLI is missing or its supported format version does not match, install the CLI for the project's version before continuing.
-4. Development mode currently provides only `0.1.0-SNAPSHOT`. For an existing project with that version and no matching local CLI, install the development build from the host workspace root (the directory whose `package.json` should own the dependency, not necessarily the directory containing `specux/project.yml`):
+## Project and CLI
+
+Use the project-local SpecUX CLI whose format version matches the `specux` value in `project.yml`.
+
+1. Identify the intended workspace. Look for `project.yml` in the current directory, its parents, or an `specux/` subdirectory. If more than one exists, use the project the user identified.
+2. Read the project's `specux` value and check the local CLI:
+
+```sh
+npm ls specux-editor --depth=0
+npx --no-install specux version
+```
+
+3. If the CLI is missing or its supported version does not match, do not change the project's declared version and do not silently use a global or mismatched CLI. Development mode currently supports `0.1.0-SNAPSHOT`; for a project on that version, install the development CLI from the host workspace root:
 
    ```sh
    npm install --save-dev git+https://github.com/specux-ivcode-org/specux-studio.git#main
    ```
 
-   This installs the latest commit on the repository's `main` branch and records the exact resolved dependency in the workspace lockfile. Then rerun both checks in step 2 and confirm the CLI reports `0.1.0-SNAPSHOT`. No other SpecUX format versions are available in development mode yet; if an existing project declares another version, do not install a mismatched CLI or alter the project. Tell the user that version is unavailable and ask how they want to proceed.
-5. If no `project.yml` exists, install the latest available SpecUX development build using the same command, then initialize a starter project in the intended workspace:
+   Rerun both checks and confirm the installed CLI reports the matching version. If the project's version is missing or unavailable, stop and ask how to proceed.
+4. If there is no `project.yml`, install the development CLI using the same command, then run `npx specux init`. Do not initialize a second project when one already exists.
 
-   ```sh
-   npx specux init
-   ```
+Run commands with `npx specux <command>`.
 
-   Initialization creates `specux/project.yml` with the format version supported by the installed CLI. Do not run `init` when a project already exists.
-6. Once the local CLI version matches the project's version—or after initializing a new project—start here before authoring:
+The CLI provides version-matched schemas, project validation, Screen rendering, editor-state inspection, browser screenshots, and editor refresh coordination. It is not a project-file editing layer: edit project files directly, then use the CLI to validate, render, or notify the editor as appropriate.
 
-   ```sh
-   npx specux schema reference
-   ```
+Useful commands:
 
+```sh
+npx specux schema reference
+npx specux schema project
+npx specux schema screen
+npx specux schema material
+npx specux schema theme
+npx specux schema spec
+npx specux schema workflow
+npx specux validate
+npx specux render <screen-id> --format image --output <image-file>
+npx specux server status
+npx specux server state
+npx specux server update
+```
 
-Run all SpecUX commands with `npx specux <command>` so they use the workspace-local CLI. Never silently fall back to a global or mismatched version.
-
-## Materials
-
-Treat Materials as reusable, configurable visual components. Default to small, focused components that can be composed into a Screen and reused in different contexts. When a component needs variations, expose suitable attributes rather than creating near-duplicate Materials.
-
-Keep the library weighted toward small components. When a larger unit is made from multiple components, prefer composing and grouping those placements on the Screen rather than building one large Material. This is especially true for structures such as item rows: make the icon, text, border, and other parts separate placements, then group them when they should move or be managed together. Use a larger Material when the whole unit is itself a coherent, configurable component that is reused as one.
-
-Before creating or editing a Material, run `npx specux schema material` for the version-matched file-format guidance. When composing placements or using Screen groups, consult `npx specux schema screen` for the Screen format and grouping rules.
-
-| Guidance | Examples |
-|---|---|
-| Good: small, focused components | Button, text box, border |
-| Usually better as a Screen group of smaller placements | Item row composed of an icon, text, and border |
-| Okay: a larger component that is reused and configured as one unit | A reusable, configurable item row |
-| Avoid: a whole Screen or major Screen region as one Material | Main Screen View |
-
-## Spec scope
-
-A spec defines **requirements**: what the system must do and the constraints it must satisfy. Many requirements describe how the system responds to a user action in a workflow, but a requirement does not need to correspond to an action. Specs can also define behavior such as backend communication, data validation or transformation, and text or content formatting. Requirements should have observable outcomes, but should not become a description of action order or visual composition.
-
-A spec may cover a feature that involves several Screens. Choose its project-, Screen-, or Element-level owner based on where the functional behavior belongs; ownership does not turn the spec into a UI flow. Materials are visual-only and do not have behavior specs. Treat the user's intent as authoritative, and ask rather than inventing functional rules when outcomes are unclear.
-
-Keep requirements focused on system responsibilities and constraints. For example, a spec can require submitting entered item details to a backend and formatting a returned timestamp in a defined way; it should not narrate the sequence of opening the dialog, submitting the item, and navigating to its details.
-
-## Workflow scope
-
-A workflow defines **user actions and how they connect**: what the user can do, in what order, and what choices or destinations follow. It is often focused on one Screen, but can include navigation to other Screens when that is part of the journey. It is a map of the user's actions, not a functional contract: it does not establish whether an action succeeds, define backend behavior or data rules, or set content-formatting requirements.
-
-When implementing or revising a feature, always try to create or update a workflow that captures its user actions, even when the flow seems simple. Most workflows can stay within one Screen; include other Screens when the user journey actually moves between them. Do not invent actions to fill gaps in the user's intent: use judgment for low-risk details and ask about consequential ambiguity. Follow the current schema for file ownership and supported links.
-
-## Using specs and workflows together
-
-For every feature implementation or revision, always try to create or update both its workflow and spec; do not skip either just because the feature seems small or straightforward. The workflow records the user actions and how they connect. The spec records the feature's functional requirements, including behavior tied to those actions and behavior that applies independently. For example, the workflow can show the user opening Add Item, submitting the form, and navigating to the new item's Screen. The spec can define the required backend request, validation and error behavior, and formatting of returned text. If one artifact genuinely does not apply or cannot be completed from the available information, explain why rather than silently omitting it.
-
-When authoring:
-
-1. Create or update a workflow for the feature's user actions and their sequence; keep it on one Screen unless the journey calls for navigation elsewhere.
-2. Create or update a spec for the feature's stated functional requirements, including requirements tied to workflow actions and requirements that apply without a specific action.
-3. Use judgment when workflow details imply unstated behavior. If the user wants full control, ask before filling gaps. Otherwise, make conservative, conventional inferences for low-risk details; call out meaningful assumptions for review, and ask when an ambiguity could materially change behavior.
-4. Link relevant spec sections to workflow nodes where the connection helps show which requirements apply to an action.
-5. Use `npx specux schema spec` and `npx specux schema workflow` for the version-matched syntax and file conventions. Run `npx specux validate`, and open each workflow in Studio to verify it renders.
+Use the `schema reference` and relevant artifact schemas before authoring. Read `doc/cli.md` or run `npx specux schema reference` for command behavior and current format guidance. If the project version is missing or unavailable in the installed CLI, stop and ask how to proceed rather than changing project metadata.
