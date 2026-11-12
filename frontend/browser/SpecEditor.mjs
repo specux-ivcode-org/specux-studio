@@ -3,11 +3,23 @@ import {
   getMarkdownSectionRange,
   parseWorkflowSpecReferences
 } from "./WorkflowEditor.mjs";
+import { getScreenPlacementIdPath } from "../../shared/ScreenGroups.mjs";
 
 /** Returns the reference key. */
 function getReferenceKey(reference) {
   return reference?.href ||
     (reference?.workflowPath ? `${reference.workflowPath}?node=${reference.nodeId}` : null);
+}
+
+/** Resolves one instance and its dot-separated placement reference path. */
+function getInstanceSpecTarget(services, screen, instancePath) {
+  if (!screen) return null;
+  const instance = services.getInstanceAtPath(screen, instancePath);
+  const placementIdPath = getScreenPlacementIdPath(
+    screen.data.materials || [],
+    instancePath
+  )?.join(".");
+  return instance && placementIdPath ? { instance, placementIdPath } : null;
 }
 
 /** Returns the text currently selected in the editor. */
@@ -672,8 +684,9 @@ export class SpecEditor {
   async createForInstance(instancePath) {
     const { state, services } = this;
     const screen = state.screens[state.activeScreenIndex];
-    const instance = screen && services.getInstanceAtPath(screen, instancePath);
-    if (!screen || !instance) throw new Error("The selected Element is no longer available.");
+    const target = getInstanceSpecTarget(services, screen, instancePath);
+    if (!screen || !target) throw new Error("The selected Element is no longer available.");
+    const { instance, placementIdPath } = target;
     const linkedSpecPath = services.getElementSpecPath(screen, instance);
     if (linkedSpecPath) {
       await this.render(linkedSpecPath, instancePath);
@@ -701,7 +714,7 @@ export class SpecEditor {
     const heading = services.getElementLabel(instance)
       .replace(/\r?\n/g, " ")
       .trim() || instance.id;
-    const source = `# ${heading}\n\n[Referenced Element](specux://screen/${screen.id}/screen.yml?placement=${instance.id})\n\n## Purpose\n\nDescribe the behavior this Element is responsible for.\n\n## Requirements\n\n### Requirement: Perform the intended action\nThe system SHALL perform the intended behavior for this Element.\n\n#### Scenario: User interacts with this Element\n- **WHEN** the user interacts with this Element\n- **THEN** describe the expected observable outcome.\n`;
+    const source = `# ${heading}\n\n[Referenced Element](specux://screen/${screen.id}/screen.yml?placement=${placementIdPath})\n\n## Purpose\n\nDescribe the behavior this Element is responsible for.\n\n## Requirements\n\n### Requirement: Perform the intended action\nThe system SHALL perform the intended behavior for this Element.\n\n#### Scenario: User interacts with this Element\n- **WHEN** the user interacts with this Element\n- **THEN** describe the expected observable outcome.\n`;
     state.specSources.set(filePath, source);
     state.createdSpecDrafts.set(filePath, {
       owner: "instance",

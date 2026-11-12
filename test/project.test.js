@@ -535,9 +535,55 @@ test("derives Element spec ownership and preview targets from SpecUX links", asy
     id: "home",
     data: {
       "preview-states": [{ id: "default" }, { id: "dialog-open" }],
-      materials: [{ id: "continue-button" }]
+      materials: [{
+        id: "dialog",
+        type: "group",
+        children: [{
+          id: "actions",
+          type: "group",
+          children: [{ id: "continue-button" }]
+        }]
+      }]
     }
   }];
+  assert.doesNotThrow(() => validation.validateSpecScreenReferences(
+    "[Continue](specux://screen/home/screen.yml?placement=dialog.actions.continue-button&state=dialog-open)",
+    screens
+  ));
+  assert.throws(() => validation.validateSpecScreenReferences(
+    "[Wrong path](specux://screen/home/screen.yml?placement=dialog.continue-button)",
+    screens
+  ), /placement "dialog\.continue-button" is not available/);
+  const { ProjectRepository } = await import("../frontend/browser/ProjectRepository.mjs");
+  const { ProjectPersistence } = await import("../frontend/browser/ProjectPersistence.mjs");
+  const nestedSpecPath = "screens/home/specs/element-continue-button.md";
+  const nestedSpecSources = [
+    "[Continue](specux://screen/home/screen.yml?placement=dialog.actions.continue-button)",
+    "[Continue](specux://screen/home/screen.yml?placement=continue-button)"
+  ];
+  const repository = new ProjectRepository({ validation });
+  const owners = new Map();
+  for (const reference of nestedSpecSources) {
+    const source = `${reference}\n\n${validSpec}`;
+    repository.refreshElementSpecOwner(nestedSpecPath, source, screens, owners);
+    assert.deepEqual(owners.get(nestedSpecPath).instancePath, [0, 0, 0]);
+  }
+  const persistence = new ProjectPersistence({
+    state: { elementSpecOwners: new Map() },
+    services: {
+      validation,
+      findInstancePathById: (placements, id) => repository.findInstancePathById(placements, id)
+    }
+  });
+  for (const reference of nestedSpecSources) {
+    persistence.validateElementSpecForScreen(
+      screens[0],
+      nestedSpecPath,
+      `${reference}\n\n${validSpec}`,
+      new Set(),
+      new Set()
+    );
+  }
   assert.throws(() => validation.validateSpecScreenReferences(
     "[Missing state](specux://screen/home/screen.yml?state=unknown)",
     screens
@@ -545,6 +591,54 @@ test("derives Element spec ownership and preview targets from SpecUX links", asy
   assert.throws(() => validation.parseSpecScreenReferences(
     "[Bad query](specux://screen/home/screen.yml?state=dialog-open&extra=value)"
   ), /one placement and one state parameter/);
+});
+
+test("creates nested Element specs with dot-separated placement links", async () => {
+  const { SpecEditor } = await import("../frontend/browser/SpecEditor.mjs");
+  const { getScreenPlacementAtPath } = await import("../shared/ScreenGroups.mjs");
+  const screen = {
+    id: "home",
+    file: "screens/home/screen.yml",
+    data: {
+      materials: [{
+        id: "dialog",
+        type: "group",
+        children: [{ id: "continue-button" }]
+      }]
+    }
+  };
+  const state = {
+    screens: [screen],
+    activeScreenIndex: 0,
+    specSources: new Map(),
+    createdSpecDrafts: new Map()
+  };
+  const editor = new SpecEditor({
+    state,
+    services: {
+      byId: (id) => ["spec-reference-previous", "spec-reference-next"].includes(id)
+        ? { addEventListener() {} }
+        : null,
+      getInstanceAtPath: (targetScreen, instancePath) =>
+        getScreenPlacementAtPath(targetScreen.data.materials, instancePath),
+      getElementSpecPath: () => null,
+      sameInstancePath: (left, right) =>
+        left.length === right.length && left.every((part, index) => part === right[index]),
+      validation,
+      fetcher: async () => ({ status: 404, ok: false }),
+      safeProjectUrl: (filePath) => filePath,
+      getElementLabel: () => "Continue button",
+      projectFileTree: { expandPath() {} },
+      renderNavigation() {}
+    }
+  });
+  editor.render = async () => {};
+  await editor.createForInstance([0, 0]);
+
+  assert.match(
+    state.specSources.get("screens/home/specs/element-continue-button.md"),
+    /placement=dialog\.continue-button/
+  );
 });
 
 test("validates Screen spec references against the loaded project", async () => {

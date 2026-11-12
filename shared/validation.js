@@ -352,7 +352,7 @@
         }
         const placementId = url.searchParams.get("placement");
         const stateId = url.searchParams.get("state") ?? "default";
-        if ((placementId !== null && !/^[a-z][a-z0-9-]*$/.test(placementId)) ||
+        if ((placementId !== null && !/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/.test(placementId)) ||
             !/^[a-z][a-z0-9-]*$/.test(stateId)) {
           throw errorAt(
             `${context}: invalid placement or state in Screen link "${match[1]}".`,
@@ -406,12 +406,7 @@
         );
       }
       if (reference.placementId) {
-        const containsPlacement = (placements) => Array.isArray(placements) &&
-          placements.some((placement) =>
-            placement.id === reference.placementId ||
-            containsPlacement(placement.children, reference.placementId)
-          );
-        if (!containsPlacement(data.materials)) {
+        if (!containsPlacementPath(data.materials, reference.placementId)) {
           throw errorAt(
             `${context}: placement "${reference.placementId}" is not available on Screen "${screen.id}".`,
             source,
@@ -421,6 +416,26 @@
       }
     }
     return references;
+  }
+
+  function containsPlacementPath(placements, placementId) {
+    const segments = placementId.split(".");
+    if (segments.length === 1) {
+      const containsId = (siblings) => Array.isArray(siblings) &&
+        siblings.some((placement) =>
+          placement.id === placementId || containsId(placement.children)
+        );
+      return containsId(placements);
+    }
+    let siblings = placements;
+    for (let index = 0; index < segments.length; index += 1) {
+      if (!Array.isArray(siblings)) return false;
+      const placement = siblings.find((entry) => entry.id === segments[index]);
+      if (!placement) return false;
+      if (index < segments.length - 1 && placement.type !== "group") return false;
+      siblings = placement.children;
+    }
+    return true;
   }
 
   function validateSpecContent(source) {

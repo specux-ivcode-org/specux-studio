@@ -326,6 +326,7 @@ export class ScreenMaterialController {
   async group(paths) {
     const screen = this.getActiveScreen();
     this.requireDefaultState(screen);
+    const previousPlacements = structuredClone(screen.data.materials);
     const id = this.getUniqueGroupId(screen.data.materials);
     const stateSnapshots = this.captureNamedStatePlacements(screen);
     for (const { stateId, placements } of stateSnapshots) {
@@ -335,6 +336,11 @@ export class ScreenMaterialController {
     for (const { stateId, placements } of stateSnapshots) {
       this.services.persistStatePlacements?.(screen, placements, stateId);
     }
+    this.services.updateScreenPlacementReferences?.(
+      screen,
+      previousPlacements,
+      screen.data.materials
+    );
     await this.commitLayerChange(screen);
     this.services.selectInstance?.(path, null);
     return path;
@@ -344,7 +350,13 @@ export class ScreenMaterialController {
   async ungroup(path) {
     const screen = this.getActiveScreen();
     this.requireDefaultState(screen);
-    const groupId = getScreenPlacementAtPath(screen.data.materials, path)?.id;
+    const group = getScreenPlacementAtPath(screen.data.materials, path);
+    if (!isScreenGroup(group)) throw new Error("Select a group before ungrouping it.");
+    const groupId = group.id;
+    if (await this.services.confirmUngroupPlacementReferences?.(screen, groupId) === false) {
+      return null;
+    }
+    const previousPlacements = structuredClone(screen.data.materials);
     const stateSnapshots = this.captureNamedStatePlacements(screen);
     const stateChildVisibility = this.captureUngroupedStateVisibility(stateSnapshots, path, screen);
     this.applyBaseUngroupVisibility(screen, path);
@@ -354,6 +366,11 @@ export class ScreenMaterialController {
       this.services.persistStatePlacements?.(screen, placements, stateId);
     }
     this.restoreUngroupedChildVisibility(screen, stateChildVisibility);
+    this.services.updateScreenPlacementReferences?.(
+      screen,
+      previousPlacements,
+      screen.data.materials
+    );
     await this.commitLayerChange(screen);
     const first = children[0];
     const instance = getScreenPlacementAtPath(screen.data.materials, first);

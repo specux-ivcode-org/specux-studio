@@ -2981,6 +2981,45 @@
       outline: none;
       background: var(--ui-hover-strong);
     }
+    .context-menu button:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+    .context-menu button:disabled:hover { background: transparent; }
+    .confirmation-dialog {
+      width: min(440px, calc(100vw - 32px));
+      max-width: calc(100vw - 32px);
+      padding: 0;
+      border: 1px solid var(--ui-border-strong);
+      border-radius: 12px;
+      color: var(--ink);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+    .confirmation-dialog::backdrop { background: rgba(15, 23, 42, .42); }
+    .confirmation-dialog-form { padding: 20px; }
+    .confirmation-dialog h2 { margin: 0 0 10px; font-size: 16px; }
+    .confirmation-dialog p { margin: 0; color: var(--ui-text-medium); line-height: 1.5; }
+    .confirmation-dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 20px;
+    }
+    .confirmation-dialog-actions button {
+      padding: 8px 12px;
+      border: 1px solid var(--ui-border-strong);
+      border-radius: 7px;
+      color: var(--ui-text-strong);
+      background: var(--panel);
+      font: inherit;
+      cursor: pointer;
+    }
+    .confirmation-dialog-actions .confirmation-dialog-confirm {
+      border-color: var(--blue);
+      color: var(--ui-on-primary);
+      background: var(--blue);
+    }
 
     @media (max-width: 1120px) {
       .workspace {

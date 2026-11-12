@@ -52,6 +52,7 @@ const EDITOR_ASSETS = new Set([
   "/browser/ProjectFileNavigator.mjs",
   "/browser/ProjectFileTree.mjs",
   "/browser/ProjectPersistence.mjs",
+  "/browser/PlacementReferenceUpdater.mjs",
   "/browser/ResizablePanels.mjs",
   "/browser/PreviewStateController.mjs",
   "/browser/ResponsiveToolbarController.mjs",

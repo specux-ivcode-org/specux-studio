@@ -23,7 +23,14 @@ import { MaterialCanvas } from "./browser/MaterialCanvas.mjs";
 import { ScreenMaterialController } from "./browser/ScreenMaterialController.mjs";
 import { ScreenMaterialRenderer } from "./browser/ScreenMaterialRenderer.mjs";
 import {
+  countScreenPlacementReferences,
+  createScreenPlacementUrl,
+  rewriteScreenPlacementReferences
+} from "./browser/PlacementReferenceUpdater.mjs";
+import {
   canGroupScreenPlacements,
+  getScreenPlacementIdPath,
+  getSelectedGroupAncestorPath,
   getScreenPlacementAtPath,
   getScreenPlacementPathById,
   isScreenGroup
@@ -67,6 +74,7 @@ let activeMaterialFilePath = null;
 let activeInstancePath = [];
 let activeInstancePaths = [];
 let screenPlacementMenuTarget = null;
+let screenPlacementCopyTarget = null;
 let viewingMaterialFile = false;
 let viewingTheme = false;
 let viewingProject = false;
@@ -270,6 +278,8 @@ const screenMaterialController = new ScreenMaterialController({
       previewStateController.setLayerVisible(screen, layer, visible, stateId),
     removePlacementStateOverrides: (screen, placementIds, layerIds) =>
       previewStateController.removeStructuralOverrides(screen.data, placementIds, layerIds),
+    updateScreenPlacementReferences,
+    confirmUngroupPlacementReferences,
     confirm: (message) => window.confirm(message)
   }
 });
@@ -1060,6 +1070,115 @@ function findInstancePathById(instances, elementId, parentPath = []) {
 /** Updates the element spec owner for the current editor state. */
 function refreshElementSpecOwner(filePath, source) {
   return projectRepository.refreshElementSpecOwner(filePath, source, screens, elementSpecOwners);
+}
+
+/** Updates saved Spec and Workflow sources after a placement tree changes. */
+function updateScreenPlacementReferences(screen, previousPlacements, nextPlacements) {
+  updatePlacementReferenceSources(
+    specSources,
+    "spec",
+    screen,
+    previousPlacements,
+    nextPlacements
+  );
+  updatePlacementReferenceSources(
+    workflowSources,
+    "workflow",
+    screen,
+    previousPlacements,
+    nextPlacements
+  );
+}
+
+/** Rewrites a source map and synchronizes its active editor when necessary. */
+function updatePlacementReferenceSources(sources, type, screen, previousPlacements, nextPlacements) {
+  for (const [filePath, source] of sources) {
+    const updatedSource = rewriteScreenPlacementReferences(
+      source,
+      type,
+      screen.id,
+      previousPlacements,
+      nextPlacements
+    );
+    if (updatedSource === source) continue;
+    sources.set(filePath, updatedSource);
+    if (!syncActivePlacementReferenceEditor(type, filePath, updatedSource)) {
+      markEdited(filePath);
+    }
+  }
+}
+
+/** Confirms ungrouping only when links target the group being removed. */
+function confirmUngroupPlacementReferences(screen, groupId) {
+  const referenceFiles = [];
+  for (const [sources, type] of [
+    [specSources, "spec"],
+    [workflowSources, "workflow"]
+  ]) {
+    for (const [filePath, source] of sources) {
+      const count = countScreenPlacementReferences(
+        source,
+        type,
+        screen.id,
+        screen.data.materials,
+        groupId
+      );
+      if (count) referenceFiles.push({ filePath, count });
+    }
+  }
+  if (referenceFiles.length === 0) return true;
+
+  const total = referenceFiles.reduce((sum, reference) => sum + reference.count, 0);
+  const listedFiles = referenceFiles.slice(0, 3)
+    .map(({ filePath, count }) => `${filePath} (${count})`)
+    .join(", ");
+  const additionalFiles = referenceFiles.length > 3
+    ? `, and ${referenceFiles.length - 3} more file(s)`
+    : "";
+  const linkLabel = total === 1 ? "reference" : "references";
+  const message = `This group has ${total} existing ${linkLabel} in ${referenceFiles.length} file(s): ` +
+    `${listedFiles}${additionalFiles}. Ungrouping will remove the group placement from those links ` +
+    "while preserving their Screen and state. Continue?";
+  return confirmInAppDialog(message);
+}
+
+/** Shows the application confirmation dialog and resolves whether the action was accepted. */
+function confirmInAppDialog(message) {
+  const dialog = byId("screen-confirmation-dialog");
+  const messageElement = byId("screen-confirmation-message");
+  if (!dialog?.showModal || !messageElement) {
+    throw new Error("The confirmation dialog is unavailable.");
+  }
+  if (dialog.open) throw new Error("A confirmation dialog is already open.");
+  messageElement.textContent = message;
+  dialog.returnValue = "";
+  return new Promise((resolve) => {
+    dialog.addEventListener(
+      "close",
+      () => resolve(dialog.returnValue === "confirm"),
+      { once: true }
+    );
+    dialog.showModal();
+  });
+}
+
+/** Keeps the active source editor in sync when its links are rewritten. */
+function syncActivePlacementReferenceEditor(type, filePath, source) {
+  if (type === "spec" && viewingSpec && activeSpecPath === filePath) {
+    const editor = byId("spec-source");
+    if (!editor) return false;
+    editor.value = source;
+    specEditor.handleSourceInput(filePath, source);
+    return true;
+  }
+  if (type === "workflow" && viewingWorkflow && activeWorkflowPath === filePath) {
+    const editor = byId("workflow-source");
+    if (!editor) return false;
+    editor.value = source;
+    workflowEditor.handleSourceInput(filePath, source);
+    return true;
+  }
+  return false;
 }
 
 /** Returns the element spec path. */
@@ -2034,13 +2153,23 @@ function selectInstances(paths) {
 }
 
 /** Updates the screen placement menu for the current editor state. */
-function prepareScreenPlacementMenu(placement) {
+function prepareScreenPlacementMenu(placement, selectedCount = activeInstancePaths.length) {
   const groupButton = byId("screen-placement-context-group");
   const ungroupButton = byId("screen-placement-context-ungroup");
+  const copyButton = byId("screen-placement-context-copy-url");
   const placements = screens[activeScreenIndex]?.data?.materials || [];
-  groupButton.hidden = !canGroupScreenPlacements(placements, activeInstancePaths);
-  ungroupButton.hidden = !isScreenGroup(placement);
-  return !groupButton.hidden || !ungroupButton.hidden;
+  const isDefaultState = getActivePreviewStateId(screens[activeScreenIndex]?.data) === "default";
+  const canGroupSelection = canGroupScreenPlacements(placements, activeInstancePaths);
+  groupButton.hidden = !isDefaultState || activeInstancePaths.length < 2;
+  groupButton.disabled = !canGroupSelection;
+  groupButton.title = canGroupSelection
+    ? ""
+    : "Select at least two sibling placements from the same layer to group them.";
+  ungroupButton.hidden = !isDefaultState || !isScreenGroup(placement);
+  copyButton.hidden = false;
+  copyButton.disabled = selectedCount > 1;
+  copyButton.title = copyButton.disabled ? "Select one placement to copy its URL." : "";
+  return true;
 }
 
 /** Updates the screen placement menu for the current editor state. */
@@ -2048,15 +2177,23 @@ function positionScreenPlacementMenu(event) {
   const menu = byId("screen-placement-context-menu");
   const groupButton = byId("screen-placement-context-group");
   const ungroupButton = byId("screen-placement-context-ungroup");
+  const copyButton = byId("screen-placement-context-copy-url");
   menu.hidden = false;
-  menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - 210))}px`;
-  menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - 96))}px`;
-  (groupButton.hidden ? ungroupButton : groupButton).focus();
+  const menuWidth = menu.offsetWidth || 210;
+  const menuHeight = menu.offsetHeight || 120;
+  menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8))}px`;
+  const focusTarget = !groupButton.hidden && !groupButton.disabled
+    ? groupButton
+    : !ungroupButton.hidden
+      ? ungroupButton
+      : copyButton;
+  focusTarget.focus();
 }
 
 /** Checks whether the selected placement can open its context menu. */
 function canOpenPlacementContextMenu(path) {
-  return !isRenderOnly && !viewingWorkflow && !viewingTheme &&
+  return !isRenderOnly && !viewingWorkflow && !viewingTheme && !viewingSpec &&
     Array.isArray(path) && path.length > 0;
 }
 
@@ -2069,22 +2206,44 @@ function isPlacementSelected(path) {
 function openScreenPlacementContextMenu(event, path) {
   if (!canOpenPlacementContextMenu(path)) return;
   const screen = screens[activeScreenIndex];
-  if (getActivePreviewStateId(screen?.data) !== "default") {
-    closeScreenPlacementContextMenu();
-    return;
-  }
+  const selectedCount = activeInstancePaths.length;
+  const selectedCopyPath = selectedCount === 1 ? [...activeInstancePaths[0]] : null;
   event.preventDefault();
-  const placement = getInstanceAtPath(screen, path);
+  const selectedGroupPath = getSelectedGroupAncestorPath(
+    screen?.data?.materials,
+    activeInstancePaths,
+    path
+  );
+  const contextPath = selectedGroupPath || path;
+  const placement = getInstanceAtPath(screen, contextPath);
   if (!placement) return;
-  if (!isPlacementSelected(path)) {
-    selectInstance(path, placement.src || null);
+  if (!isPlacementSelected(contextPath)) {
+    selectInstance(contextPath, placement.src || null);
   }
-  screenPlacementMenuTarget = [...path];
-  if (!prepareScreenPlacementMenu(placement)) {
+  screenPlacementMenuTarget = [...contextPath];
+  screenPlacementCopyTarget = selectedCopyPath || [...contextPath];
+  if (!prepareScreenPlacementMenu(placement, selectedCount)) {
     closeScreenPlacementContextMenu();
     return;
   }
   positionScreenPlacementMenu(event);
+}
+
+/** Copies the selected placement's SpecUX reference URL to the clipboard. */
+async function copyScreenPlacementUrl(path) {
+  const screen = screens[activeScreenIndex];
+  if (!screen) throw new Error("Select a Screen before copying a placement URL.");
+  const url = createScreenPlacementUrl(
+    screen.id,
+    screen.data.materials,
+    path,
+    getActivePreviewStateId(screen.data)
+  );
+  if (!navigator.clipboard?.writeText) {
+    throw new Error("Clipboard access is unavailable in this browser.");
+  }
+  await navigator.clipboard.writeText(url);
+  showEditorMessage("SpecUX URL copied", url);
 }
 
 /** Closes the screen placement context menu and restores the related editor state. */
@@ -2092,6 +2251,7 @@ function closeScreenPlacementContextMenu() {
   const menu = byId("screen-placement-context-menu");
   if (menu) menu.hidden = true;
   screenPlacementMenuTarget = null;
+  screenPlacementCopyTarget = null;
 }
 
 /** Registers event listeners for screen placement context menu interactions. */
@@ -2106,6 +2266,15 @@ function bindScreenPlacementContextMenu() {
     const path = screenPlacementMenuTarget;
     closeScreenPlacementContextMenu();
     if (path) screenMaterialController.ungroup(path).catch(showFatalError);
+  });
+  byId("screen-placement-context-copy-url").addEventListener("click", () => {
+    const path = screenPlacementCopyTarget;
+    closeScreenPlacementContextMenu();
+    if (path) {
+      copyScreenPlacementUrl(path).catch((error) =>
+        showEditorMessage("Could not copy SpecUX URL", error.message || String(error))
+      );
+    }
   });
   document.addEventListener("pointerdown", (event) => {
     if (!menu.hidden && !menu.contains(event.target)) closeScreenPlacementContextMenu();
@@ -2201,9 +2370,11 @@ function getPublishedSelectionItems(selection, selectedScreen) {
 
 /** Returns the preview placement ids. */
 function getPreviewPlacementIds(selection, selectedScreen, selected) {
-  if (selection.view !== "spec" || !selectedScreen) return selected;
+  if (!["screen", "spec"].includes(selection.view) || !selectedScreen) return selected;
   return activeInstancePaths
-    .map((instancePath) => getInstanceAtPath(selectedScreen, instancePath)?.id)
+    .map((instancePath) =>
+      getScreenPlacementIdPath(selectedScreen.data.materials, instancePath)?.join(".")
+    )
     .filter((id) => typeof id === "string");
 }
 

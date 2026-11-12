@@ -58,7 +58,7 @@ export function parseWorkflowLink(href) {
   validateWorkflowQueryParameters(url, href);
   const placementId = url.searchParams.get("placement");
   const stateId = url.searchParams.get("state") ?? "default";
-  if (!isValidWorkflowId(placementId) && placementId !== null ||
+  if (!isValidWorkflowPlacementPath(placementId) && placementId !== null ||
       !isValidWorkflowId(stateId)) {
     throw new Error(`Invalid placement or Screen State in workflow link "${href}".`);
   }
@@ -99,6 +99,12 @@ function getRequiredDecodedPath(url, href) {
 /** Checks whether the value is a supported workflow node ID. */
 function isValidWorkflowId(id) {
   return typeof id === "string" && /^[a-z][a-z0-9-]*$/.test(id);
+}
+
+/** Checks whether a placement reference is a dot-separated placement ID path. */
+function isValidWorkflowPlacementPath(id) {
+  return typeof id === "string" &&
+    /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/.test(id);
 }
 
 /** Validates the workflow screen path before it is applied or saved. */

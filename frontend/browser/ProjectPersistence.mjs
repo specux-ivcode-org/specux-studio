@@ -1,3 +1,5 @@
+import { getScreenPlacementIdPath } from "../../shared/ScreenGroups.mjs";
+
 /** Tracks project edits and saves validated file changes. */
 export class ProjectPersistence {
 
@@ -167,16 +169,19 @@ export class ProjectPersistence {
     const { elementId } = identity;
     services.validation.validateElementSpecPath(specPath, elementId);
     const references = services.validation.parseSpecScreenReferences(content, specPath);
+    const instancePath = services.findInstancePathById(screen.data.materials || [], elementId);
+    if (!instancePath) throw new Error(`${specPath} links to unavailable Element "${elementId}".`);
+    const placementIdPath = getScreenPlacementIdPath(screen.data.materials || [], instancePath)?.join(".");
+    if (!placementIdPath) throw new Error(`${specPath} links to unavailable Element "${elementId}".`);
     const linksToElement = references.some((reference) =>
-      reference.screenId === screen.id && reference.placementId === elementId
+      reference.screenId === screen.id &&
+      [elementId, placementIdPath].includes(reference.placementId)
     );
     if (!linksToElement) {
       throw new Error(
         `${specPath} must include a SpecUX Screen link to its Element "${elementId}".`
       );
     }
-    const instancePath = services.findInstancePathById(screen.data.materials || [], elementId);
-    if (!instancePath) throw new Error(`${specPath} links to unavailable Element "${elementId}".`);
     if (linkedElementIds.has(elementId)) {
       throw new Error(`${specPath}: Element "${elementId}" has more than one behavior spec.`);
     }

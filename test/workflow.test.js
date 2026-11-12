@@ -94,6 +94,16 @@ test("parses explicit SpecUX workflow links", async () => {
     }
   );
   assert.deepEqual(
+    parseWorkflowLink(
+      "specux://screen/home/screen.yml?placement=dialog.actions.save"
+    ),
+    {
+      screenId: "home",
+      placementId: "dialog.actions.save",
+      stateId: "default"
+    }
+  );
+  assert.deepEqual(
     parseWorkflowSpecReference(
       "specux://screen/home/workflows/add-item.mmd?node=saveItem",
       workflowPath

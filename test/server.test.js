@@ -98,6 +98,10 @@ async function withServer(run) {
     "export class ProjectPersistence {}\n"
   );
   await fs.writeFile(
+    path.join(rootDirectory, "browser", "PlacementReferenceUpdater.mjs"),
+    "export function rewriteScreenPlacementReferences() {}\n"
+  );
+  await fs.writeFile(
     path.join(rootDirectory, "browser", "PreviewStateController.mjs"),
     "export class PreviewStateController {}\n"
   );
@@ -195,6 +199,9 @@ test("serves the editor root and the example project", async () => {
     const projectFileNavigatorModule = await fetch(`${baseUrl}/browser/ProjectFileNavigator.mjs`);
     const projectFileTreeModule = await fetch(`${baseUrl}/browser/ProjectFileTree.mjs`);
     const projectPersistenceModule = await fetch(`${baseUrl}/browser/ProjectPersistence.mjs`);
+    const placementReferenceUpdaterModule = await fetch(
+      `${baseUrl}/browser/PlacementReferenceUpdater.mjs`
+    );
     const resizablePanelsModule = await fetch(`${baseUrl}/browser/ResizablePanels.mjs`);
     const previewStateControllerModule = await fetch(`${baseUrl}/browser/PreviewStateController.mjs`);
     const responsiveToolbarControllerModule = await fetch(`${baseUrl}/browser/ResponsiveToolbarController.mjs`);
@@ -224,6 +231,14 @@ test("serves the editor root and the example project", async () => {
     assert.equal(editor.status, 200);
     const editorHtml = await editor.text();
     assert.match(editorHtml, /Editor/);
+    assert.match(
+      readFileSync(path.join(__dirname, "..", "frontend", "index.html"), "utf8"),
+      /id="screen-placement-context-copy-url"[^>]*>Copy SpecUX URL/
+    );
+    assert.match(
+      readFileSync(path.join(__dirname, "..", "frontend", "index.html"), "utf8"),
+      /<dialog class="confirmation-dialog" id="screen-confirmation-dialog"/
+    );
     assert.match(readFileSync(editorHtmlPath, "utf8"), /"yaml": "\/vendor\/yaml\/browser\/index\.js"/);
     assert.equal(stylesheet.status, 200);
     assert.equal(stylesheet.headers.get("content-type"), "text/css; charset=utf-8");
@@ -274,6 +289,7 @@ test("serves the editor root and the example project", async () => {
     assert.equal(projectFileNavigatorModule.status, 200);
     assert.equal(projectFileTreeModule.status, 200);
     assert.equal(projectPersistenceModule.status, 200);
+    assert.equal(placementReferenceUpdaterModule.status, 200);
     assert.equal(resizablePanelsModule.status, 200);
     assert.equal(previewStateControllerModule.status, 200);
     assert.equal(responsiveToolbarControllerModule.status, 200);

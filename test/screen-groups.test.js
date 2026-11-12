@@ -14,8 +14,8 @@ function material(id, position, size = { width: 100, height: 40 }, layer = "base
   };
 }
 
-/** Checks placement hierarchy, transforms, and saved state after the operation. */
-test("groups consecutive same-layer placements and leaves other layers in place", async () => {
+/** Groups placements at the highest selected position without moving above unselected items. */
+test("groups non-consecutive same-layer placements at the highest selected position", async () => {
   const {
     canGroupScreenPlacements,
     createScreenPlacementGroup
@@ -24,27 +24,75 @@ test("groups consecutive same-layer placements and leaves other layers in place"
     material("first", { x: 100, y: 100 }),
     material("overlay", { x: 0, y: 0 }, undefined, "overlay"),
     material("second", { x: 250, y: 100 }),
-    material("third", { x: 500, y: 100 })
+    material("third", { x: 500, y: 100 }),
+    material("unselected-top", { x: 700, y: 100 })
   ];
 
   assert.equal(canGroupScreenPlacements(placements, [[0], [2]]), true);
-  assert.equal(canGroupScreenPlacements(placements, [[0], [3]]), false);
+  assert.equal(canGroupScreenPlacements(placements, [[0], [3]]), true);
   assert.equal(canGroupScreenPlacements(placements, [[0], [1]]), false);
 
-  const { group, path } = createScreenPlacementGroup(placements, [[2], [0]], "group");
-  assert.deepEqual(path, [0]);
-  assert.deepEqual(placements.map(({ id }) => id), ["group", "overlay", "third"]);
+  const { group, path } = createScreenPlacementGroup(placements, [[3], [0]], "group");
+  assert.deepEqual(path, [2]);
+  assert.deepEqual(
+    placements.map(({ id }) => id),
+    ["overlay", "second", "group", "unselected-top"]
+  );
   assert.equal(group.layer, "base");
   assert.deepEqual(group.position, { x: 100, y: 100 });
-  assert.deepEqual(group.size, { width: 250, height: 40 });
+  assert.deepEqual(group.size, { width: 500, height: 40 });
   assert.deepEqual(group.children.map(({ id, position, layer }) => ({
     id,
     position,
     layer
   })), [
     { id: "first", position: { x: 0, y: 0 }, layer: undefined },
-    { id: "second", position: { x: 150, y: 0 }, layer: undefined }
+    { id: "third", position: { x: 400, y: 0 }, layer: undefined }
   ]);
+});
+
+/** Resolves dot-separated IDs only when each segment follows a group. */
+test("resolves and serializes nested placement ID paths", async () => {
+  const {
+    getScreenPlacementIdPath,
+    getScreenPlacementPathById
+  } = await import("../shared/ScreenGroups.mjs");
+  const placements = [{
+    id: "dialog",
+    type: "group",
+    children: [{
+      id: "actions",
+      type: "group",
+      children: [{ id: "save" }]
+    }]
+  }];
+  assert.deepEqual(
+    getScreenPlacementPathById(placements, "dialog.actions.save"),
+    [0, 0, 0]
+  );
+  assert.deepEqual(
+    getScreenPlacementIdPath(placements, [0, 0, 0]),
+    ["dialog", "actions", "save"]
+  );
+  assert.equal(getScreenPlacementPathById(placements, "dialog.save"), null);
+});
+
+/** A selected group remains the context-menu target when the pointer hits one of its descendants. */
+test("resolves the selected group ancestor for nested placement context menus", async () => {
+  const { getSelectedGroupAncestorPath } = await import("../shared/ScreenGroups.mjs");
+  const placements = [{
+    id: "group",
+    type: "group",
+    layer: "base",
+    position: { x: 0, y: 0 },
+    size: { width: 200, height: 100 },
+    children: [material("child", { x: 0, y: 0 })]
+  }];
+
+  assert.deepEqual(getSelectedGroupAncestorPath(placements, [[0]], [0, 0]), [0]);
+  assert.deepEqual(getSelectedGroupAncestorPath(placements, [[0]], [0]), [0]);
+  assert.equal(getSelectedGroupAncestorPath(placements, [[0, 0]], [0, 0]), null);
+  assert.equal(getSelectedGroupAncestorPath(placements, [[0]], [1]), null);
 });
 
 /** Checks placement hierarchy, transforms, and saved state after the operation. */
@@ -249,6 +297,7 @@ test("ScreenMaterialController groups and ungroups selected placement paths", as
     activeScreenIndex: 0,
     activeInstancePath: [0]
   };
+  const referenceChanges = [];
   const controller = new ScreenMaterialController({
     state,
     services: {
@@ -256,6 +305,13 @@ test("ScreenMaterialController groups and ungroups selected placement paths", as
       async renderScreen() {},
       selectInstance(path) {
         state.activeInstancePath = path;
+      },
+      updateScreenPlacementReferences(targetScreen, previousPlacements, nextPlacements) {
+        referenceChanges.push({
+          screen: targetScreen,
+          previousPlacements,
+          nextPlacements: structuredClone(nextPlacements)
+        });
       }
     }
   });
@@ -265,6 +321,8 @@ test("ScreenMaterialController groups and ungroups selected placement paths", as
   assert.equal(screen.data.materials[0].type, "group");
   assert.equal(screen.data.materials[0].layer, "base");
   assert.deepEqual(state.activeInstancePath, [0]);
+  assert.deepEqual(referenceChanges[0].previousPlacements.map((item) => item.id), ["first", "second"]);
+  assert.deepEqual(referenceChanges[0].nextPlacements.map((item) => item.id), ["group"]);
 
   screen.data.materials[0].rotation = 90;
   const childPaths = await controller.ungroup([0]);
@@ -272,6 +330,53 @@ test("ScreenMaterialController groups and ungroups selected placement paths", as
   assert.equal(screen.data.materials[0].layer, "base");
   assert.equal(screen.data.materials[1].layer, "base");
   assert.deepEqual(state.activeInstancePath, [0]);
+  assert.deepEqual(referenceChanges[1].previousPlacements.map((item) => item.id), ["group"]);
+  assert.deepEqual(referenceChanges[1].nextPlacements.map((item) => item.id), ["first", "second"]);
+});
+
+/** Leaves a referenced group intact when the user declines ungroup confirmation. */
+test("cancels ungrouping when the user rejects the reference warning", async () => {
+  const { ScreenMaterialController } = await import(
+    "../frontend/browser/ScreenMaterialController.mjs"
+  );
+  const screen = {
+    file: "screens/home/screen.yml",
+    data: {
+      layers: [{ id: "base", name: "Base" }],
+      materials: [{
+        id: "dialog",
+        type: "group",
+        layer: "base",
+        position: { x: 0, y: 0 },
+        size: { width: 120, height: 60 },
+        children: [material("save", { x: 10, y: 10 })]
+      }]
+    }
+  };
+  const state = {
+    screens: [screen],
+    activeScreenIndex: 0,
+    activeInstancePath: [0]
+  };
+  let confirmedGroupId = null;
+  let renderCount = 0;
+  const controller = new ScreenMaterialController({
+    state,
+    services: {
+      markEdited() {},
+      async renderScreen() { renderCount += 1; },
+      async confirmUngroupPlacementReferences(targetScreen, groupId) {
+        assert.equal(targetScreen, screen);
+        confirmedGroupId = groupId;
+        return false;
+      }
+    }
+  });
+
+  assert.equal(await controller.ungroup([0]), null);
+  assert.equal(confirmedGroupId, "dialog");
+  assert.equal(screen.data.materials[0].id, "dialog");
+  assert.equal(renderCount, 0);
 });
 
 /** Group geometry changes retain named-state transforms and visibility overrides. */

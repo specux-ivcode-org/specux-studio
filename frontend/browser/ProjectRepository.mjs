@@ -1,9 +1,31 @@
 import { normalizeScreenLayers } from "../../shared/ScreenLayers.mjs";
 import {
+  getScreenPlacementIdPath,
   isScreenGroup,
   isValidAffineMatrix,
   isValidScale
 } from "../../shared/ScreenGroups.mjs";
+
+/** Validates the Element spec target and returns its current placement path. */
+function validateElementSpecTarget(repository, references, screen, elementId, filePath) {
+  const instancePath = repository.findInstancePathById(screen.data.materials || [], elementId);
+  const placementIdPath = getScreenPlacementIdPath(
+    screen.data.materials || [],
+    instancePath
+  )?.join(".");
+  if (!instancePath || !placementIdPath) {
+    throw new Error(`${filePath} links to unavailable Element "${elementId}".`);
+  }
+  if (!references.some((reference) =>
+    reference.screenId === screen.id &&
+    [elementId, placementIdPath].includes(reference.placementId)
+  )) {
+    throw new Error(
+      `${filePath} must include a SpecUX Screen link to its Element "${elementId}".`
+    );
+  }
+  return instancePath;
+}
 
 /** Loads project files and assembles their validated editor data. */
 export class ProjectRepository {
@@ -466,17 +488,13 @@ export class ProjectRepository {
     const { elementId } = identity;
     this.validation.validateElementSpecPath(filePath, elementId);
     const references = this.validation.validateSpecScreenReferences(source, screens, filePath);
-    if (!references.some((reference) =>
-      reference.screenId === screen.id && reference.placementId === elementId
-    )) {
-      throw new Error(
-        `${filePath} must include a SpecUX Screen link to its Element "${elementId}".`
-      );
-    }
-    const instancePath = this.findInstancePathById(screen.data.materials || [], elementId);
-    if (!instancePath) {
-      throw new Error(`${filePath} links to unavailable Element "${elementId}".`);
-    }
+    const instancePath = validateElementSpecTarget(
+      this,
+      references,
+      screen,
+      elementId,
+      filePath
+    );
     for (const [otherPath, owner] of elementSpecOwners) {
       if (otherPath !== filePath && owner.screenFile === screen.file && owner.elementId === elementId) {
         throw new Error(`${filePath}: Element "${elementId}" already has behavior spec "${otherPath}".`);

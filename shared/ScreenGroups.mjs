@@ -100,17 +100,62 @@ export function getScreenPlacementLayer(placements, path) {
   return typeof root?.layer === "string" ? root.layer : null;
 }
 
-export function getScreenPlacementPathById(placements, id, parentPath = []) {
+export function getScreenPlacementPathById(placements, id) {
+  const segments = typeof id === "string" ? id.split(".") : [];
+  if (segments.length > 1) {
+    let siblings = placements;
+    const path = [];
+    for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
+      if (!Array.isArray(siblings)) return null;
+      const index = siblings.findIndex((placement) => placement.id === segments[segmentIndex]);
+      if (index < 0) return null;
+      const placement = siblings[index];
+      path.push(index);
+      if (segmentIndex < segments.length - 1 && !isScreenGroup(placement)) return null;
+      siblings = placement.children;
+    }
+    return path;
+  }
+  return findPlacementPathByLeafId(placements, id);
+}
+
+function findPlacementPathByLeafId(placements, id, parentPath = []) {
+  if (!Array.isArray(placements)) return null;
   for (let index = 0; index < placements.length; index += 1) {
     const placement = placements[index];
     const path = [...parentPath, index];
     if (placement.id === id) return path;
     if (isScreenGroup(placement)) {
-      const childPath = getScreenPlacementPathById(placement.children, id, path);
+      const childPath = findPlacementPathByLeafId(placement.children, id, path);
       if (childPath) return childPath;
     }
   }
   return null;
+}
+
+export function getScreenPlacementIdPath(placements, path) {
+  if (!Array.isArray(path) || path.length === 0) return null;
+  let siblings = placements;
+  const ids = [];
+  for (let pathIndex = 0; pathIndex < path.length; pathIndex += 1) {
+    const index = path[pathIndex];
+    if (!Array.isArray(siblings) || !Number.isInteger(index)) return null;
+    const placement = siblings[index];
+    if (!placement || (pathIndex < path.length - 1 && !isScreenGroup(placement))) return null;
+    ids.push(placement.id);
+    siblings = placement.children;
+  }
+  return ids;
+}
+
+export function getSelectedGroupAncestorPath(placements, selectedPaths, path) {
+  if (!Array.isArray(selectedPaths) || !Array.isArray(path)) return null;
+  return selectedPaths.find((selectedPath) =>
+    Array.isArray(selectedPath) &&
+    selectedPath.length <= path.length &&
+    selectedPath.every((part, index) => part === path[index]) &&
+    isScreenGroup(getScreenPlacementAtPath(placements, selectedPath))
+  ) || null;
 }
 
 export function getScreenPlacementBounds(placement) {
@@ -159,38 +204,19 @@ export function canGroupScreenPlacements(placements, paths) {
       return false;
     }
   }
-  const selectedSiblingIndexes = new Set(
-    sortedPaths.map((path) => path[path.length - 1])
-  );
-  const siblings = parentPath.length
-    ? getScreenPlacementAtPath(placements, parentPath)?.children
-    : placements;
-  const layerIndexes = (siblings || [])
-    .map((placement, index) => ({ placement, index }))
-    .filter(({ placement }) =>
-      parentPath.length > 0 || placement.layer === layer
-    )
-    .map(({ index }) => index);
-  const selectedPositions = layerIndexes
-    .map((siblingIndex, layerIndex) =>
-      selectedSiblingIndexes.has(siblingIndex) ? layerIndex : -1
-    )
-    .filter((layerIndex) => layerIndex >= 0);
-  for (let index = 0; index < selectedPositions.length; index += 1) {
-    if (selectedPositions[index] !== selectedPositions[0] + index) return false;
-  }
-  return selectedPositions.length === sortedPaths.length;
+  return true;
 }
 
 export function createScreenPlacementGroup(placements, paths, id) {
   if (!canGroupScreenPlacements(placements, paths)) {
-    throw new Error("Select at least two consecutive placements from the same layer to group them.");
+    throw new Error("Select at least two sibling placements from the same layer to group them.");
   }
   const orderedPaths = [...paths].sort((left, right) =>
     left[left.length - 1] - right[right.length - 1]
   );
   const { parentPath, siblings } = getScreenPlacementLocation(placements, orderedPaths[0]);
-  const firstIndex = orderedPaths[0][orderedPaths[0].length - 1];
+  const highestSelectedIndex = orderedPaths[orderedPaths.length - 1].at(-1);
+  const groupIndex = highestSelectedIndex - orderedPaths.length + 1;
   const children = orderedPaths.map((path) => getScreenPlacementAtPath(placements, path));
   const bounds = children
     .map(getScreenPlacementBounds)
@@ -229,8 +255,8 @@ export function createScreenPlacementGroup(placements, paths, id) {
   for (const path of orderedPaths.slice().reverse()) {
     siblings.splice(path[path.length - 1], 1);
   }
-  siblings.splice(firstIndex, 0, group);
-  return { group, path: [...parentPath, firstIndex] };
+  siblings.splice(groupIndex, 0, group);
+  return { group, path: [...parentPath, groupIndex] };
 }
 
 function transformChildForUngroup(group, child) {
