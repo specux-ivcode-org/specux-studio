@@ -1,6 +1,6 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { randomUUID } = require("node:crypto");
+const { createHash, randomUUID } = require("node:crypto");
 const validation = require("../../shared/validation");
 const { requestError } = require("./httpUtils");
 const { isWithin } = require("../project/paths");
@@ -55,6 +55,58 @@ class ProjectFileService {
     return files.sort((left, right) => left.localeCompare(right));
   }
 
+  /** Returns SHA-256 versions for the visible project files. */
+  async listFileHashes(files = null) {
+    const listedFiles = files || await this.listFiles();
+    const realProjectRoot = await fs.realpath(this.projectRoot);
+    const versions = await Promise.all(listedFiles.map(async (relativePath) => {
+      const target = path.resolve(realProjectRoot, ...relativePath.split("/"));
+      const realTarget = await fs.realpath(target);
+      if (!isWithin(realProjectRoot, realTarget)) {
+        throw requestError("Project file resolves outside the project.");
+      }
+      const details = await fs.stat(realTarget);
+      if (!details.isFile()) throw requestError("Project file version requires a regular file.");
+      const content = await fs.readFile(realTarget);
+      return [
+        relativePath,
+        createHash("sha256").update(content).digest("hex")
+      ];
+    }));
+    return Object.fromEntries(versions);
+  }
+
+  /** Deletes one existing Screen workflow while keeping the target inside the project. */
+  async deleteWorkflow(relativePath) {
+    if (!this.#isWorkflowPath(relativePath)) {
+      throw requestError("Only Screen workflow Mermaid files can be deleted.");
+    }
+
+    const relativeDirectory = path.posix.dirname(relativePath);
+    const directory = await this.#resolveDirectory(relativeDirectory);
+    const target = path.join(directory, path.posix.basename(relativePath));
+    let details;
+    try {
+      details = await fs.lstat(target);
+    } catch (error) {
+      if (error.code === "ENOENT") {
+        throw requestError(`Workflow "${relativePath}" does not exist.`, 404);
+      }
+      throw error;
+    }
+    if (details.isSymbolicLink() || !details.isFile()) {
+      throw requestError("Workflow deletion requires a regular project file.");
+    }
+
+    const projectRoot = await fs.realpath(this.projectRoot);
+    const realTarget = await fs.realpath(target);
+    if (!isWithin(projectRoot, realTarget)) {
+      throw requestError("Workflow file resolves outside the specux project.");
+    }
+    await fs.unlink(target);
+    return relativePath;
+  }
+
   /** Reports whether a path passes the behavior-spec path validator. */
   #isSpecPath(relativePath) {
     try {
@@ -83,6 +135,14 @@ class ProjectFileService {
   /** Accepts only named STML files directly inside the project's materials directory. */
   #isMaterialFilePath(relativePath) {
     return /^materials\/[a-z][a-z0-9-]*\.stml$/.test(relativePath);
+  }
+
+  /** Restricts history deletions to editor-owned, named project artifacts. */
+  #isDeletableFilePath(relativePath) {
+    return this.#isScreenFilePath(relativePath) ||
+      this.#isMaterialFilePath(relativePath) ||
+      this.#isSpecPath(relativePath) ||
+      this.#isWorkflowPath(relativePath);
   }
 
   /** Resolves or creates a project directory while refusing symlinks and non-directories. */
@@ -302,9 +362,22 @@ class ProjectFileService {
     if (Object.hasOwn(file, "create") && typeof file.create !== "boolean") {
       throw requestError("Save entry create flags must be booleans.");
     }
+    this.#validateExpectedHash(file);
     if (seen.has(file.path)) throw requestError(`Save request contains "${file.path}" more than once.`);
     seen.add(file.path);
     return file.create === true;
+  }
+
+  /** Validates the optional disk version carried by a save entry. */
+  #validateExpectedHash(file) {
+    if (file.expectedHash !== undefined &&
+        file.expectedHash !== null &&
+        (typeof file.expectedHash !== "string" || !/^[a-f\d]{64}$/i.test(file.expectedHash))) {
+      throw requestError("Save entry expectedHash must be a SHA-256 hash or null.");
+    }
+    if (file.create === true && file.expectedHash != null) {
+      throw requestError("New files cannot specify an expected file hash.");
+    }
   }
 
   /** Validates the shape and selects the file-specific save preparation method. */
@@ -312,12 +385,99 @@ class ProjectFileService {
     // Validate common entry metadata before dispatching to the format-specific parser.
     const create = this.#validateSaveEntry(file, seen);
     const extension = path.extname(file.path).toLowerCase();
-    if (extension === ".md") return this.#prepareSpecSave(file, create);
-    if (extension === ".mmd") return this.#prepareWorkflowSave(file, create);
-    if (extension === validation.MATERIAL_FILE_EXTENSION && this.#isMaterialFilePath(file.path)) {
-      return this.#prepareMaterialSave(file, create);
+    let update;
+    if (extension === ".md") update = this.#prepareSpecSave(file, create);
+    else if (extension === ".mmd") update = this.#prepareWorkflowSave(file, create);
+    else if (extension === validation.MATERIAL_FILE_EXTENSION && this.#isMaterialFilePath(file.path)) {
+      update = this.#prepareMaterialSave(file, create);
+    } else update = await this.#prepareYamlSave(file, create, YAML);
+    if (file.expectedHash !== undefined) update.expectedHash = file.expectedHash;
+    return update;
+  }
+
+  /** Detects files changed or removed since the editor loaded them. */
+  async #resolveDiskVersionTarget(update) {
+    try {
+      return await this.#resolveFile(update.path, { create: update.create });
+    } catch (error) {
+      if (update.create && error.statusCode === 409) {
+        return this.#resolveFile(update.path);
+      }
+      if ((update.create && error.code === "ENOENT") ||
+          (!update.create && error.message.includes("does not exist"))) return null;
+      throw error;
     }
-    return this.#prepareYamlSave(file, create, YAML);
+  }
+
+  /** Reads the current content and hash for one save target. */
+  async #readDiskVersion(update) {
+    const target = await this.#resolveDiskVersionTarget(update);
+    if (!target) return { diskContent: null, diskHash: null };
+    try {
+      const buffer = await fs.readFile(target);
+      return {
+        diskContent: buffer.toString("utf8"),
+        diskHash: createHash("sha256").update(buffer).digest("hex")
+      };
+    } catch (error) {
+      if (update.create && error.code === "ENOENT") {
+        return { diskContent: null, diskHash: null };
+      }
+      throw error;
+    }
+  }
+
+  /** Compares one save entry's version with the current disk version. */
+  async #getHashConflict(update) {
+    if (update.expectedHash === undefined) return null;
+    const diskVersion = await this.#readDiskVersion(update);
+    const matches = update.create
+      ? diskVersion.diskHash === null
+      : update.expectedHash !== null && diskVersion.diskHash === update.expectedHash;
+    return matches ? null : {
+      path: update.path,
+      expectedHash: update.expectedHash,
+      ...diskVersion
+    };
+  }
+
+  /** Detects files changed or removed since the editor loaded them. */
+  async #checkExpectedHashes(updates) {
+    const conflicts = [];
+    for (const update of updates) {
+      const conflict = await this.#getHashConflict(update);
+      if (conflict) conflicts.push(conflict);
+    }
+    if (conflicts.length) {
+      const error = requestError("Project files changed on disk; review the external changes before saving.", 409);
+      error.conflicts = conflicts;
+      throw error;
+    }
+  }
+
+  /** Validates deletion paths and their expected disk versions. */
+  async #prepareDeleteEntries(deletes, seen) {
+    if (!Array.isArray(deletes) || deletes.length > MAX_FILES_PER_SAVE) {
+      throw requestError(`Delete requests must contain no more than ${MAX_FILES_PER_SAVE} files.`);
+    }
+    const prepared = [];
+    for (const entry of deletes) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry) ||
+          !this.#isDeletableFilePath(entry.path) ||
+          typeof entry.expectedHash !== "string" ||
+          !/^[a-f\d]{64}$/i.test(entry.expectedHash)) {
+        throw requestError("Delete entries require an editor-owned file path and expectedHash.");
+      }
+      if (seen.has(entry.path)) {
+        throw requestError(`Project file "${entry.path}" appears more than once in the save batch.`);
+      }
+      seen.add(entry.path);
+      prepared.push({
+        path: entry.path,
+        expectedHash: entry.expectedHash
+      });
+    }
+    return prepared;
   }
 
   /** Resolves all save destinations before preparing a transactional write. */
@@ -371,13 +531,18 @@ class ProjectFileService {
   }
 
   /** Persists a save batch through temporary files and cleans up on failure. */
-  async #persistUpdates(updates) {
+  async #persistUpdates(updates, deletes = []) {
     // Resolve every destination, stage all content, and only then commit the batch.
     let staged = [];
     try {
+      await this.#checkExpectedHashes([...updates, ...deletes]);
       await this.#resolveUpdateTargets(updates);
+      for (const deletion of deletes) {
+        deletion.target = await this.#resolveFile(deletion.path);
+      }
       await this.#stageUpdates(updates, staged);
       await this.#commitUpdates(staged);
+      for (const deletion of deletes) await fs.unlink(deletion.target);
     } catch (error) {
       await this.#removeStagedFiles(staged);
       throw error;
@@ -385,14 +550,16 @@ class ProjectFileService {
   }
 
   /** Validates and atomically saves a batch of YAML, STML, behavior-spec, or workflow files. */
-  async saveFiles(files) {
+  async saveFiles(files, deletes = []) {
     // Enforce batch limits before parsing any individual update.
     const YAML = await yamlModule;
-    if (!Array.isArray(files) || files.length === 0 || files.length > MAX_FILES_PER_SAVE) {
-      throw requestError(`Save requests must contain between 1 and ${MAX_FILES_PER_SAVE} files.`);
+    if (!Array.isArray(files) || files.length + (Array.isArray(deletes) ? deletes.length : 0) === 0 ||
+        files.length + (Array.isArray(deletes) ? deletes.length : 0) > MAX_FILES_PER_SAVE) {
+      throw requestError(`Save requests must contain between 1 and ${MAX_FILES_PER_SAVE} file operations.`);
     }
     const seen = new Set();
     const updates = [];
+    const preparedDeletes = await this.#prepareDeleteEntries(deletes, seen);
 
     // Validate and prepare every requested file before writing anything.
     for (const file of files) {
@@ -400,18 +567,28 @@ class ProjectFileService {
     }
 
     // Persist the prepared batch transactionally and return its project-relative paths.
-    await this.#persistUpdates(updates);
+    await this.#persistUpdates(updates, preparedDeletes);
 
     // Return the project-relative path of each successfully saved file.
-    return { saved: updates.map(({ path: filePath }) => filePath) };
+    const result = { saved: updates.map(({ path: filePath }) => filePath) };
+    if (preparedDeletes.length) {
+      result.deleted = preparedDeletes.map(({ path: filePath }) => filePath);
+    }
+    if (updates.some((update) => update.expectedHash !== undefined) || preparedDeletes.length) {
+      result.hashes = Object.fromEntries(updates.map(({ path: filePath, content }) => [
+        filePath,
+        createHash("sha256").update(content).digest("hex")
+      ]));
+    }
+    return result;
   }
 
 
 }
 
 /** Preserves the existing saveProjectFiles API through the project-file service. */
-function saveProjectFiles(projectRoot, files) {
-  return new ProjectFileService({ projectRoot }).saveFiles(files);
+function saveProjectFiles(projectRoot, files, deletes) {
+  return new ProjectFileService({ projectRoot }).saveFiles(files, deletes);
 }
 
 module.exports = { ProjectFileService, saveProjectFiles };

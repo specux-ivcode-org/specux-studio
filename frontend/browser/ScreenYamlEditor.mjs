@@ -12,6 +12,7 @@ export class ScreenYamlEditor {
     getScreenIndex,
     invalidYamlFiles,
     markEdited,
+    saveRecoveryDraft,
     renderNavigation,
     renderScreen,
     updateSaveControls,
@@ -26,6 +27,7 @@ export class ScreenYamlEditor {
     this.getScreenIndex = getScreenIndex;
     this.invalidYamlFiles = invalidYamlFiles;
     this.markEdited = markEdited;
+    this.saveRecoveryDraft = saveRecoveryDraft;
     this.renderNavigation = renderNavigation;
     this.renderScreen = renderScreen;
     this.updateSaveControls = updateSaveControls;
@@ -131,13 +133,14 @@ export class ScreenYamlEditor {
       const version = ++screen.yamlParseVersion;
       this.invalidYamlFiles.set(screen.file, "Validating Screen YAML...");
       this.setStatus(screen, "Validating YAML...");
-      this.markEdited(screen.file, { yamlSource: true });
+      this.markEdited(screen.file, { yamlSource: true, coalesce: true });
       clearTimeout(screen.yamlTimer);
       screen.yamlTimer = setTimeout(() => {
         this.parse(screen, source, version).catch((error) => {
           if (version !== screen.yamlParseVersion) return;
           const message = error.message || String(error);
           this.invalidYamlFiles.set(screen.file, message);
+          this.saveRecoveryDraft?.(screen.file, source, message, "screen");
           this.setStatus(screen, `Invalid Screen YAML: ${message}`, true);
           this.updateSaveControls();
         });

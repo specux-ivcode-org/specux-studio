@@ -163,6 +163,30 @@ async function createProject() {
   return root;
 }
 
+test("validates project-level Material selector frames", async () => {
+  const root = await createProject();
+  try {
+    const manifestPath = path.join(root, "project.yml");
+    const project = YAML.parse(await fs.readFile(manifestPath, "utf8"));
+    project["material-previews"] = {
+      brand: { x: 8, y: 4, width: 120, height: 40 }
+    };
+    await fs.writeFile(manifestPath, YAML.stringify(project));
+
+    let result = await validateProject(root);
+    assert.equal(result.errors.some((error) => error.includes("material-previews")), false);
+
+    project["material-previews"].brand = { x: 100, y: 0, width: 160, height: 24 };
+    await fs.writeFile(manifestPath, YAML.stringify(project));
+    result = await validateProject(root);
+    assert.ok(result.errors.some((error) =>
+      error.includes("material-previews.brand must fit inside the Material preview bounds")
+    ));
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test("discovers project files and validates native visual Materials", async () => {
   const root = await createProject();
   try {
@@ -631,6 +655,33 @@ test("creates nested Element specs with dot-separated placement links", async ()
       projectFileTree: { expandPath() {} },
       renderNavigation() {}
     }
+  });
+
+  test("loads Screen-owned Workflow node specs from the project file list", async () => {
+    const { ProjectRepository } = await import("../frontend/browser/ProjectRepository.mjs");
+    const filePath = "screens/home/specs/workflow-add-item-saveItem.md";
+    const source = [
+      "# Save item",
+      "",
+      "[Workflow node](specux://screen/home/workflows/add-item.mmd?node=saveItem)"
+    ].join("\n");
+    const repository = new ProjectRepository({
+      appRoot: "",
+      fetcher: async () => {},
+      parseYaml: async () => {},
+      validation,
+      materialFileExtension: validation.MATERIAL_FILE_EXTENSION
+    });
+    repository.loadText = async (loadedPath) => {
+      assert.equal(loadedPath, filePath);
+      return source;
+    };
+    const loaded = await repository.loadSpecs(
+      {},
+      [{ id: "home", file: "screens/home/screen.yml", data: {} }],
+      [filePath]
+    );
+    assert.equal(loaded.specSources.get(filePath), source);
   });
   editor.render = async () => {};
   await editor.createForInstance([0, 0]);

@@ -1,6 +1,6 @@
 # Screen-Centered Workflow Workspace Plan
 
-**Status:** Initial design direction
+**Status:** Implemented through the OpenSpec change [`screen-centered-workspace`](../openspec/changes/screen-centered-workspace/tasks.md). This document is the decision history; the current Screen-editor baseline is [Screen Editor Requirements](screen-editor-requirements.md).
 **Scope:** Keep the Screen visible as the primary workspace for Screen, Workflow, and Spec modes, with Material editing as the workspace exception.
 
 ## Goal
@@ -11,7 +11,7 @@ Keep the Screen canvas as the primary, persistent workspace for every mode excep
 
 - Make the Screen canvas the central workspace rather than one editor among several dedicated views.
 - Keep the existing Project page as a project-wide summary and provide an action there to create project-level specs.
-- Reflect the canvas target (Screen, state, or placement) in a `#specux=<path>` URL fragment that follows the SpecUX URL structure. Preserve the app's existing URL parameters to identify the active editor and mode, so a shared URL restores both editor context and canvas focus.
+- Reflect the complete canvas target (Screen, state, or one or more placements) in a `#specux=<path>` URL fragment that follows the SpecUX URL structure; repeat `placement` parameters for multi-placement targets. Preserve the app's existing `file`, `view`, `screen`, and `owner` parameters for primary editor context, and use `linked` plus optional `node` parameters for linked workflow context, so a shared URL restores both document context and canvas focus.
 - Add browser history entries only when switching Screens. Navigation to other SpecUX targets on the current Screen updates the URL without adding history entries.
 - Make Screen mode the default/base mode: selecting a Screen displays it on the canvas.
 - Choosing a Screen directly from the toolbar enters Screen mode. Following a reference to another Screen while in Workflow or Spec mode changes the canvas target without changing the active mode.
@@ -29,16 +29,18 @@ Keep the Screen canvas as the primary, persistent workspace for every mode excep
 - Make the bottom dock resizable so users can adjust how much of the Screen canvas remains visible.
 - Workflows describe how a user moves through Screen states and placements.
 - Keep the Screen canvas as the default workspace; editing a Material replaces the Screen workspace with the Material editing workspace.
-- In the Material editing workspace, show the Material preview in the canvas and provide its STML source editor as part of the workspace, not in an overlay.
-- Provide a Material selector on the left, separate from the Material editor, where users can preview Materials, select one to add, or drag one onto the Screen.
+- In the Material editing workspace, show the Material preview canvas above its STML source editor in a resizable vertical split, not in an overlay.
+- Provide a Material selector on the left, separate from the Material editor, where users can preview Materials, click to add one at the center of the visible canvas using current default state/layer rules, or drag one onto the Screen.
 - Preserve the workflow editor's current capabilities and controls in Workflow mode.
 - In Workflow mode, selecting a node centers its target Screen, state, or placement on the canvas. Double-clicking a node opens a node-specific spec, creating it if needed, in the bottom dock without entering Spec mode. This spec belongs to the workflow node, not its target Screen or placement.
+- Store exactly one node spec at `screens/<screen-id>/specs/workflow-<workflow-id>-<node-id>.md`. Renaming a node renames the file and updates its association; deleting a node preserves the spec as unlinked documentation.
 - Define workflow entry points as nodes with no incoming arrows. Use the first entry point in Mermaid source order and warn when multiple entry points exist. If every node has an incoming arrow, such as in a cycle, show a warning and do not guess an entry point.
-- Require each workflow node to have at least one SpecUX placement link. Show a warning when a node has no placement link. Multiple placement links are allowed only when all linked placements belong to the same Screen and the same state, including its default state.
-- When a node links to multiple placements on the same Screen and state, highlight all linked placements and center their combined bounds. If a link is missing or invalid, show a warning rather than arbitrarily focusing one placement.
+- Require each workflow node to have one Mermaid `click` directive with a SpecUX URL containing at least one `placement` query parameter. Repeat the `placement` parameter in that URL for multiple placements; all targets must belong to the same Screen and state, including Default. Show a warning when no valid placement is linked.
+- When a node links to multiple placements on the same Screen and state, highlight all linked placements and center their combined bounds. If a link is missing or invalid, show a warning and preserve the current canvas Screen and focus.
+- Example: `click save href "specux://screen/home/screen.yml?placement=dialog.title&placement=dialog.save&state=dialog-open"`.
 - In Spec mode, cycle through the spec's links: Screen and placement links center their targets on the canvas; a workflow link opens that workflow's Mermaid graph in the bottom dock without entering Workflow mode.
 - In Screen mode, double-clicking a placement opens its Element spec, creating it if needed; double-clicking empty canvas opens the active Screen's spec, creating it if needed. Provide explicit spec actions in Details as an alternative.
-- Provide Theme mode from the Screen's right-click context menu. Keep the Screen visible, and reuse the current Theme selector and placement-variable controls in the Details pane; editing Theme colors is click-based, not drag-based.
+- Provide Theme mode from the right-click context menu on either the empty Screen background or a placement. Keep the Screen visible, and reuse the current Theme selector and placement-variable controls in the Details pane; editing Theme colors is click-based, not drag-based.
 - Keep the active mode visible in the top toolbar. Exit Theme mode by selecting Screen mode, toggling the active Theme control off, or pressing Escape.
 - Show an indicator on the Screen and placements that have associated specs. Hide these indicators by default; provide a toolbar toggle that shows or hides them on both the canvas and in the Layers list.
 - Make the Material selector, workflow graph, spec editor, and Details pane closeable, with persistent toolbar controls to reopen them.
@@ -78,7 +80,7 @@ The workflow graph and spec editor should not replace the Screen canvas: users s
 - Render the canvas grid as subtle dots rather than continuous lines.
 - The Material selector is on the left by default; the Details pane is on the right.
 - The Details pane has Properties, States, Layers, and Specs & Workflows tabs.
-- Theme mode is entered from the Screen's right-click context menu, keeps the Screen visible, and exposes the existing Theme selector and variable controls in Details. Theme color editing is click-based, not drag-based.
+- Theme mode is entered from the right-click context menu on the empty Screen background or a placement, keeps the Screen visible, and exposes the existing Theme selector and variable controls in Details. Theme color editing is click-based, not drag-based.
 - The top toolbar indicates the active mode; selecting Screen mode or closing the primary Workflow or Spec view in the dock returns to normal Screen mode. Pressing Escape closes the topmost Workflow or Spec view; if it is primary, this exits that mode. Escape also exits Theme mode.
 - Workflow mode shows the Mermaid graph in a resizable, closeable bottom dock while keeping the Screen visible above it.
 - Spec mode shows the spec editor in the resizable, closeable bottom dock while keeping the Screen visible above it.
@@ -90,7 +92,7 @@ The workflow graph and spec editor should not replace the Screen canvas: users s
 - Workflow execution starts at the first node with no incoming arrows in Mermaid source order; multiple entry points produce a warning. If all nodes have incoming arrows, show a warning and do not guess. A node without a SpecUX placement link produces a warning; multiple linked placements are valid only when they share one Screen and state.
 - When a node has multiple valid placement links, highlight all linked placements and fit their combined bounds in the canvas. Invalid or missing links produce a warning without choosing an arbitrary placement.
 - Cycling spec links centers Screen and placement targets; workflow links open the linked graph in the bottom dock without entering Workflow mode or activating workflow-node behavior.
-- Theme mode is available from the Screen's right-click context menu and reuses the existing Theme selector and variable controls in Details; editing Theme colors is click-based, not drag-based.
+- Theme mode is available from the empty Screen background or placement right-click context menu and reuses the existing Theme selector and variable controls in Details; editing Theme colors is click-based, not drag-based.
 - Screen and placement spec indicators are hidden by default; a toolbar toggle controls their visibility on both the canvas and in the Layers list.
 - The Material source editor is not an overlay. Opening it replaces the Screen workspace with the Material editing workspace; provide a clear way to return to Screen editing.
 - The Material selector, Details pane, and bottom dock can be closed and reopened from persistent toolbar controls.
@@ -104,11 +106,13 @@ The agreed preview-framing behavior is:
 
 1. In the Material editor, show a preview box that can be resized and repositioned to define what is visible in the selector preview.
 2. In the Material selector, transform the Material preview to fit within the selector tile using that framing.
-3. When dragging a Material from the selector onto the Screen, show an outlined placement preview at the Material's known preview size. The selector tile's framing affects only its thumbnail and does not resize the placed Material.
+3. When dragging a Material from the selector onto the Screen, show an outlined placement preview at the Material's known preview size, centered under the pointer and using current default state/layer rules. The selector tile's framing affects only its thumbnail and does not resize the placed Material.
+
+Store customized framing as project presentation metadata in `project.yml`, keyed by Material ID; leave Material STML unchanged. A Material without custom framing shows its full `preview-size`, or its type's default dimensions when that property is absent.
 
 This framing is for selector presentation only; it must not change the Material's STML markup or a placed instance's geometry.
 
-## Specs and Workflows: proposed access model
+## Confirmed Specs and Workflows access model
 
 This is a proposal to review, not a confirmed decision.
 
@@ -123,21 +127,15 @@ This is a proposal to review, not a confirmed decision.
 - In Spec mode, provide navigation through links in document order. Screen and placement links center their targets on the canvas; workflow links open the linked graph in the bottom dock without switching to Workflow mode or activating workflow-node behavior.
 - Opening a spec keeps the Screen visible in Spec mode; opening a node's spec from Workflow mode leaves Workflow mode underneath.
 
-## Design questions to resolve
+## Resolved interaction decisions
 
-- Should Theme mode be opened by right-clicking the Screen background, a placement, or both?
-- How should double-click spec shortcuts be distinguished from existing canvas interactions such as zooming or panning?
-- How should node-specific workflow specs be stored and identified, and can a workflow node have multiple specs?
-- Which existing workflow editor controls and layout modes must be retained in Workflow mode?
-- How should the toolbar expose controls for reopening each closed panel without crowding the top bar?
-- Which actions in linked workflow and spec dock views should be available without changing the active mode?
-- How should the Material preview and STML source editor be arranged within the Material editing workspace?
-- How should the workspace adapt to narrow windows and small screens?
-- Where should a Material be placed when the user clicks it in the selector rather than dragging it onto the Screen?
-- What should the default framing be for Materials that have not been customized?
-- How should selector-preview framing be stored and represented in the Material editor?
+- Theme mode is available from the context menu on either the Screen background or a placement; toolbar controls and Escape exit the mode.
+- Screen-mode double-click opens or creates the Screen or placement spec, while placement selection/transform gestures remain distinct. Details provides equivalent explicit actions.
+- Workflow mode retains graph/source access and the existing Split, Preview, and Diagram layouts.
+- Persistent toolbar controls reopen the left Material/project panel and right Details panel. The dock has its own close and resize controls.
+- Linked Workflow and Spec views preserve their parent mode and navigation context; closing a linked view reveals its parent. Workflow links opened from Spec mode are read-only and do not activate Workflow-mode node navigation.
 
-## Implementation outline
+## Implementation outline (completed)
 
 1. Review the current Screen, workflow, and preview interactions and identify behavior that can be reused.
 2. Prototype the Screen-first layout, top toolbar, default panel positions, and close/reopen controls while preserving existing Screen editing controls.
@@ -156,18 +154,18 @@ This is a proposal to review, not a confirmed decision.
 - Closing the workflow graph returns from Workflow mode to Screen mode; closing the mode's spec editor returns from Spec mode to Screen mode.
 - Workflow-node selection switches to and centers its referenced Screen, state, placement, or group.
 - Opening a spec from Workflow mode or a workflow from Spec mode preserves the underlying mode; closing the dock view returns to it.
-- Theme mode is reachable from the Screen's right-click context menu, exposes Theme selection and variable controls in Details while keeping the Screen visible, and can be exited from the top toolbar or with Escape. Workflow and Spec dock views can be closed directly or with Escape; closing a primary view exits its mode.
+- Theme mode is reachable from the empty Screen background or placement right-click context menu, exposes Theme selection and variable controls in Details while keeping the Screen visible, and can be exited from the top toolbar or with Escape. Workflow and Spec dock views can be closed directly or with Escape; closing a primary view exits its mode.
 - Users can create and reopen workflows and the relevant Screen or Element spec from the Screen-centered workspace.
 - Double-clicking a placement or empty canvas opens the corresponding Element or Screen spec, creating it if needed; equivalent explicit actions are available in Details.
 - The existing Project page remains available as a project-wide summary and provides an action to create project-level specs; workflows are created from a Screen.
 - Users can select, add, and delete workflows owned by the active Screen.
 - Selecting a workflow node with multiple valid placement links highlights and fits all linked placements; missing or invalid links produce a warning instead of arbitrary focus.
-- The browser URL uses `#specux=<path>` for the canvas target and the app's existing URL parameters for the active editor and mode, so both contexts are restored when opened.
+- The browser URL uses `#specux=<path>` for the complete canvas target, including repeated `placement` parameters when needed; app query parameters identify the primary editor and optional linked document/workflow node context.
 - Browser history adds an entry when switching Screens; navigation among targets on the current Screen does not add entries.
-- Workflows use the first node with no incoming arrows in Mermaid source order as the entry point and warn about multiple entry points. If all nodes have incoming arrows, warn and do not guess. Every node expects a SpecUX placement link; multiple links are allowed only for placements on the same Screen and state.
+- Workflows use the first node with no incoming arrows in Mermaid source order as the entry point and warn about multiple entry points. If all nodes have incoming arrows, warn and do not guess. Every node expects one click URL with at least one placement parameter; repeat that parameter for multiple placements on the same Screen and state.
 - Selecting a node with multiple valid placement links highlights and fits all linked placements; missing or invalid links produce a warning instead of arbitrary focus.
 - Users can optionally show indicators on Screens and placements that have specs; indicators are hidden by default, and a toolbar toggle controls their visibility on both the canvas and in the Layers list.
-- Users can select a Material from a separate selector or drag it onto the Screen to create a placement; dragging shows an outline at the Material's known preview size, independent of selector thumbnail framing.
+- Users can click a Material to add it at the center of the visible canvas or drag it onto the Screen to create a placement; dragging centers the known-size outline under the pointer and uses the same default state/layer rules as click-to-add. Selector thumbnail framing does not affect placement size.
 - Users can resize and close the Workflow/Spec bottom dock, and close/reopen the Material selector and Details pane independently.
 - Editing a Material switches to a Material editing workspace instead of opening the STML source as an overlay.
 - Selector previews can be framed without changing Material markup or placed geometry and fit into the selector tiles.

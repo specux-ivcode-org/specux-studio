@@ -12,6 +12,7 @@ The manifest and each entry are YAML mappings. Only the properties listed for ea
 | `screens` | list | Yes | Screen entries. |
 | `theme` | string | Yes | Path to the Theme YAML file, relative to `specux/`. |
 | `spec` | string | No | Path to the project's single OpenSpec-formatted behavior spec under `specs/`, relative to `specux/`. Use `specs/<lowercase-kebab-case-name>.md`. Use only for requirements that apply across multiple Screens or throughout the project, not for one Screen's behavior. |
+| `material-previews` | mapping | No | Optional Material selector frames keyed by Material ID. Each frame has `x`, `y`, `width`, and `height` integer coordinates in that Material's preview canvas. |
 
 Each Screen entry is a YAML mapping with these properties:
 
@@ -24,6 +25,8 @@ All manifest paths are relative to the `specux/` directory containing `project.y
 
 Screen IDs and paths must be unique. `screens` must be a YAML list and `theme` must be a non-empty string. Reusable Material STML files are discovered under `materials/`. See [`screen.md`](screen.md) and [`material.md`](material.md) for their schemas.
 
+Each `material-previews` frame must be at least 24 by 24 pixels and fit within the Material's `preview-size` or type-default dimensions. Omitting `material-previews` or an individual Material entry shows the full preview.
+
 ```yaml
 name: Example application
 description: A sample SpecUX project.
@@ -33,4 +36,10 @@ screens:
     file: screens/sign-in/screen.yml
 theme: theme.yml
 spec: specs/project-behavior.md
+material-previews:
+  welcome-title:
+    x: 0
+    y: 0
+    width: 240
+    height: 56
 ```

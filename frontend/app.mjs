@@ -70,6 +70,7 @@ let appliedThemeTokens = new Set();
 let activeScreenIndex = 0;
 const activePreviewStateIds = new Map();
 let projectFilePaths = [];
+let fileHashes = new Map();
 let activeMaterialFilePath = null;
 let activeInstancePath = [];
 let activeInstancePaths = [];
@@ -90,15 +91,20 @@ let activeSpecScreenFile = null;
 let activeSpecInstancePath = [];
 let activeSpecOwner = "instance";
 let activeProjectFilePath = null;
+let specIndicatorsEnabled = false;
+let editorMessageTimer = null;
 let hasEdits = false;
 const dirtyFiles = new Map();
+const deletedFiles = new Map();
 const invalidYamlFiles = new Map();
 const invalidWorkflowFiles = new Map();
 const createdScreenFiles = new Set();
 const createdMaterialFiles = new Set();
 const createdSpecFiles = new Set();
+const createdWorkflowFiles = new Set();
 const createdSpecDrafts = new Map();
 const elementSpecOwners = new Map();
+const externalWriteConflicts = new Map();
 let editVersion = 0;
 let isSaving = false;
 let historyUpdateSuppressed = false;
@@ -113,6 +119,8 @@ const browserHistory = new BrowserHistory({
   windowObject: window,
   getCurrentSelection: currentUiSelection,
   getSelectionFilePath,
+  getWorkspaceContext: () => editorNavigation.getWorkspaceContext(),
+  getCanvasSpecuxTarget: () => editorNavigation.getCanvasSpecuxTarget(),
   isRenderOnly: () => isRenderOnly,
   isUpdatesSuppressed: () => historyUpdateSuppressed
 });
@@ -140,6 +148,7 @@ const screenYamlEditor = new ScreenYamlEditor({
   getScreenIndex: (screen) => screens.indexOf(screen),
   invalidYamlFiles,
   markEdited,
+  saveRecoveryDraft: (...args) => projectPersistence.saveRecoveryDraft(...args),
   renderNavigation,
   renderScreen,
   updateSaveControls,
@@ -192,9 +201,11 @@ const specEditor = new SpecEditor({
     get activeScreenIndex() { return activeScreenIndex; },
     get activeProjectFilePath() { return activeProjectFilePath; },
     set activeProjectFilePath(value) { activeProjectFilePath = value; },
+    get activeWorkflowPath() { return activeWorkflowPath; },
     get createdSpecDrafts() { return createdSpecDrafts; },
     get elementSpecOwners() { return elementSpecOwners; },
     get specSources() { return specSources; },
+    get workflowSources() { return workflowSources; },
     get viewingSpec() { return viewingSpec; },
     get viewingWorkflow() { return viewingWorkflow; },
     set viewingSpec(value) { viewingSpec = value; },
@@ -246,8 +257,10 @@ const specEditor = new SpecEditor({
     getScreenPreviewStates,
     showSpecReference,
     showSpecWorkflowReference: (reference, filePath) =>
-      workflowEditor.showSpecReferencePreview(reference, filePath),
-    clearSpecWorkflowPreview: () => workflowEditor.clearSpecReferencePreview(),
+      showSpecWorkflowDock(reference, filePath),
+    showWorkflowNodeSpec: (spec, nodeId) =>
+      workflowEditor.showSpecPreview([spec], nodeId),
+    clearSpecWorkflowPreview: () => clearSpecWorkflowDock(),
     publishSelection
   }
 });
@@ -263,8 +276,12 @@ const screenMaterialController = new ScreenMaterialController({
   },
   services: {
     markEdited,
+    beginEditTransaction,
+    endEditTransaction,
     renderNavigation,
     renderScreen,
+    getVisibleCanvasPlacementPosition: (size) =>
+      screenCanvasViewportController.getVisibleCanvasPlacementPosition(size),
     selectInstance,
     openScreenPlacementContextMenu,
     getScreenPreviewStates,
@@ -293,6 +310,7 @@ const projectPersistence = new ProjectPersistence({
     get isSaving() { return isSaving; },
     set isSaving(value) { isSaving = value; },
     get dirtyFiles() { return dirtyFiles; },
+    get deletedFiles() { return deletedFiles; },
     get invalidYamlFiles() { return invalidYamlFiles; },
     get invalidWorkflowFiles() { return invalidWorkflowFiles; },
     get workflowSources() { return workflowSources; },
@@ -302,23 +320,36 @@ const projectPersistence = new ProjectPersistence({
     set hasEdits(value) { hasEdits = value; },
     get specSources() { return specSources; },
     get createdSpecFiles() { return createdSpecFiles; },
+    get createdWorkflowFiles() { return createdWorkflowFiles; },
     get createdScreenFiles() { return createdScreenFiles; },
     get createdSpecDrafts() { return createdSpecDrafts; },
     get elementSpecOwners() { return elementSpecOwners; },
     get projectFilePaths() { return projectFilePaths; },
     set projectFilePaths(value) { projectFilePaths = value; },
-    get activeSpecPath() { return activeSpecPath; }
+    get fileHashes() { return fileHashes; },
+    get activeSpecPath() { return activeSpecPath; },
+    get externalWriteConflicts() { return externalWriteConflicts; }
   },
   services: {
     byId,
     fetcher: (url, options) => fetch(url, options),
+    recoveryStorage: window.localStorage,
+    recoveryStorageKey: `specux-invalid-drafts:${new URL("project.yml", appRoot).href}`,
+    externalConflictStorage: window.localStorage,
+    externalConflictStorageKey: `specux-external-conflicts:${new URL("project.yml", appRoot).href}`,
     validation: sharedValidation,
     setScreenYamlStatus,
     getInstanceAtPath,
     findInstancePathById,
     validateScreenMaterials,
     showEditorMessage,
-    renderNavigation
+    renderNavigation,
+    showExternalWriteConflicts,
+    applyExternalFileContent,
+    removeExternalFile,
+    captureEditSnapshot,
+    applyEditSnapshot,
+    getRecoveryDraft
   }
 });
 const previewStateController = new PreviewStateController({
@@ -362,6 +393,8 @@ const screenController = new ScreenController({
     showEditorMessage,
     projectFileTree,
     markEdited,
+    beginEditTransaction,
+    endEditTransaction,
     renderScreenSelector,
     renderNavigation,
     renderScreen,
@@ -425,6 +458,7 @@ const themeEditor = new ThemeEditor({
 });
 const materialFileEditor = new MaterialFileEditor({
   state: {
+    get project() { return project; },
     get materialFiles() { return materialFiles; },
     get activeMaterialFilePath() { return activeMaterialFilePath; },
     set activeMaterialFilePath(value) { activeMaterialFilePath = value; },
@@ -467,6 +501,7 @@ const materialFileEditor = new MaterialFileEditor({
     renderNavigation,
     updateSaveControls,
     markEdited,
+    saveRecoveryDraft: (...args) => projectPersistence.saveRecoveryDraft(...args),
     templateMarkupRenderer,
     setPreviewMessage,
     showEditorMessage
@@ -487,14 +522,20 @@ const editorNavigation = new EditorNavigation({
     get viewingWorkflow() { return viewingWorkflow; },
     get activeWorkflowPath() { return activeWorkflowPath; },
     get workflowScreenIndex() { return workflowScreenIndex; },
+    set workflowScreenIndex(value) { workflowScreenIndex = value; },
+    get selectedWorkflowNodeId() { return selectedWorkflowNodeId; },
     get activeSpecOwner() { return activeSpecOwner; },
     get activeSpecPath() { return activeSpecPath; },
     get activeSpecScreenFile() { return activeSpecScreenFile; },
     get activeSpecInstancePath() { return activeSpecInstancePath; },
+    get workflowSources() { return workflowSources; },
     get materialFiles() { return materialFiles; },
     get viewingMaterialFile() { return viewingMaterialFile; },
+    get activePreviewStateIds() { return activePreviewStateIds; },
     set viewingMaterialFile(value) { viewingMaterialFile = value; },
     get activeInstancePath() { return activeInstancePath; },
+    get activeInstancePaths() { return activeInstancePaths; },
+    set activeInstancePaths(value) { activeInstancePaths = value; },
     get createdSpecDrafts() { return createdSpecDrafts; },
     get elementSpecOwners() { return elementSpecOwners; },
     get hasEdits() { return hasEdits; }
@@ -505,7 +546,9 @@ const editorNavigation = new EditorNavigation({
     getProjectFileAction,
     openProjectFile,
     selectInstance,
+    selectInstancesInPreview: (paths) => selectInstanceInPreview(paths),
     renderScreen,
+    selectScreenManually: (index) => editorNavigation.selectScreenManually(index),
     renderProjectOverview,
     createProjectSpec,
     createSpecForScreen,
@@ -515,6 +558,12 @@ const editorNavigation = new EditorNavigation({
     renderMaterialFile,
     sameInstancePath,
     renderWorkflowEditor,
+    restoreWorkflowNodeSelection: (nodeId) =>
+      workflowEditor.restoreNodeSelection(nodeId),
+    showLinkedWorkflowPreview: (reference, specPath) =>
+      showSpecWorkflowDock(reference, specPath),
+    showWorkflowNodeSpecPreview: (filePath, nodeId) =>
+      specEditor.restoreWorkflowNodeSpecPreview(filePath, nodeId),
     showEditorMessage,
     loadProject
   },
@@ -549,14 +598,22 @@ const projectFileNavigator = new ProjectFileNavigator({
     get activeSpecOwner() { return activeSpecOwner; },
   },
   services: {
+    document,
+    window,
     byId,
     element,
+    getMaterialDropGeometry: (...args) =>
+      screenCanvasViewportController.getMaterialDropGeometry(...args),
     updateNavigationSelection,
+    selectScreenManually: (index) => editorNavigation.selectScreenManually(index),
     renderScreen,
     showFatalError,
     renderProjectOverview,
     renderThemeView,
     renderMaterialFile,
+    placeMaterialFile: (filePath, position) =>
+      screenMaterialController.addFromFile(filePath, position),
+    templateMarkupRenderer,
     renderSpecEditor,
     renderWorkflowEditor,
     syncBrowserHistory,
@@ -565,6 +622,7 @@ const projectFileNavigator = new ProjectFileNavigator({
   },
   projectFileTree
 });
+if (!isRenderOnly) projectFileNavigator.bindSidebarTabs();
 const materialCanvas = new MaterialCanvas({
   state: {
     get isRenderOnly() { return isRenderOnly; },
@@ -681,8 +739,14 @@ const screenAnnotationController = new ScreenAnnotationController({
 });
 workflowEditor = new WorkflowEditor({
   state: {
+    get screens() { return screens; },
+    get activeScreenIndex() { return activeScreenIndex; },
+    get projectFilePaths() { return projectFilePaths; },
+    set projectFilePaths(value) { projectFilePaths = value; },
     get workflowSources() { return workflowSources; },
+    get createdWorkflowFiles() { return createdWorkflowFiles; },
     get invalidWorkflowFiles() { return invalidWorkflowFiles; },
+    get dirtyFiles() { return dirtyFiles; },
     get viewingSpec() { return viewingSpec; },
     get viewingWorkflow() { return viewingWorkflow; },
     set viewingWorkflow(value) { viewingWorkflow = value; },
@@ -698,17 +762,32 @@ workflowEditor = new WorkflowEditor({
   },
   services: {
     byId,
+    prompt: (message, value) => window.prompt(message, value),
+    confirm: (message) => window.confirm(message),
+    fetcher: (url, options) => fetch(url, options),
+    safeProjectUrl,
+    validation: sharedValidation,
+    projectFileTree,
+    showEditorMessage,
     setWorkflowViewMode: (mode) => workflowViewLayout.setViewMode(mode),
+    saveRecoveryDraft: (...args) => projectPersistence.saveRecoveryDraft(...args),
     publishSelection: () => publishSelection(),
     renderNavigation,
     renderInspector,
     markEdited,
+    markDeleted,
     updateSaveControls,
+    renderWorkflowEditor,
+    returnToScreen: () => editorNavigation.selectScreenManually(activeScreenIndex),
     showWorkflowNode,
+    openWorkflowNodeSpec: (workflowPath, nodeId) =>
+      specEditor.createForWorkflowNode(workflowPath, nodeId),
+    closeWorkflowDockView: () => {
+      if (editorNavigation.linkedDockStack.length) clearSpecWorkflowDock();
+      else workflowEditor.closeWorkflowNodeSpecPreview();
+    },
     getWorkflowSpecDocuments: async () => {
-      const filePaths = projectFileNavigator.getProjectTreeFilePaths().filter((filePath) =>
-        projectFileNavigator.getProjectFileAction(filePath)?.kind === "spec"
-      );
+      const filePaths = [...specSources.keys()];
       return Promise.all(filePaths.map(async (filePath) => {
         let source = specSources.get(filePath);
         if (source === undefined) {
@@ -739,6 +818,8 @@ workflowEditor = new WorkflowEditor({
 const screenSelectionController = new ScreenSelectionController({
   state: {
     get isRenderOnly() { return isRenderOnly; },
+    get viewingProject() { return viewingProject; },
+    get viewingMaterialFile() { return viewingMaterialFile; },
     get viewingWorkflow() { return viewingWorkflow; },
     get viewingTheme() { return viewingTheme; },
     get viewingSpec() { return viewingSpec; }
@@ -747,7 +828,11 @@ const screenSelectionController = new ScreenSelectionController({
     byId,
     document,
     selectInstances,
+    openPlacementSpec: (path) => createSpecForInstance(path),
+    openScreenSpec: () => createSpecForScreen(),
+    showFatalError,
     openPlacementContextMenu: openScreenPlacementContextMenu,
+    openBackgroundContextMenu: openScreenBackgroundContextMenu,
     closePlacementContextMenu: closeScreenPlacementContextMenu,
     disableAnnotationMode: () => screenAnnotationController.setEnabled(false)
   }
@@ -795,6 +880,8 @@ const inspectorRenderer = new InspectorRenderer({
     get theme() { return theme; },
     get specSources() { return specSources; },
     get createdSpecDrafts() { return createdSpecDrafts; },
+    get elementSpecOwners() { return elementSpecOwners; },
+    get specIndicatorsEnabled() { return specIndicatorsEnabled; },
     get activeScreenIndex() { return activeScreenIndex; },
     get activeMaterialFilePath() { return activeMaterialFilePath; },
     get materialFiles() { return materialFiles; },
@@ -804,6 +891,7 @@ const inspectorRenderer = new InspectorRenderer({
     get activeSpecPath() { return activeSpecPath; },
     get activeSpecScreenFile() { return activeSpecScreenFile; },
     get activeSpecInstancePath() { return activeSpecInstancePath; },
+    get workflowSources() { return workflowSources; },
     get viewingPreviewState() { return viewingPreviewState; },
     get viewingProject() { return viewingProject; },
     get viewingTheme() { return viewingTheme; },
@@ -840,10 +928,13 @@ const inspectorRenderer = new InspectorRenderer({
     renderMaterialFile,
     showEditorMessage,
     renderSpecEditor,
-    placeMaterialFile: (filePath) => screenMaterialController.addFromFile(filePath),
     createProjectSpec,
     createSpecForScreen,
+    createSpecForInstance,
     renderScreenInstanceTree,
+    renderWorkflowEditor,
+    createWorkflowForScreen: () => workflowEditor.createForScreen(),
+    deleteWorkflow: (filePath) => workflowEditor.deleteWorkflow(filePath),
     deleteMaterial: (path) => screenMaterialController.delete(path),
     createLayer: () => screenMaterialController.createLayer(),
     renameLayer: (...args) => screenMaterialController.renameLayer(...args),
@@ -1209,8 +1300,162 @@ function themeModeLabel(mode) {
   return themeEditor.modeLabel(mode);
 }
 
+/** Captures persisted project artifacts without navigation, selection, or layout state. */
+function captureEditSnapshot() {
+  const clone = (value) => JSON.parse(JSON.stringify(value));
+  const files = {
+    "project.yml": { data: clone(project) }
+  };
+  for (const screen of screens) {
+    files[screen.file] = screen.yamlSourceMode === "source"
+      ? { content: screen.yamlSource }
+      : { data: clone(screen.data) };
+  }
+  for (const [filePath, material] of materialFiles) {
+    files[filePath] = { content: material.documentSource };
+  }
+  if (project?.theme && theme !== undefined) files[project.theme] = { data: clone(theme) };
+  for (const [filePath, content] of specSources) files[filePath] = { content };
+  for (const [filePath, content] of workflowSources) files[filePath] = { content };
+  return {
+    files,
+    project: clone(project),
+    screens: screens.map((screen) => ({
+      id: screen.id,
+      file: screen.file,
+      data: clone(screen.data),
+      yamlSource: screen.yamlSource,
+      yamlSourceMode: screen.yamlSourceMode
+    })),
+    materials: [...materialFiles].map(([filePath, material]) => [filePath, {
+      file: material.file,
+      id: material.id,
+      data: clone(material.data),
+      documentSource: material.documentSource
+    }]),
+    theme: theme === undefined ? null : clone(theme),
+    specSources: [...specSources],
+    workflowSources: [...workflowSources],
+    invalidYamlFiles: [...invalidYamlFiles],
+    invalidWorkflowFiles: [...invalidWorkflowFiles],
+    createdScreenFiles: [...createdScreenFiles],
+    createdMaterialFiles: [...createdMaterialFiles],
+    createdSpecFiles: [...createdSpecFiles],
+    createdWorkflowFiles: [...createdWorkflowFiles],
+    createdSpecDrafts: [...createdSpecDrafts].map(([filePath, draft]) => [filePath, clone(draft)]),
+    elementSpecOwners: [...elementSpecOwners].map(([filePath, owner]) => [filePath, clone(owner)]),
+    projectFilePaths: [...projectFilePaths]
+  };
+}
+
+/** Returns the invalid source draft for one file, if the restored model still has one. */
+function getRecoveryDraft(filePath) {
+  const yamlMessage = invalidYamlFiles.get(filePath);
+  if (yamlMessage) {
+    const screen = screens.find((entry) => entry.file === filePath);
+    if (screen) return { content: screen.yamlSource, message: yamlMessage, type: "screen" };
+    const material = materialFiles.get(filePath);
+    if (material) {
+      return { content: material.documentSource, message: yamlMessage, type: "material" };
+    }
+  }
+  const workflowMessage = invalidWorkflowFiles.get(filePath);
+  if (workflowMessage && workflowSources.has(filePath)) {
+    return {
+      content: workflowSources.get(filePath),
+      message: workflowMessage,
+      type: "workflow"
+    };
+  }
+  return null;
+}
+
+/** Restores artifact models while preserving the current navigation and selection. */
+async function applyEditSnapshot(snapshot) {
+  const clone = (value) => JSON.parse(JSON.stringify(value));
+  const priorScreens = new Map(screens.map((screen) => [screen.file, screen]));
+  const priorMaterials = new Map(materialFiles);
+  const selectedPath = [...activeInstancePath];
+  project = clone(snapshot.project);
+  screens = snapshot.screens.map((saved) => {
+    const previous = priorScreens.get(saved.file);
+    return {
+      ...previous,
+      ...clone(saved),
+      yamlTimer: null,
+      yamlParseVersion: (previous?.yamlParseVersion || 0) + 1,
+      yamlSerializeVersion: (previous?.yamlSerializeVersion || 0) + 1
+    };
+  });
+  materialFiles = new Map(snapshot.materials.map(([filePath, saved]) => {
+    const previous = priorMaterials.get(filePath);
+    return [filePath, {
+      ...previous,
+      ...clone(saved),
+      parseTimer: null,
+      parseVersion: (previous?.parseVersion || 0) + 1
+    }];
+  }));
+  theme = snapshot.theme === null ? undefined : clone(snapshot.theme);
+  specSources = new Map(snapshot.specSources);
+  workflowSources = new Map(snapshot.workflowSources);
+  invalidYamlFiles.clear();
+  for (const [filePath, message] of snapshot.invalidYamlFiles) invalidYamlFiles.set(filePath, message);
+  invalidWorkflowFiles.clear();
+  for (const [filePath, message] of snapshot.invalidWorkflowFiles) {
+    invalidWorkflowFiles.set(filePath, message);
+  }
+  for (const [set, values] of [
+    [createdScreenFiles, snapshot.createdScreenFiles],
+    [createdMaterialFiles, snapshot.createdMaterialFiles],
+    [createdSpecFiles, snapshot.createdSpecFiles],
+    [createdWorkflowFiles, snapshot.createdWorkflowFiles]
+  ]) {
+    set.clear();
+    for (const value of values) set.add(value);
+  }
+  createdSpecDrafts.clear();
+  for (const [filePath, draft] of snapshot.createdSpecDrafts) {
+    createdSpecDrafts.set(filePath, clone(draft));
+  }
+  elementSpecOwners.clear();
+  for (const [filePath, owner] of snapshot.elementSpecOwners) {
+    elementSpecOwners.set(filePath, clone(owner));
+  }
+  projectFilePaths = [...snapshot.projectFilePaths];
+  activeScreenIndex = Math.min(activeScreenIndex, Math.max(0, screens.length - 1));
+  if (viewingMaterialFile && !materialFiles.has(activeMaterialFilePath)) {
+    viewingMaterialFile = false;
+    activeMaterialFilePath = null;
+  }
+  if (viewingWorkflow && !workflowSources.has(activeWorkflowPath)) {
+    viewingWorkflow = false;
+    activeWorkflowPath = null;
+  }
+  if (viewingSpec && !specSources.has(activeSpecPath)) {
+    viewingSpec = false;
+    activeSpecPath = null;
+  }
+  applyTheme();
+  renderNavigation();
+  renderScreenSelector();
+  if (viewingTheme) await renderThemeView();
+  else if (viewingMaterialFile) await renderMaterialFile(activeMaterialFilePath);
+  else if (viewingWorkflow) await renderWorkflowEditor(activeWorkflowPath, workflowScreenIndex);
+  else if (viewingSpec) await renderSpecEditor(activeSpecPath, activeSpecInstancePath, activeSpecOwner);
+  else {
+    await renderScreen(activeScreenIndex);
+    const selected = getInstanceAtPath(screens[activeScreenIndex], selectedPath);
+    if (selected) selectInstance(selectedPath, selected.src || null);
+  }
+  renderInspector();
+}
+
 /** Resets the project before load for the current editor state. */
 function resetProjectBeforeLoad() {
+  projectPersistence.resetAutosave();
+  projectPersistence.resetEditHistory();
+  deletedFiles.clear();
   clearTimeout(previewTimer);
   previewTimer = null;
   previewVersion += 1;
@@ -1227,6 +1472,7 @@ function resetProjectBeforeLoad() {
   createdScreenFiles.clear();
   createdMaterialFiles.clear();
   createdSpecFiles.clear();
+  createdWorkflowFiles.clear();
   createdSpecDrafts.clear();
   elementSpecOwners.clear();
   activeProjectFilePath = null;
@@ -1237,6 +1483,8 @@ function resetProjectBeforeLoad() {
 function applyLoadedProject(loaded) {
   project = loaded.project;
   projectFilePaths = loaded.projectFilePaths;
+  fileHashes = loaded.fileHashes || new Map();
+  externalWriteConflicts.clear();
   screens = loaded.screens;
   materialFiles = loaded.materialFiles;
   activePreviewStateIds.clear();
@@ -1263,6 +1511,7 @@ function applyLoadedProject(loaded) {
   activeSpecOwner = "instance";
   hasEdits = false;
   dirtyFiles.clear();
+  deletedFiles.clear();
   invalidYamlFiles.clear();
   invalidWorkflowFiles.clear();
   byId("create-screen").disabled = false;
@@ -1355,7 +1604,10 @@ async function loadProject(selectionToRestore = null) {
   try {
     const loaded = await projectRepository.load();
     applyLoadedProject(loaded);
+    projectPersistence.restoreRecoveryDrafts();
+    await projectPersistence.restoreExternalWriteConflicts();
     await renderLoadedProject(selectionToRestore);
+    projectPersistence.initializeEditHistory();
   } catch (error) {
     showFatalError(error);
   }
@@ -1683,12 +1935,14 @@ if (!isRenderOnly && typeof EventSource !== "undefined") {
 function applyTheme() {
   const tokens = getThemeTokens();
   const tokenNames = new Set(Object.keys(tokens));
-  const themeRoot = byId("screen-preview");
+  const themeRoots = [byId("screen-preview"), byId("material-selector-list")];
   for (const name of appliedThemeTokens) {
-    if (!tokenNames.has(name)) themeRoot.style.removeProperty(`--theme-${name}`);
+    if (!tokenNames.has(name)) {
+      themeRoots.forEach((root) => root.style.removeProperty(`--theme-${name}`));
+    }
   }
   for (const [name, value] of Object.entries(tokens)) {
-    themeRoot.style.setProperty(`--theme-${name}`, value);
+    themeRoots.forEach((root) => root.style.setProperty(`--theme-${name}`, value));
   }
   appliedThemeTokens = tokenNames;
   byId("screen-preview").style.colorScheme = getActiveThemeMode();
@@ -1762,6 +2016,7 @@ async function renderScreen(index, options = {}) {
   await screenAnnotationController?.fileLoaded(filePath);
   if (!options.preserveWorkflow) workflowEditor?.deactivate();
   await workspaceViewRenderer.renderScreen(index, options);
+  renderSpecIndicators();
   if (!isRenderOnly) {
     await screenAnnotationController.setScreen(screens[index]);
     screenSelectionController.setScreen(screens[index]);
@@ -1770,7 +2025,8 @@ async function renderScreen(index, options = {}) {
       hidePreviewStateControls();
     }
     if (!options.preserveWorkflow &&
-        (index !== previousScreenIndex || options.previewStateSelected)) {
+        (index !== previousScreenIndex || options.previewStateSelected ||
+          options.centerPreview === true)) {
       const stateTargets = options.previewStateSelected
         ? getNewlyVisibleStatePlacementPaths(screens[index])
         : [];
@@ -1782,9 +2038,34 @@ async function renderScreen(index, options = {}) {
 
 /** Renders the workflow editor from the current editor data. */
 async function renderWorkflowEditor(filePath, screenIndex) {
+  clearSpecWorkflowDock();
   await screenAnnotationController?.fileLoaded(filePath);
   screenAnnotationController?.setEnabled(false);
   return workflowEditor.render(filePath, screenIndex);
+}
+
+/** Opens a linked Workflow view under the current Spec without changing editor mode. */
+async function showSpecWorkflowDock(reference, specPath) {
+  while (editorNavigation.linkedDockStack.length) editorNavigation.popLinkedDock();
+  editorNavigation.pushLinkedDock({
+    view: "workflow",
+    file: reference.workflowPath,
+    nodeId: reference.nodeId,
+    readOnly: true
+  });
+  try {
+    await workflowEditor.showLinkedWorkflowPreview(reference, specPath);
+  } catch (error) {
+    editorNavigation.popLinkedDock();
+    workflowEditor.clearLinkedWorkflowPreview();
+    throw error;
+  }
+}
+
+/** Closes the linked Workflow dock and restores its parent Spec view. */
+function clearSpecWorkflowDock() {
+  if (editorNavigation.linkedDockStack.length) editorNavigation.popLinkedDock();
+  workflowEditor.clearLinkedWorkflowPreview();
 }
 
 /** Renders the theme screen from the current editor data. */
@@ -1858,9 +2139,7 @@ async function showSpecReference(reference, filePath) {
   activeScreenIndex = screenIndex;
   activeInstancePath = instancePath;
   activeInstancePaths = instancePath.length ? [[...instancePath]] : [];
-  await renderScreen(screenIndex, {
-    preserveSpec: true
-  });
+  await editorNavigation.navigateToReferencedScreen(screenIndex, "spec");
   screenAnnotationController.setEnabled(false);
   viewingSpec = true;
   activeSpecPath = filePath;
@@ -1884,38 +2163,37 @@ async function showWorkflowNode(link, ownerScreenIndex, workflowPath) {
   const screenIndex = screens.findIndex((screen) => screen.id === link.screenId);
   const screen = screens[screenIndex];
   if (!screen) {
-    throw new Error(`Workflow Screen "${link.screenId}" is not available.`);
+    return { warning: `Workflow Screen "${link.screenId}" is not available.` };
   }
 
   const stateId = link.stateId;
   if (!getScreenPreviewStates(screen.data).some((previewState) =>
     previewState.id === stateId
   )) {
-    throw new Error(`Screen State "${stateId}" is not available on Screen "${screen.id}".`);
+    return {
+      warning: `Screen State "${stateId}" is not available on Screen "${screen.id}".`
+    };
   }
 
-  let instancePath = [];
-  if (link.placementId) {
-    instancePath = getScreenPlacementPathById(
-      screen.data.materials || [],
-      link.placementId
-    ) || [];
-    if (instancePath.length === 0) {
-      throw new Error(
-        `Element "${link.placementId}" is not available on Screen "${screen.id}".`
-      );
-    }
+  const placementIds = link.placementIds || (link.placementId ? [link.placementId] : []);
+  const instancePaths = placementIds.map((placementId) =>
+    getScreenPlacementPathById(screen.data.materials || [], placementId) || []
+  );
+  const missingIndex = instancePaths.findIndex((instancePath) => !instancePath.length);
+  if (missingIndex >= 0) {
+    return {
+      warning: `Element "${placementIds[missingIndex]}" is not available on Screen "${screen.id}".`
+    };
   }
 
   activePreviewStateIds.set(screen.id, stateId);
-  activeInstancePath = instancePath;
-  activeInstancePaths = instancePath.length ? [[...instancePath]] : [];
+  activeInstancePath = instancePaths.at(-1) || [];
+  activeInstancePaths = instancePaths.map((instancePath) => [...instancePath]);
   activeScreenIndex = screenIndex;
-  await renderScreen(screenIndex, {
-    preserveWorkflow: true,
-    previewStateSelected: !link.placementId && stateId !== "default"
+  await editorNavigation.navigateToReferencedScreen(screenIndex, "workflow", {
+    previewStateSelected: false
   });
-  specEditor.updatePreviewFocus(instancePath);
+  specEditor.updatePreviewFocus(activeInstancePath);
 
   screenAnnotationController.setEnabled(false);
   viewingWorkflow = true;
@@ -1926,11 +2204,11 @@ async function showWorkflowNode(link, ownerScreenIndex, workflowPath) {
   workflowEditor.setViewMode(workflowViewMode);
   updateNavigationSelection();
   renderInspector();
-  await centerPreviewTarget(link.placementId ? instancePath : null);
+  await centerPreviewTarget(null, instancePaths, true);
 }
 
 /** Centers the selected placement or Screen in the preview. */
-async function centerPreviewTarget(instancePath, stateTargetPaths = []) {
+async function centerPreviewTarget(instancePath, stateTargetPaths = [], fitTargets = false) {
   const preview = byId("screen-preview");
   await new Promise((resolve) => window.requestAnimationFrame(resolve));
   const content = preview.querySelector(":scope > .form-content");
@@ -1943,20 +2221,34 @@ async function centerPreviewTarget(instancePath, stateTargetPaths = []) {
     );
     return;
   }
-  if (stateTargetPaths.length) {
-    const targetPaths = new Set(stateTargetPaths.map((path) => JSON.stringify(path)));
-    const stateTargets = [...(content?.querySelectorAll(".material-frame") || [])]
-      .filter((frame) => targetPaths.has(frame.dataset.instancePath));
-    if (stateTargets.length) {
-      screenCanvasViewportController.centerOnTargets(stateTargets, {
-        preferLargestTarget: true
-      });
-      return;
-    }
+  const targetPaths = new Set(stateTargetPaths.map((path) => JSON.stringify(path)));
+  const stateTargets = stateTargetPaths.length
+    ? [...(content?.querySelectorAll(".material-frame") || [])]
+      .filter((frame) => targetPaths.has(frame.dataset.instancePath))
+    : [];
+  if (stateTargets.length) {
+    centerPreviewTargets(stateTargets, { fitTargets, preferLargestTarget: true });
+    return;
   }
   const placements = [...(content?.querySelectorAll(":scope > .material-frame") || [])];
-  if (placements.length) screenCanvasViewportController.centerOnTargets(placements);
-  else screenCanvasViewportController.centerOnTarget(content);
+  centerPreviewTargets(placements, { fitTargets, fallback: content });
+}
+
+/** Centers or fits the target placements, falling back to their Screen content. */
+function centerPreviewTargets(
+  targets,
+  { fitTargets = false, preferLargestTarget = false, fallback = null } = {}
+) {
+  if (!targets.length) {
+    screenCanvasViewportController.centerOnTarget(fallback);
+    return;
+  }
+  if (fitTargets) {
+    screenCanvasViewportController.fitOnTargets(targets, { maxZoom: 1.15 });
+  }
+  else {
+    screenCanvasViewportController.centerOnTargets(targets, { preferLargestTarget });
+  }
 }
 
 /** Returns visible placements introduced by the selected Screen State. */
@@ -2020,6 +2312,7 @@ function getStatePlacementVisibility(
 
 /** Renders the spec editor from the current editor data. */
 async function renderSpecEditor(filePath, instancePath = activeInstancePath, owner = "instance") {
+  clearSpecWorkflowDock();
   await screenAnnotationController?.fileLoaded(filePath);
   workflowEditor?.deactivate();
   screenAnnotationController?.setEnabled(false);
@@ -2157,6 +2450,7 @@ function prepareScreenPlacementMenu(placement, selectedCount = activeInstancePat
   const groupButton = byId("screen-placement-context-group");
   const ungroupButton = byId("screen-placement-context-ungroup");
   const copyButton = byId("screen-placement-context-copy-url");
+  const themeButton = byId("screen-placement-context-theme");
   const placements = screens[activeScreenIndex]?.data?.materials || [];
   const isDefaultState = getActivePreviewStateId(screens[activeScreenIndex]?.data) === "default";
   const canGroupSelection = canGroupScreenPlacements(placements, activeInstancePaths);
@@ -2169,7 +2463,20 @@ function prepareScreenPlacementMenu(placement, selectedCount = activeInstancePat
   copyButton.hidden = false;
   copyButton.disabled = selectedCount > 1;
   copyButton.title = copyButton.disabled ? "Select one placement to copy its URL." : "";
+  themeButton.hidden = false;
   return true;
+}
+
+/** Prepares the context menu for a Screen background target. */
+function prepareScreenBackgroundMenu() {
+  for (const id of [
+    "screen-placement-context-group",
+    "screen-placement-context-ungroup",
+    "screen-placement-context-copy-url"
+  ]) {
+    byId(id).hidden = true;
+  }
+  byId("screen-placement-context-theme").hidden = false;
 }
 
 /** Updates the screen placement menu for the current editor state. */
@@ -2178,16 +2485,19 @@ function positionScreenPlacementMenu(event) {
   const groupButton = byId("screen-placement-context-group");
   const ungroupButton = byId("screen-placement-context-ungroup");
   const copyButton = byId("screen-placement-context-copy-url");
+  const themeButton = byId("screen-placement-context-theme");
   menu.hidden = false;
   const menuWidth = menu.offsetWidth || 210;
-  const menuHeight = menu.offsetHeight || 120;
+  const menuHeight = menu.offsetHeight || 150;
   menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8))}px`;
   menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8))}px`;
   const focusTarget = !groupButton.hidden && !groupButton.disabled
     ? groupButton
     : !ungroupButton.hidden
       ? ungroupButton
-      : copyButton;
+      : !copyButton.hidden
+        ? copyButton
+        : themeButton;
   focusTarget.focus();
 }
 
@@ -2226,6 +2536,17 @@ function openScreenPlacementContextMenu(event, path) {
     closeScreenPlacementContextMenu();
     return;
   }
+  positionScreenPlacementMenu(event);
+}
+
+/** Opens the Theme entry menu on an empty Screen background. */
+function openScreenBackgroundContextMenu(event) {
+  if (isRenderOnly || viewingWorkflow || viewingTheme || viewingSpec ||
+      !screens[activeScreenIndex]) return;
+  event.preventDefault();
+  screenPlacementMenuTarget = null;
+  screenPlacementCopyTarget = null;
+  prepareScreenBackgroundMenu();
   positionScreenPlacementMenu(event);
 }
 
@@ -2276,16 +2597,25 @@ function bindScreenPlacementContextMenu() {
       );
     }
   });
+  byId("screen-placement-context-theme").addEventListener("click", () => {
+    closeScreenPlacementContextMenu();
+    renderThemeView().catch(showFatalError);
+  });
   document.addEventListener("pointerdown", (event) => {
     if (!menu.hidden && !menu.contains(event.target)) closeScreenPlacementContextMenu();
   }, true);
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !menu.hidden) closeScreenPlacementContextMenu();
+    if (event.key === "Escape" && !menu.hidden) {
+      event.preventDefault();
+      closeScreenPlacementContextMenu();
+    }
   });
 }
 
 /** Marks the navigation item that corresponds to the current editor view. */
 function updateNavigationSelection() {
+  updateWorkspaceToolbarContext();
+  renderScreenSelector();
   document.querySelectorAll(".file-tree-file").forEach((button) => {
     const filePath = button.dataset.projectFile;
     const action = getProjectFileAction(filePath);
@@ -2296,6 +2626,26 @@ function updateNavigationSelection() {
   });
   syncBrowserHistory();
   publishSelection();
+}
+
+/** Keeps the persistent toolbar mode and canvas controls aligned with the active editor. */
+function updateWorkspaceToolbarContext() {
+  const mode = viewingMaterialFile
+    ? "Material"
+    : viewingTheme
+      ? "Theme"
+      : viewingWorkflow
+        ? "Workflow"
+        : viewingSpec
+          ? "Spec"
+          : viewingProject
+            ? "Project"
+            : "Screen";
+  const topbar = byId("workspace-toolbar");
+  topbar.dataset.mode = mode.toLocaleLowerCase();
+  byId("workspace-mode-label").textContent = mode;
+  byId("topbar-canvas-zoom-controls").hidden = mode === "Project" || mode === "Material";
+  byId("theme-mode-exit").hidden = mode !== "Theme";
 }
 
 /** Returns a readable label for the active selection. */
@@ -2471,6 +2821,46 @@ function publishSelection() {
 /** Renders the inspector from the current editor data. */
 function renderInspector() {
   inspectorRenderer.render();
+  renderSpecIndicators();
+}
+
+/** Updates optional Screen and placement spec indicators in the visible workspace. */
+function renderSpecIndicators() {
+  const screen = screens[activeScreenIndex];
+  const preview = byId("screen-preview");
+  const screenHasSpec = Boolean(
+    screen?.data.spec ||
+    [...createdSpecDrafts.values()].some((draft) =>
+      draft.owner === "screen" && draft.screenFile === screen?.file
+    )
+  );
+  preview.classList.toggle("spec-indicators-enabled", specIndicatorsEnabled);
+  preview.classList.toggle("has-screen-spec", screenHasSpec);
+  for (const node of preview.querySelectorAll(".material-instance")) {
+    let path;
+    try {
+      path = JSON.parse(node.dataset.instancePath || "[]");
+    } catch (error) {
+      node.classList.remove("has-spec");
+      throw new Error("Could not read the Screen placement path for spec indicators.", {
+        cause: error
+      });
+    }
+    const samePath = (candidate) => Array.isArray(candidate) &&
+      candidate.length === path.length &&
+      candidate.every((part, index) => part === path[index]);
+    const hasSpec = Boolean(screen && (
+      [...elementSpecOwners.values()].some((owner) =>
+        owner.screenFile === screen.file && samePath(owner.instancePath)
+      ) ||
+      [...createdSpecDrafts.values()].some((draft) =>
+        draft.owner === "instance" &&
+        draft.screenFile === screen.file &&
+        samePath(draft.instancePath)
+      )
+    ));
+    node.classList.toggle("has-spec", hasSpec);
+  }
 }
 
 /** Adds the section for the current editor state. */
@@ -2590,6 +2980,21 @@ function markEdited(filePath, options = {}) {
   projectPersistence.markEdited(filePath, options);
 }
 
+/** Begins a transaction spanning related project artifact mutations. */
+function beginEditTransaction() {
+  projectPersistence.beginEditTransaction();
+}
+
+/** Commits the active transaction after all coupled artifacts have been updated. */
+function endEditTransaction() {
+  projectPersistence.endEditTransaction();
+}
+
+/** Marks a project artifact deletion for undoable autosave. */
+function markDeleted(filePath) {
+  projectPersistence.markDeleted(filePath);
+}
+
 /** Clears the edited and resets its associated state. */
 function clearEdited(filePath) {
   projectPersistence.clearEdited(filePath);
@@ -2627,6 +3032,7 @@ const editorEventController = new EditorEventController({
   state: {
     get hasEdits() { return hasEdits; },
     get historyUpdateSuppressed() { return historyUpdateSuppressed; },
+    get specIndicatorsEnabled() { return specIndicatorsEnabled; },
     set historyUpdateSuppressed(value) { historyUpdateSuppressed = value; }
   },
   services: {
@@ -2641,6 +3047,56 @@ const editorEventController = new EditorEventController({
     setScreenSelectorOpen,
     renderScreenSelector,
     saveProjectChanges,
+    canDeleteSelectedPlacements: () => !isRenderOnly &&
+      !viewingProject && !viewingMaterialFile && !viewingSpec && !viewingTheme &&
+      !viewingWorkflow && activeInstancePaths.length > 0 &&
+      getActivePreviewStateId(screens[activeScreenIndex]?.data) === "default",
+    deleteSelectedPlacements: () =>
+      screenMaterialController.deleteMany(activeInstancePaths.map((path) => [...path])),
+    returnToScreen: () =>
+      editorNavigation.selectScreenManually(activeScreenIndex),
+    setSpecIndicatorsEnabled: (enabled) => {
+      specIndicatorsEnabled = enabled;
+      byId("spec-indicators-toggle").setAttribute("aria-pressed", String(enabled));
+      byId("spec-indicators-toggle").title = enabled
+        ? "Hide behavior spec indicators"
+        : "Show behavior spec indicators";
+      byId("spec-indicators-toggle").setAttribute(
+        "aria-label",
+        enabled ? "Hide behavior spec indicators" : "Show behavior spec indicators"
+      );
+      renderInspector();
+    },
+    exitTheme: () => editorNavigation.selectScreenManually(activeScreenIndex),
+    hasWorkspaceEscapeView: () =>
+      viewingTheme || viewingSpec || viewingWorkflow || editorNavigation.linkedDockStack.length > 0,
+    handleWorkspaceEscape: async () => {
+      if (viewingWorkflow && workflowEditor.closeWorkflowNodeSpecPreview()) {
+        return { handled: true, action: "close-linked-spec" };
+      }
+      const result = await editorNavigation.handleWorkspaceEscape();
+      if (result.action === "pop-linked") workflowEditor.clearLinkedWorkflowPreview();
+      return result;
+    },
+    handleLocalEscape: () => {
+      if (!byId("material-selector-context-menu").hidden) {
+        projectFileNavigator.closeMaterialContextMenu();
+        return true;
+      }
+      if (!byId("screen-placement-context-menu").hidden) {
+        closeScreenPlacementContextMenu();
+        return true;
+      }
+      if (!byId("screen-selector-panel").hidden) {
+        projectFileNavigator.setScreenSelectorOpen(false, true);
+        return true;
+      }
+      if (themeEditor.hasOpenColorPopup()) {
+        themeEditor.closeColorPopup();
+        return true;
+      }
+      return false;
+    },
     renderScreenRulers: () => screenRulerController.render(),
     showFatalError,
     showEditorMessage,
@@ -2651,6 +3107,30 @@ const editorEventController = new EditorEventController({
   }
 });
 editorEventController.bind();
+byId("undo-project-edit").addEventListener("click", () => {
+  projectPersistence.undo().catch((error) =>
+    showEditorMessage("Could not undo project edit", error.message || String(error))
+  );
+});
+byId("redo-project-edit").addEventListener("click", () => {
+  projectPersistence.redo().catch((error) =>
+    showEditorMessage("Could not redo project edit", error.message || String(error))
+  );
+});
+document.addEventListener("keydown", (event) => {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== "z") return;
+  event.preventDefault();
+  const action = event.shiftKey ? projectPersistence.redo() : projectPersistence.undo();
+  action.catch((error) =>
+    showEditorMessage("Could not update project history", error.message || String(error))
+  );
+});
+document.addEventListener("focusout", (event) => {
+  if (["screen-yaml-source", "material-source", "spec-source", "workflow-source"]
+    .includes(event.target?.id)) {
+    projectPersistence.closeEditHistoryGroup();
+  }
+});
 bindScreenPlacementContextMenu();
 
 /** Renders the theme view from the current editor data. */
@@ -2664,12 +3144,234 @@ async function renderThemeView(filePath = project?.theme) {
 /** Shows the editor message for the current editor state. */
 function showEditorMessage(title, message) {
   const output = byId("editor-message");
-  output.replaceChildren(element("strong", "", title), element("div", "", message));
+  clearEditorMessageTimer();
+  output.replaceChildren(
+    element("strong", "", title),
+    element("div", "", message),
+    createEditorMessageCloseButton()
+  );
   output.classList.add("visible");
+  editorMessageTimer = window.setTimeout(hideEditorMessage, 10000);
+}
+
+/** Creates the close control shared by editor notifications. */
+function createEditorMessageCloseButton() {
+  const close = element("button", "editor-message-close", "×");
+  close.type = "button";
+  close.setAttribute("aria-label", "Close notification");
+  close.addEventListener("click", hideEditorMessage);
+  return close;
+}
+
+/** Clears the current editor notification timeout. */
+function clearEditorMessageTimer() {
+  if (editorMessageTimer === null) return;
+  window.clearTimeout(editorMessageTimer);
+  editorMessageTimer = null;
+}
+
+/** Renders disk/local versions and explicit actions for external-write conflicts. */
+function showExternalWriteConflicts(conflicts) {
+  const output = byId("editor-message");
+  if (!conflicts.length) {
+    hideEditorMessage();
+    return;
+  }
+  clearEditorMessageTimer();
+  const content = [
+    element("strong", "", "External file changes need review"),
+    element("div", "", "Choose how to resolve each file before autosave continues.")
+  ];
+  for (const conflict of conflicts) {
+    const section = element("section", "external-write-conflict");
+    const heading = element("strong", "", conflict.path);
+    const diskDetails = element("details");
+    diskDetails.append(
+      element("summary", "", "External disk version"),
+      element("pre", "", conflict.diskContent ?? "The file was deleted on disk.")
+    );
+    const localDetails = element("details");
+    localDetails.append(
+      element("summary", "", "Local version"),
+      element("pre", "", conflict.localDeleted ? "The file was deleted locally." : conflict.localContent)
+    );
+    const mergeSource = element("textarea", "external-write-merge");
+    mergeSource.value = conflict.localContent;
+    mergeSource.setAttribute("aria-label", `Merged content for ${conflict.path}`);
+    const actions = element("div", "external-write-actions");
+    const reload = element("button", "secondary-button", "Reload disk");
+    const otherPendingEdits = dirtyFiles.size > 1 || externalWriteConflicts.size > 1;
+    reload.disabled = conflict.diskContent === null || otherPendingEdits;
+    reload.title = otherPendingEdits
+      ? "Resolve other pending edits first to avoid discarding them."
+      : "";
+    reload.addEventListener("click", () => {
+      projectPersistence.resolveExternalWriteConflict(conflict.path, "reload")
+        .catch((error) => showEditorMessage("Could not reload disk version", error.message));
+    });
+    const keep = element("button", "secondary-button", "Keep local");
+    keep.addEventListener("click", () => {
+      projectPersistence.resolveExternalWriteConflict(conflict.path, "keep")
+        .catch((error) => showEditorMessage("Could not keep local version", error.message));
+    });
+    const merge = element("button", "secondary-button", "Apply merge");
+    merge.disabled = conflict.localDeleted;
+    merge.addEventListener("click", () => {
+      projectPersistence.resolveExternalWriteConflict(
+        conflict.path,
+        "merge",
+        mergeSource.value
+      ).catch((error) => showEditorMessage("Could not apply merged version", error.message));
+    });
+    actions.append(reload, keep, merge);
+    section.append(heading, diskDetails, localDetails, mergeSource, actions);
+    content.push(section);
+  }
+  content.push(createEditorMessageCloseButton());
+  output.replaceChildren(...content);
+  output.classList.add("visible");
+}
+
+/** Reconciles an external file version with the corresponding editor model. */
+async function applyExternalFileContent(filePath, content, options = {}) {
+  if (typeof content !== "string") {
+    throw new Error(`The external version for "${filePath}" is unavailable.`);
+  }
+  if (options.reload) {
+    const loaded = await projectRepository.load();
+    applyLoadedProject(loaded);
+    await renderLoadedProject();
+    projectPersistence.initializeEditHistory();
+    return;
+  }
+  if (filePath === "project.yml") {
+    await applyExternalProjectContent(content, options.merged);
+    return;
+  }
+  const screen = screens.find((entry) => entry.file === filePath);
+  if (screen) {
+    await applyExternalScreenContent(screen, content);
+    return;
+  }
+  const material = materialFiles.get(filePath);
+  if (material) {
+    await applyExternalMaterialContent(material, content);
+    return;
+  }
+  if (filePath === project.theme) {
+    applyExternalThemeContent(filePath, content);
+    return;
+  }
+  if (workflowSources.has(filePath)) {
+    await applyExternalWorkflowContent(filePath, content);
+    return;
+  }
+  if (specSources.has(filePath)) {
+    await applyExternalSpecContent(filePath, content);
+    return;
+  }
+  throw new Error(`The editor cannot apply an external version for "${filePath}".`);
+}
+
+/** Removes one externally conflicting file from the restored local artifact model. */
+async function removeExternalFile(filePath) {
+  const screenIndex = screens.findIndex((screen) => screen.file === filePath);
+  if (screenIndex >= 0) {
+    const [screen] = screens.splice(screenIndex, 1);
+    project.screens = project.screens.filter((entry) =>
+      entry !== screen.id && entry !== screen.file &&
+      !(entry && typeof entry === "object" && (entry.id === screen.id || entry.file === screen.file))
+    );
+    activeScreenIndex = Math.min(activeScreenIndex, Math.max(0, screens.length - 1));
+  }
+  materialFiles.delete(filePath);
+  specSources.delete(filePath);
+  workflowSources.delete(filePath);
+  invalidYamlFiles.delete(filePath);
+  invalidWorkflowFiles.delete(filePath);
+  elementSpecOwners.delete(filePath);
+  createdSpecDrafts.delete(filePath);
+  projectFilePaths = projectFilePaths.filter((path) => path !== filePath);
+  if (activeWorkflowPath === filePath) {
+    viewingWorkflow = false;
+    activeWorkflowPath = null;
+  }
+  if (activeSpecPath === filePath) {
+    viewingSpec = false;
+    activeSpecPath = null;
+  }
+  if (activeMaterialFilePath === filePath) {
+    viewingMaterialFile = false;
+    activeMaterialFilePath = null;
+  }
+  renderNavigation();
+  renderScreenSelector();
+}
+
+/** Applies an external project manifest version. */
+async function applyExternalProjectContent(content, merged) {
+  if (!merged) {
+    const loaded = await projectRepository.load();
+    applyLoadedProject(loaded);
+    await renderLoadedProject();
+    projectPersistence.initializeEditHistory();
+    return;
+  }
+  const nextProject = projectRepository.parseYamlMapping(content, "project.yml");
+  projectRepository.validateProjectDefinition(nextProject);
+  if (JSON.stringify(nextProject.screens) !== JSON.stringify(project.screens) ||
+      nextProject.theme !== project.theme) {
+    throw new Error(
+      "A merged project.yml cannot change Screen membership or Theme path in the current workspace."
+    );
+  }
+  project = nextProject;
+  renderNavigation();
+  renderScreenSelector();
+}
+
+/** Applies an external Screen YAML version. */
+async function applyExternalScreenContent(screen, content) {
+  const version = ++screen.yamlParseVersion;
+  await screenYamlEditor.parse(screen, content, version);
+}
+
+/** Applies an external Material source version. */
+async function applyExternalMaterialContent(material, content) {
+  const version = (material.parseVersion || 0) + 1;
+  material.parseVersion = version;
+  await materialFileEditor.parseDocument(material, content, version);
+}
+
+/** Applies an external Theme version. */
+function applyExternalThemeContent(filePath, content) {
+  const nextTheme = projectRepository.parseYamlMapping(content, filePath);
+  sharedValidation.validateTheme(nextTheme, filePath);
+  theme = nextTheme;
+  applyTheme();
+  renderInspector();
+}
+
+/** Applies an external workflow source version. */
+async function applyExternalWorkflowContent(filePath, content) {
+  workflowSources.set(filePath, content);
+  const ownerIndex = screens.findIndex((entry) =>
+    filePath.startsWith(`screens/${entry.id}/workflows/`)
+  );
+  if (activeWorkflowPath === filePath) await renderWorkflowEditor(filePath, ownerIndex);
+}
+
+/** Applies an external behavior-spec source version. */
+async function applyExternalSpecContent(filePath, content) {
+  specSources.set(filePath, content);
+  if (activeSpecPath === filePath) {
+    await renderSpecEditor(filePath, activeSpecInstancePath, activeSpecOwner);
+  }
 }
 
 /** Hides the editor message for the current editor state. */
 function hideEditorMessage() {
+  clearEditorMessageTimer();
   const output = byId("editor-message");
   output.classList.remove("visible");
   output.replaceChildren();

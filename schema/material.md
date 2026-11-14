@@ -40,6 +40,8 @@ A Screen references the Material file and stores instance attribute overrides an
 
 The STML `preview-size` controls only the Material file editor's preview and does not change Screen placement sizes.
 
+The selector's crop frame is presentation metadata in `project.yml`, under `material-previews`, keyed by Material ID. Its `x`, `y`, `width`, and `height` are coordinates in the Material preview canvas. This frame does not modify the STML document or any Screen placement geometry; without an entry, the selector shows the full preview.
+
 ```yaml
 materials:
   - id: welcome-title

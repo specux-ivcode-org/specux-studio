@@ -56,15 +56,15 @@ export function parseWorkflowLink(href) {
   const pathSegments = getRequiredDecodedPath(url, href);
   validateWorkflowScreenPath(pathSegments, href);
   validateWorkflowQueryParameters(url, href);
-  const placementId = url.searchParams.get("placement");
+  const placementIds = [...new Set(url.searchParams.getAll("placement"))];
   const stateId = url.searchParams.get("state") ?? "default";
-  if (!isValidWorkflowPlacementPath(placementId) && placementId !== null ||
+  if (placementIds.some((placementId) => !isValidWorkflowPlacementPath(placementId)) ||
       !isValidWorkflowId(stateId)) {
     throw new Error(`Invalid placement or Screen State in workflow link "${href}".`);
   }
   return {
     screenId: pathSegments[0],
-    placementId,
+    placementIds,
     stateId
   };
 }
@@ -119,12 +119,10 @@ function validateWorkflowScreenPath(pathSegments, href) {
 function validateWorkflowQueryParameters(url, href) {
   const queryEntries = [...url.searchParams.entries()];
   const hasUnsupportedKey = queryEntries.some(([key]) => !["placement", "state"].includes(key));
-  const hasDuplicateKey = ["placement", "state"].some((key) =>
-    url.searchParams.getAll(key).length > 1
-  );
-  if (hasUnsupportedKey || hasDuplicateKey) {
+  const hasDuplicateState = url.searchParams.getAll("state").length > 1;
+  if (hasUnsupportedKey || hasDuplicateState) {
     throw new Error(
-      `Workflow links support one placement and one state query parameter: "${href}".`
+      `Workflow links support repeated placements and one state query parameter: "${href}".`
     );
   }
 }
@@ -285,6 +283,8 @@ export function collectWorkflowSpecLinks(documents, workflowPath) {
 /** Parses the workflow click directives into structured editor data. */
 export function parseWorkflowClickDirectives(source) {
   const links = new Map();
+  const warnings = new Map();
+  const seenNodeIds = new Set();
   const diagramLines = [];
   for (const [index, line] of source.split(/\r?\n/).entries()) {
     if (!/^\s*click\b/i.test(line) || !/\bspecux:/i.test(line)) {
@@ -300,14 +300,47 @@ export function parseWorkflowClickDirectives(source) {
         `Invalid SpecUX click link on line ${index + 1}, column ${line.search(/\S/) + 1}; expected click <node-id> href "specux://...".`
       );
     }
-    if (links.has(match[1])) {
-      throw new Error(
-        `Workflow node "${match[1]}" has more than one SpecUX link (line ${index + 1}, column ${line.search(/\S/) + 1}).`
+    const nodeId = match[1];
+    if (seenNodeIds.has(nodeId)) {
+      links.delete(nodeId);
+      warnings.set(
+        nodeId,
+        `Workflow node "${nodeId}" has more than one SpecUX click directive.`
       );
+      continue;
     }
-    links.set(match[1], parseWorkflowLink(match[2]));
+    seenNodeIds.add(nodeId);
+    try {
+      links.set(nodeId, parseWorkflowLink(match[2]));
+    } catch (error) {
+      warnings.set(nodeId, error.message || String(error));
+    }
   }
-  return { diagramSource: diagramLines.join("\n"), links };
+  return { diagramSource: diagramLines.join("\n"), links, warnings };
+}
+
+/** Returns nodes without incoming directed edges in Mermaid source order. */
+export async function getWorkflowEntryNodeIds(mermaid, source) {
+  const diagram = await mermaid.mermaidAPI.getDiagramFromText(source);
+  const incomingNodeIds = new Set();
+  for (const edge of diagram.db.getEdges()) {
+    if (edge.type === "arrow_open") continue;
+    incomingNodeIds.add(edge.end);
+    if (edge.type.startsWith("double_")) incomingNodeIds.add(edge.start);
+  }
+  return [...diagram.db.getVertices().keys()]
+    .filter((nodeId) => !incomingNodeIds.has(nodeId));
+}
+
+/** Returns diagnostics for the detected workflow entry points. */
+function getWorkflowEntryPointWarnings(entryNodeIds) {
+  if (entryNodeIds.length === 0) {
+    return ["Workflow has no entry point; every node has an incoming directed arrow."];
+  }
+  if (entryNodeIds.length > 1) {
+    return ["Workflow has multiple entry points; the first in source order is selected."];
+  }
+  return [];
 }
 
 /** Updates the workflow error location for the current editor state. */
@@ -361,6 +394,10 @@ export class WorkflowEditor {
     this.selectionVersion = 0;
     this.specPreviewVersion = 0;
     this.activeSpecPreview = null;
+    this.entryPointWarnings = [];
+    this.specNodeWarnings = [];
+    this.workflowTargetWarning = null;
+    this.linkWarnings = new Map();
     services.byId("workflow-panel-diagram").addEventListener("click", () =>
       this.setPanelMode("diagram")
     );
@@ -379,6 +416,9 @@ export class WorkflowEditor {
     );
     services.byId("workflow-spec-section-next").addEventListener("click", () =>
       this.moveSpecReference(1)
+    );
+    services.byId("workflow-linked-back").addEventListener("click", () =>
+      services.closeWorkflowDockView?.()
     );
     services.byId("workflow-spec-file-select").addEventListener("change", (event) =>
       this.selectSpecFile(event.target.value)
@@ -409,12 +449,19 @@ export class WorkflowEditor {
     editor.disabled = state.isSaving;
     editor.oninput = () => this.handleSourceInput(filePath, editor.value);
     services.byId("workflow-status").textContent = "";
-    services.byId("workflow-status").classList.remove("error");
+    services.byId("workflow-status").classList.remove("error", "warning");
     if (!["split", "preview", "diagram"].includes(state.workflowViewMode)) {
       state.workflowViewMode = "split";
     }
     this.setViewMode(state.workflowViewMode);
     this.setPanelMode("diagram");
+    await this.renderWorkflowDiagram(source, filePath, changedWorkflow);
+    services.renderNavigation();
+    services.renderInspector();
+  }
+
+  /** Renders the selected workflow and reports rendering or entry-point status. */
+  async renderWorkflowDiagram(source, filePath, selectInitial) {
     let links = new Map();
     try {
       links = await this.renderDiagram(
@@ -422,22 +469,166 @@ export class WorkflowEditor {
         this.nextFileVersion(filePath),
         filePath
       ) || links;
+      if (selectInitial) await this.selectInitialWorkflowNode(links, source);
     } catch (error) {
-      services.byId("workflow-status").textContent = error.message || String(error);
-      services.byId("workflow-status").classList.add("error");
+      const status = this.services.byId("workflow-status");
+      status.textContent = error.message || String(error);
+      status.classList.add("error");
     }
-    if (changedWorkflow) await this.selectInitialWorkflowNode(links);
-    services.renderNavigation();
-    services.renderInspector();
+    return links;
   }
 
   /** Selects the initial workflow node and updates the related editor state. */
-  async selectInitialWorkflowNode(links) {
-    const nodes = [...this.services.byId("workflow-diagram").querySelectorAll("g.node")];
-    const initialNode = nodes.find((node) => links.has(this.getNodeId(node)));
-    if (!initialNode) return;
-    const nodeId = this.getNodeId(initialNode);
-    await this.selectNode(nodeId, links.get(nodeId));
+  async selectInitialWorkflowNode(links, source, selectInitial = true) {
+    const { state, services } = this;
+    const { diagramSource } = this.parseDiagramLinks(source, state.activeWorkflowPath);
+    const entryNodeIds = await getWorkflowEntryNodeIds(
+      await this.getMermaid(),
+      diagramSource
+    );
+    const nodes = [...services.byId("workflow-diagram").querySelectorAll("g.node")];
+    const warnings = getWorkflowEntryPointWarnings(entryNodeIds);
+    if (selectInitial) await this.selectWorkflowEntryNode(entryNodeIds, links, nodes);
+    this.updateWorkflowEntryPointStatus(warnings);
+  }
+
+  /** Applies the first valid Mermaid entry node as the initial selection. */
+  async selectWorkflowEntryNode(entryNodeIds, links, nodes) {
+    if (entryNodeIds.length === 0) {
+      for (const node of nodes) {
+        node.classList.remove("selected");
+        this.setNodeSelectionHighlight(node, false);
+      }
+      this.state.selectedWorkflowNodeId = null;
+      this.workflowTargetWarning = null;
+      return;
+    }
+    const nodeId = entryNodeIds[0];
+    const entryNode = nodes.find((node) => this.getNodeId(node) === nodeId);
+    if (!entryNode) return;
+    const linkWarning = this.linkWarnings.get(nodeId);
+    if (linkWarning) {
+      entryNode.classList.add("selected");
+      this.setNodeSelectionHighlight(entryNode, true);
+      this.state.selectedWorkflowNodeId = nodeId;
+      this.workflowTargetWarning = linkWarning;
+      return;
+    }
+    if (links.has(nodeId)) {
+      await this.selectNode(nodeId, links.get(nodeId));
+      return;
+    }
+    entryNode.classList.add("selected");
+    this.setNodeSelectionHighlight(entryNode, true);
+    this.state.selectedWorkflowNodeId = nodeId;
+    this.workflowTargetWarning = `Workflow entry point "${nodeId}" has no SpecUX link.`;
+  }
+
+  /** Updates workflow entry-point diagnostics without replacing selection errors. */
+  updateWorkflowEntryPointStatus(warnings) {
+    this.entryPointWarnings = warnings;
+    this.renderWorkflowWarnings();
+  }
+
+  /** Renders structural and selected-node warnings in the workflow status area. */
+  renderWorkflowWarnings() {
+    const status = this.services.byId("workflow-status");
+    const warnings = [...this.entryPointWarnings, ...this.specNodeWarnings, this.workflowTargetWarning]
+      .filter(Boolean);
+    if (warnings.length) {
+      status.textContent = warnings.join(" ");
+      status.classList.remove("error");
+      status.classList.add("warning");
+    } else if (!status.classList.contains("error")) {
+      status.textContent = "";
+      status.classList.remove("warning");
+    }
+  }
+
+  /** Creates and opens a new workflow owned by the active Screen. */
+  async createForScreen() {
+    const { state, services } = this;
+    const screenIndex = state.activeScreenIndex;
+    const screen = state.screens[screenIndex];
+    if (!screen) throw new Error("Select a Screen before creating a workflow.");
+
+    const enteredName = services.prompt("Name for the new workflow:", "New workflow");
+    if (enteredName === null) return null;
+    const name = enteredName.trim();
+    const normalizedName = name.toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+    if (!normalizedName) {
+      services.showEditorMessage("Workflow name required", "Enter a name before creating a workflow.");
+      return null;
+    }
+
+    const baseId = /^[a-z]/.test(normalizedName)
+      ? normalizedName
+      : `workflow-${normalizedName}`;
+    let filePath;
+    for (let suffix = 1; ; suffix += 1) {
+      const id = suffix === 1 ? baseId : `${baseId}-${suffix}`;
+      filePath = `screens/${screen.id}/workflows/${id}.mmd`;
+      services.validation.validateWorkflowPath(filePath);
+      if (!(await this.workflowPathExists(filePath))) break;
+    }
+
+    const source = 'flowchart TD\n  start["Start"]\n';
+    state.workflowSources.set(filePath, source);
+    state.createdWorkflowFiles.add(filePath);
+    services.projectFileTree.expandPath(filePath);
+    services.markEdited(filePath);
+    services.renderNavigation();
+    await services.renderWorkflowEditor(filePath, screenIndex);
+    return filePath;
+  }
+
+  /** Checks local project state and the server before choosing a workflow path. */
+  async workflowPathExists(filePath) {
+    const { state, services } = this;
+    if (state.workflowSources.has(filePath) || state.projectFilePaths.includes(filePath)) {
+      return true;
+    }
+    const response = await services.fetcher(services.safeProjectUrl(filePath));
+    if (response.status === 404) return false;
+    if (!response.ok) {
+      throw new Error(`Could not check workflow file "${filePath}" (HTTP ${response.status}).`);
+    }
+    return true;
+  }
+
+  /** Deletes one Screen-owned workflow after confirming any pending edits. */
+  async deleteWorkflow(filePath) {
+    const { state, services } = this;
+    const ownerScreen = state.screens.find((screen) =>
+      filePath.startsWith(`screens/${screen.id}/workflows/`)
+    );
+    if (!ownerScreen || !state.workflowSources.has(filePath)) {
+      throw new Error(`Workflow "${filePath}" is not available in this project.`);
+    }
+
+    const isNew = state.createdWorkflowFiles.has(filePath);
+    const hasPendingEdits = state.dirtyFiles.has(filePath);
+    const message = hasPendingEdits
+      ? `Delete workflow "${filePath}" and its unsaved changes? This can be undone.`
+      : `Delete workflow "${filePath}"? This can be undone.`;
+    if (!services.confirm(message)) return false;
+
+    state.workflowSources.delete(filePath);
+    state.invalidWorkflowFiles.delete(filePath);
+    state.createdWorkflowFiles.delete(filePath);
+    state.projectFilePaths = state.projectFilePaths.filter((path) => path !== filePath);
+    services.markDeleted(filePath);
+    if (state.activeWorkflowPath === filePath) {
+      state.viewingWorkflow = false;
+      state.activeWorkflowPath = null;
+      services.returnToScreen?.();
+    }
+    services.updateSaveControls();
+    services.renderNavigation();
+    services.renderInspector();
+    return true;
   }
 
   /** Activates the selected editor mode and updates the related controls. */
@@ -451,9 +642,11 @@ export class WorkflowEditor {
   deactivate() {
     this.state.viewingWorkflow = false;
     this.state.activeWorkflowPath = null;
+    this.closeWorkflowNodeSpecPreview();
     this.activeSpecPreview = null;
     this.updateSpecLinkSelection();
     this.updateSpecSectionNavigation();
+    this.clearLinkedWorkflowPreview();
     this.clearSpecReferencePreview();
     this.services.byId("main").classList.remove("workflow-editing");
     this.services.byId("workflow-editor-panel").hidden = true;
@@ -462,47 +655,11 @@ export class WorkflowEditor {
 
   /** Shows the spec reference preview for the current editor state. */
   async showSpecReferencePreview(reference, specPath) {
-    const { state, services } = this;
+    const { services } = this;
     this.clearSpecReferencePreview();
-    const source = state.workflowSources.get(reference.workflowPath);
-    if (source === undefined) {
-      throw new Error(`Workflow "${reference.workflowPath}" is not available.`);
-    }
-
-    const version = ++this.specPreviewVersion;
-    let diagramSource;
-    let mermaid;
-    try {
-      ({ diagramSource } = parseWorkflowClickDirectives(source));
-      mermaid = await this.getMermaid();
-      await mermaid.parse(source);
-    } catch (error) {
-      throw withWorkflowErrorLocation(reference.workflowPath, source, error);
-    }
-    if (version !== this.specPreviewVersion || !state.viewingSpec) return;
-
     const preview = services.byId("spec-workflow-preview");
-    let rendered;
-    try {
-      rendered = await mermaid.render(
-        `specux-workflow-${++this.diagramId}`,
-        diagramSource
-      );
-    } catch (error) {
-      throw withWorkflowErrorLocation(reference.workflowPath, source, error);
-    }
-    if (version !== this.specPreviewVersion || !state.viewingSpec) return;
-    preview.innerHTML = rendered.svg;
-    rendered.bindFunctions?.(preview);
-    const nodes = [...preview.querySelectorAll("g.node")];
-    const node = nodes.find((entry) => this.getNodeId(entry) === reference.nodeId);
-    if (!node) {
-      throw new Error(
-        `Workflow link refers to unknown Mermaid node "${reference.nodeId}" in "${reference.workflowPath}".`
-      );
-    }
-    node.classList.add("selected");
-    this.setNodeSelectionHighlight(node, true);
+    const node = await this.renderSpecWorkflowGraph(reference, specPath, preview);
+    if (!node) return;
     preview.hidden = false;
     preview.setAttribute(
       "aria-label",
@@ -510,7 +667,107 @@ export class WorkflowEditor {
     );
     services.byId("main").classList.add("spec-workflow-preview-active");
     services.byId("spec-view-heading").textContent = `Workflow: ${reference.workflowPath}`;
-    this.scrollSpecPreviewNodeIntoView(preview, node);
+  }
+
+  /** Shows a linked, read-only Workflow in the Spec mode dock. */
+  async showLinkedWorkflowPreview(reference, specPath) {
+    const { services } = this;
+    this.clearLinkedWorkflowPreview();
+    const main = services.byId("main");
+    const panel = services.byId("workflow-editor-panel");
+    const diagram = services.byId("workflow-diagram");
+    main.classList.add("spec-linked-workflow-active");
+    panel.classList.add("workflow-linked-readonly");
+    panel.hidden = false;
+    services.byId("spec-editor-panel").hidden = true;
+    services.byId("workflow-editor-heading").textContent =
+      `Workflow: ${reference.workflowPath}`;
+    services.byId("workflow-linked-back").textContent = "Back to Spec";
+    services.byId("workflow-source").hidden = true;
+    services.byId("workflow-linked-back").hidden = false;
+    diagram.hidden = false;
+    const node = await this.renderSpecWorkflowGraph(reference, specPath, diagram);
+    diagram.setAttribute(
+      "aria-label",
+      reference.nodeId
+        ? `Read-only workflow preview for "${specPath}", focused on node "${reference.nodeId}"`
+        : `Read-only workflow preview for "${specPath}"`
+    );
+    if (!node) return;
+  }
+
+  /** Renders the selected node of a Spec-linked Workflow without enabling navigation. */
+  async renderSpecWorkflowGraph(reference, specPath, preview) {
+    const { state, services } = this;
+    const source = state.workflowSources.get(reference.workflowPath);
+    if (source === undefined) {
+      throw new Error(`Workflow "${reference.workflowPath}" is not available.`);
+    }
+    const version = ++this.specPreviewVersion;
+    const renderData = await this.getSpecWorkflowRenderData(source, reference, version);
+    if (!renderData) return null;
+    preview.innerHTML = renderData.svg;
+    const nodes = [...preview.querySelectorAll("g.node")];
+    const node = reference.nodeId
+      ? nodes.find((entry) => this.getNodeId(entry) === reference.nodeId)
+      : null;
+    if (reference.nodeId && !node) {
+      throw new Error(
+        `Workflow link refers to unknown Mermaid node "${reference.nodeId}" in "${reference.workflowPath}".`
+      );
+    }
+    if (node) {
+      node.classList.add("selected");
+      this.setNodeSelectionHighlight(node, true);
+      this.scrollSpecPreviewNodeIntoView(preview, node);
+    }
+    return node;
+  }
+
+  /** Parses and renders a Spec-linked Workflow without enabling editor navigation. */
+  async getSpecWorkflowRenderData(source, reference, version) {
+    const { state } = this;
+    let diagramSource;
+    let mermaid;
+    try {
+      ({ diagramSource } = parseWorkflowClickDirectives(source));
+      mermaid = await this.getMermaid();
+      await mermaid.parse(source);
+      if (version !== this.specPreviewVersion || !state.viewingSpec) return null;
+      const rendered = await mermaid.render(
+        `specux-workflow-${++this.diagramId}`,
+        diagramSource
+      );
+      if (version !== this.specPreviewVersion || !state.viewingSpec) return null;
+      return rendered;
+    } catch (error) {
+      throw withWorkflowErrorLocation(reference.workflowPath, source, error);
+    }
+  }
+
+  /** Restores a workflow node selection from a URL or browser-history entry. */
+  restoreNodeSelection(nodeId) {
+    const filePath = this.state.activeWorkflowPath;
+    const source = this.state.workflowSources.get(filePath);
+    if (!source) throw new Error(`Workflow "${filePath}" is not available.`);
+    const { links } = this.parseDiagramLinks(source, filePath);
+    return this.selectNode(nodeId, links.get(nodeId));
+  }
+
+  /** Clears the linked Workflow dock and restores its parent Spec view. */
+  clearLinkedWorkflowPreview() {
+    const { services } = this;
+    this.specPreviewVersion += 1;
+    services.byId("main").classList.remove("spec-linked-workflow-active");
+    const panel = services.byId("workflow-editor-panel");
+    panel.classList.remove("workflow-linked-readonly");
+    panel.classList.remove("workflow-node-spec-active");
+    panel.hidden = true;
+    services.byId("workflow-diagram").replaceChildren();
+    services.byId("workflow-node-spec-preview").hidden = true;
+    services.byId("workflow-source").hidden = false;
+    services.byId("workflow-linked-back").hidden = true;
+    if (this.state.viewingSpec) services.byId("spec-editor-panel").hidden = false;
   }
 
   /** Updates the spec preview node into view for the current editor state. */
@@ -595,16 +852,24 @@ export class WorkflowEditor {
     const { state, services } = this;
     state.workflowSources.set(filePath, source);
     state.invalidWorkflowFiles.set(filePath, "Validating Mermaid...");
-    services.markEdited(filePath);
+    services.markEdited(filePath, { coalesce: true });
     services.updateSaveControls();
     services.byId("workflow-status").textContent = "Validating Mermaid...";
-    services.byId("workflow-status").classList.remove("error");
+    services.byId("workflow-status").classList.remove("error", "warning");
     clearTimeout(this.validationTimer);
     const version = this.nextFileVersion(filePath);
     this.validationTimer = setTimeout(() => {
-      this.renderDiagram(source, version, filePath).catch((error) => {
+      this.renderDiagram(source, version, filePath).then((links) =>
+        this.selectInitialWorkflowNode(links, source, false)
+      ).catch((error) => {
         if (this.fileVersions.get(filePath) !== version) return;
         state.invalidWorkflowFiles.set(filePath, error.message || String(error));
+        services.saveRecoveryDraft?.(
+          filePath,
+          source,
+          error.message || String(error),
+          "workflow"
+        );
         if (state.activeWorkflowPath === filePath) {
           services.byId("workflow-status").textContent = error.message || String(error);
           services.byId("workflow-status").classList.add("error");
@@ -637,7 +902,7 @@ export class WorkflowEditor {
 
   /** Renders the diagram from the current editor data. */
   async renderDiagram(source, expectedVersion, filePath) {
-    const { diagramSource, links } = this.parseDiagramLinks(source, filePath);
+    const { diagramSource, links, warnings } = this.parseDiagramLinks(source, filePath);
     const mermaid = await this.getMermaid();
     await this.validateDiagramSyntax(mermaid, source, filePath);
     const specLinks = collectWorkflowSpecLinks(
@@ -645,8 +910,9 @@ export class WorkflowEditor {
       filePath
     );
     if (!this.isCurrentDiagram(filePath, expectedVersion)) return links;
+    this.linkWarnings = warnings;
     await this.renderActiveDiagram(
-      source, diagramSource, filePath, expectedVersion, mermaid, links, specLinks
+      source, diagramSource, filePath, expectedVersion, mermaid, links, specLinks, warnings
     );
     this.clearDiagramValidationError(filePath);
     this.services.updateSaveControls();
@@ -678,7 +944,7 @@ export class WorkflowEditor {
 
   /** Renders the active diagram from the current editor data. */
   async renderActiveDiagram(
-    source, diagramSource, filePath, expectedVersion, mermaid, links, specLinks
+    source, diagramSource, filePath, expectedVersion, mermaid, links, specLinks, warnings
   ) {
     if (filePath !== this.state.activeWorkflowPath) return;
     const diagram = this.services.byId("workflow-diagram");
@@ -688,7 +954,7 @@ export class WorkflowEditor {
     diagram.innerHTML = rendered.svg;
     rendered.bindFunctions?.(diagram);
     const nodes = [...diagram.querySelectorAll("g.node")];
-    const nodeIds = this.renderWorkflowNodes(nodes, links, specLinks);
+    const nodeIds = this.renderWorkflowNodes(nodes, links, specLinks, warnings);
     this.validateLinkedWorkflowNodes(source, filePath, nodeIds, links, specLinks);
     this.updateSpecLinkSelection();
   }
@@ -703,55 +969,90 @@ export class WorkflowEditor {
   }
 
   /** Renders the workflow nodes from the current editor data. */
-  renderWorkflowNodes(nodes, links, specLinks) {
+  renderWorkflowNodes(nodes, links, specLinks, warnings) {
     const nodeIds = new Set();
     for (const node of nodes) {
       const id = this.getNodeId(node);
       nodeIds.add(id);
-      this.renderWorkflowNode(node, id, links.get(id), specLinks.get(id) || []);
+      this.renderWorkflowNode(
+        node,
+        id,
+        links.get(id),
+        warnings.get(id),
+        specLinks.get(id) || []
+      );
     }
     return nodeIds;
   }
 
   /** Renders the workflow node from the current editor data. */
-  renderWorkflowNode(node, id, link, linkedSpecs) {
+  renderWorkflowNode(node, id, link, warning, linkedSpecs) {
     const selected = id === this.state.selectedWorkflowNodeId;
     node.classList.toggle("selected", selected);
     if (selected) this.setNodeSelectionHighlight(node, true);
-    if (link) this.configureLinkedWorkflowNode(node, id, link, linkedSpecs);
+    this.configureLinkedWorkflowNode(node, id, link, warning, linkedSpecs);
     if (linkedSpecs.length) this.addSpecLinkControl(node, linkedSpecs);
   }
 
   /** Updates the linked workflow node for the current editor state. */
-  configureLinkedWorkflowNode(node, id, link, linkedSpecs) {
+  configureLinkedWorkflowNode(node, id, link, warning, linkedSpecs) {
     node.classList.add("workflow-linked-node");
     node.setAttribute("role", linkedSpecs.length ? "group" : "button");
     node.setAttribute("tabindex", "0");
     node.setAttribute(
       "aria-label",
       linkedSpecs.length
-        ? `Workflow node ${id}. ${this.getLinkLabel(link)}.`
-        : this.getLinkLabel(link)
+        ? `Workflow node ${id}. ${warning || (link
+          ? this.getLinkLabel(link)
+          : `Workflow node ${id} has no SpecUX placement link.`)}.`
+        : warning || (link
+          ? this.getLinkLabel(link)
+          : `Workflow node ${id} has no SpecUX placement link.`)
     );
-    node.addEventListener("click", () => this.selectNode(id, link));
+    node.addEventListener("click", (event) => {
+      if (event.detail > 1) return;
+      this.selectNode(id, link, warning);
+    });
+    node.addEventListener("dblclick", (event) => {
+      if (!this.state.viewingWorkflow || this.state.viewingSpec ||
+          !this.services.openWorkflowNodeSpec) return;
+      event.preventDefault();
+      event.stopPropagation();
+      Promise.resolve(
+        this.services.openWorkflowNodeSpec(this.state.activeWorkflowPath, id)
+      ).catch((error) => {
+        this.services.showEditorMessage(
+          "Could not open Workflow node spec",
+          error.message || String(error)
+        );
+      });
+    });
     node.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
-      this.selectNode(id, link);
+      this.selectNode(id, link, warning);
     });
   }
 
   /** Validates the linked workflow nodes before it is applied or saved. */
   validateLinkedWorkflowNodes(source, filePath, nodeIds, links, specLinks) {
+    const unlinkedSpecNodes = [];
     for (const nodeId of new Set([...links.keys(), ...specLinks.keys()])) {
       if (nodeIds.has(nodeId)) continue;
-      throw withWorkflowErrorLocation(
-        filePath,
-        source,
-        new Error(`Workflow link refers to unknown Mermaid node "${nodeId}".`),
-        nodeId
-      );
+      if (links.has(nodeId)) {
+        throw withWorkflowErrorLocation(
+          filePath,
+          source,
+          new Error(`Workflow link refers to unknown Mermaid node "${nodeId}".`),
+          nodeId
+        );
+      }
+      unlinkedSpecNodes.push(nodeId);
     }
+    this.specNodeWarnings = unlinkedSpecNodes.map((nodeId) =>
+      `Behavior spec for missing Workflow node "${nodeId}" is preserved as unlinked documentation.`
+    );
+    this.renderWorkflowWarnings();
   }
 
   /** Clears the diagram validation error and resets its associated state. */
@@ -760,7 +1061,7 @@ export class WorkflowEditor {
     if (filePath !== this.state.activeWorkflowPath) return;
     const status = this.services.byId("workflow-status");
     status.textContent = "";
-    status.classList.remove("error");
+    status.classList.remove("error", "warning");
   }
 
   /** Returns the node id. */
@@ -776,8 +1077,9 @@ export class WorkflowEditor {
 
   /** Returns the link label. */
   getLinkLabel(link) {
-    const target = link.placementId
-      ? `Element ${link.placementId} on Screen ${link.screenId}`
+    const placementIds = link.placementIds || [];
+    const target = placementIds.length
+      ? `${placementIds.length > 1 ? "Elements" : "Element"} ${placementIds.join(", ")} on Screen ${link.screenId}`
       : `Screen ${link.screenId}`;
     return link.stateId === "default"
       ? `Preview ${target} in Default state`
@@ -890,6 +1192,20 @@ export class WorkflowEditor {
       navigation,
       navigationIndex: 0
     };
+    const panel = services.byId("workflow-editor-panel");
+    const diagram = services.byId("workflow-diagram");
+    const source = services.byId("workflow-source");
+    this.nodeSpecPreviousPanel = {
+      diagramHidden: diagram.hidden,
+      sourceHidden: source.hidden
+    };
+    panel.hidden = false;
+    panel.classList.add("workflow-node-spec-active");
+    diagram.hidden = true;
+    source.hidden = true;
+    services.byId("workflow-node-spec-preview").hidden = false;
+    services.byId("workflow-linked-back").textContent = "Back to Workflow";
+    services.byId("workflow-linked-back").hidden = false;
     const fileSelect = services.byId("workflow-spec-file-select");
     const options = linkedSpecs.map((spec) => {
       const option = fileSelect.ownerDocument.createElement("option");
@@ -902,12 +1218,31 @@ export class WorkflowEditor {
     this.renderSpecPreview();
   }
 
+  /** Closes the linked node spec and restores its Workflow diagram. */
+  closeWorkflowNodeSpecPreview() {
+    const { services } = this;
+    if (!this.activeSpecPreview) return false;
+    this.activeSpecPreview = null;
+    const panel = services.byId("workflow-editor-panel");
+    panel.classList.remove("workflow-node-spec-active");
+    const preview = services.byId("workflow-node-spec-preview");
+    preview.hidden = true;
+    preview.replaceChildren();
+    const previousPanel = this.nodeSpecPreviousPanel;
+    services.byId("workflow-diagram").hidden = previousPanel?.diagramHidden ?? false;
+    services.byId("workflow-source").hidden = previousPanel?.sourceHidden ?? true;
+    this.nodeSpecPreviousPanel = null;
+    services.byId("workflow-linked-back").hidden = true;
+    this.updateSpecSectionNavigation();
+    return true;
+  }
+
   /** Renders the spec preview from the current editor data. */
   renderSpecPreview() {
     const active = this.activeSpecPreview;
     if (!active) return;
     const { services } = this;
-    const preview = services.byId("workflow-spec-preview");
+    const preview = services.byId("workflow-node-spec-preview");
     const document = preview.ownerDocument;
     const currentNavigation = active.navigation[active.navigationIndex];
     const linkedSpec = active.linkedSpecs[currentNavigation.fileIndex];
@@ -953,10 +1288,6 @@ export class WorkflowEditor {
     );
     preview.replaceChildren(file);
     preview.scrollTop = 0;
-    services.byId("screen-stage").setAttribute(
-      "aria-label",
-      `Behavior spec preview: ${linkedSpec.filePath}`
-    );
     services.byId("workflow-spec-file-select").value = linkedSpec.filePath;
     this.updateSpecSectionNavigation();
 
@@ -996,16 +1327,12 @@ export class WorkflowEditor {
     const { services } = this;
     const active = this.activeSpecPreview;
     const count = active?.navigation.length || 0;
-    services.byId("main").classList.toggle(
-      "workflow-spec-preview-active",
-      Boolean(active)
-    );
     const navigation = services.byId("workflow-spec-section-navigation");
     navigation.hidden = !active;
     services.byId("workflow-spec-section-position").textContent = active
       ? `${active.navigationIndex + 1} of ${count}`
       : "";
-    services.byId("workflow-spec-preview").hidden = !active;
+    services.byId("workflow-node-spec-preview").hidden = !active;
     services.byId("workflow-spec-file-select").hidden =
       !active || active.linkedSpecs.length < 2;
     services.byId("workflow-spec-section-previous").disabled =
@@ -1015,7 +1342,7 @@ export class WorkflowEditor {
   }
 
   /** Selects the node and updates the related editor state. */
-  selectNode(nodeId, link) {
+  selectNode(nodeId, link, warning = null) {
     this.services.byId("workflow-diagram")
       .querySelectorAll("g.node.selected")
       .forEach((node) => {
@@ -1027,13 +1354,28 @@ export class WorkflowEditor {
     selected?.classList.add("selected");
     if (selected) this.setNodeSelectionHighlight(selected, true);
     this.state.selectedWorkflowNodeId = nodeId;
+    const targetWarning = warning || this.linkWarnings.get(nodeId) ||
+      (!link ? `Workflow node "${nodeId}" has no SpecUX placement link.` : null);
+    if (targetWarning) {
+      this.workflowTargetWarning = targetWarning;
+      this.renderWorkflowWarnings();
+      return Promise.resolve();
+    }
+    this.workflowTargetWarning = null;
     const selectionVersion = ++this.selectionVersion;
     const workflowScreenIndex = this.state.workflowScreenIndex;
     const workflowPath = this.state.activeWorkflowPath;
     this.selectionQueue = this.selectionQueue.then(async () => {
       if (selectionVersion !== this.selectionVersion) return;
       try {
-        await this.services.showWorkflowNode(link, workflowScreenIndex, workflowPath);
+        const result = await this.services.showWorkflowNode(
+          link,
+          workflowScreenIndex,
+          workflowPath
+        );
+        this.workflowTargetWarning = result?.warning || null;
+        this.renderWorkflowWarnings();
+        if (result?.warning) return;
         this.activeSpecPreview = null;
         this.updateSpecLinkSelection();
         this.updateSpecSectionNavigation();

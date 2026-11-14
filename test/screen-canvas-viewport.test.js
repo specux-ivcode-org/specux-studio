@@ -65,6 +65,9 @@ function createViewportHarness() {
   const elements = new Map([
     ["screen-preview", preview],
     ["main", main],
+    ["topbar-canvas-zoom-out", new FakeElement()],
+    ["topbar-canvas-zoom-reset", new FakeElement()],
+    ["topbar-canvas-zoom-in", new FakeElement()],
     ["screen-canvas-zoom-out", new FakeElement()],
     ["screen-canvas-zoom-reset", new FakeElement()],
     ["screen-canvas-zoom-in", new FakeElement()],
@@ -326,6 +329,11 @@ test("controls spec preview zoom and synchronizes its grid toggle", async () => 
   assert.equal(harness.preview.styleValues.get("--screen-canvas-zoom"), "1.1");
   assert.equal(specZoomReset.textContent, "110%");
   assert.equal(harness.elements.get("screen-canvas-zoom-reset").textContent, "110%");
+  assert.equal(harness.elements.get("topbar-canvas-zoom-reset").textContent, "110%");
+
+  harness.elements.get("topbar-canvas-zoom-in").dispatch("click");
+  assert.equal(harness.preview.styleValues.get("--screen-canvas-zoom"), "1.2");
+  assert.equal(specZoomReset.textContent, "120%");
 
   specGridToggle.dispatch("click");
   assert.equal(harness.main.classList.contains("screen-grid-visible"), false);
@@ -396,6 +404,52 @@ test("centers targets correctly at non-default zoom levels", async () => {
   assert.equal(harness.preview.styleValues.get("--screen-canvas-pan-y"), "101px");
 });
 
+test("centers new placements in the visible canvas using the current camera", async () => {
+  const { ScreenCanvasViewportController } = await import(
+    "../frontend/browser/ScreenCanvasViewportController.mjs"
+  );
+  const harness = createViewportHarness();
+  const controller = new ScreenCanvasViewportController({
+    documentObject: harness.documentObject,
+    windowObject: harness.windowObject,
+    renderRulers: harness.renderRulers
+  });
+  controller.zoom = 2;
+  controller.pan = { x: 20, y: -10 };
+
+  assert.deepEqual(
+    controller.getVisibleCanvasPlacementPosition({ width: 100, height: 40 }),
+    { x: 40, y: 60 }
+  );
+});
+
+test("Material drop geometry tracks zoom and pan while centering the default-size outline", async () => {
+  const { ScreenCanvasViewportController } = await import(
+    "../frontend/browser/ScreenCanvasViewportController.mjs"
+  );
+  const harness = createViewportHarness();
+  const controller = new ScreenCanvasViewportController({
+    documentObject: harness.documentObject,
+    windowObject: harness.windowObject,
+    renderRulers: harness.renderRulers
+  });
+  controller.zoom = 2;
+  controller.pan = { x: 20, y: -10 };
+
+  assert.deepEqual(
+    controller.getMaterialDropGeometry(301, 351, { width: 160, height: 48 }),
+    {
+      inside: true,
+      position: { x: 10, y: 56 },
+      outline: { left: 40, top: 102, width: 320, height: 96 }
+    }
+  );
+  assert.equal(
+    controller.getMaterialDropGeometry(99, 201, { width: 160, height: 48 }).inside,
+    false
+  );
+});
+
 /** Direct pan input cancels recenter animation so dragging remains immediate. */
 test("cancels camera animation when direct panning starts", async () => {
   const { ScreenCanvasViewportController } = await import(
@@ -441,6 +495,51 @@ test("centers multiple Screen placements as one target", async () => {
   ]);
   assert.equal(harness.preview.styleValues.get("--screen-canvas-pan-x"), "71px");
   assert.equal(harness.preview.styleValues.get("--screen-canvas-pan-y"), "66px");
+});
+
+/** Fits a transformed multi-placement selection inside the visible canvas. */
+test("animates zoom and pan to fit combined target bounds", async () => {
+  const { ScreenCanvasViewportController } = await import(
+    "../frontend/browser/ScreenCanvasViewportController.mjs"
+  );
+  const harness = createViewportHarness();
+  const controller = new ScreenCanvasViewportController({
+    documentObject: harness.documentObject,
+    windowObject: harness.windowObject,
+    renderRulers: harness.renderRulers
+  });
+  const targets = [
+    { getBoundingClientRect: () => ({ left: 0, top: 0, right: 600, bottom: 500 }) },
+    { getBoundingClientRect: () => ({ left: 700, top: 500, right: 1000, bottom: 700 }) }
+  ];
+  controller.fitOnTargets(targets);
+
+  assert.equal(controller.zoom, 0.35);
+  assert.equal(harness.preview.styleValues.get("--screen-canvas-pan-x"), "60.35px");
+  assert.equal(harness.preview.styleValues.get("--screen-canvas-pan-y"), "97.85px");
+  assert.equal(harness.preview.classList.contains("is-camera-animating"), true);
+});
+
+/** Keeps workflow node previews below the requested contextual zoom limit. */
+test("caps fitted workflow target zoom at the configured maximum", async () => {
+  const { ScreenCanvasViewportController } = await import(
+    "../frontend/browser/ScreenCanvasViewportController.mjs"
+  );
+  const harness = createViewportHarness();
+  const controller = new ScreenCanvasViewportController({
+    documentObject: harness.documentObject,
+    windowObject: harness.windowObject,
+    renderRulers: harness.renderRulers
+  });
+  const targets = [
+    { getBoundingClientRect: () => ({ left: 0, top: 0, right: 100, bottom: 80 }) }
+  ];
+
+  controller.fitOnTargets(targets, { maxZoom: 1.15 });
+
+  assert.equal(controller.zoom, 1.15);
+  assert.equal(harness.preview.styleValues.get("--screen-canvas-zoom"), "1.15");
+  assert.equal(harness.preview.classList.contains("is-camera-animating"), true);
 });
 
 /** A full-canvas scrim does not prevent centering smaller state-specific content. */

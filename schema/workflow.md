@@ -4,14 +4,18 @@ A workflow file describes a user journey for one Screen using a Mermaid flowchar
 
 The Studio parses and renders the Mermaid source in the workflow editor. Use **Diagram** and **Source** to switch between the rendered flow and its Mermaid text. Invalid Mermaid is surfaced in the editor and blocks saving.
 
-Use Mermaid `click` directives to link nodes to the Screen preview. Preview links identify the Screen file and use query parameters for the optional placement and state. Node labels are display text and do not determine their link target:
+Use Mermaid `click` directives to link nodes to the Screen preview. A link identifies its Screen and includes at least one `placement` query parameter. Repeat `placement` in the same URL to focus several placements on that Screen and state. An omitted `state` means Default; node labels are display text and do not determine their link target:
 
-- `click <node-id> href "specux://screen/<screen-id>/screen.yml"` selects a Screen and shows its Default state.
 - Add `?placement=<placement-id>` to select a placement and `&state=<state-id>` to select a named Screen State. To target a placement inside one or more groups, use a dot-separated path from the outermost group to the target, such as `specux://screen/home/screen.yml?placement=dialog.actions.save&state=add-item-open`. Existing single placement IDs remain supported.
+- Repeat the key for multiple targets, such as `specux://screen/home/screen.yml?placement=dialog.title&placement=dialog.actions.save&state=add-item-open`. All targets in one URL share the same Screen and normalized state.
 
-Grouping or ungrouping placements updates existing workflow links to keep them attached to the same placement. If an ungrouped link targets the group itself, its `placement` parameter is removed while its Screen and state context are preserved.
+The Studio selects the first node with no incoming directed arrows, using Mermaid vertex source order (including nodes first introduced by an edge). Multiple entry points produce a warning while retaining the first; if every node has an incoming directed arrow, the Studio warns and does not guess an entry point.
 
-Clicking a linked node updates the Screen preview above the diagram. Nodes without a SpecUX `click` link remain in the diagram but do not change the preview. Use node IDs as the `click` target; the visible label can be any descriptive text.
+Missing placement links, Screen-only or state-only links, unresolved targets, and incompatible or duplicate link directives produce non-destructive warnings. The current canvas Screen and focus remain unchanged unless the complete target set resolves. These warnings do not remove or rewrite the workflow source and do not make an otherwise valid Mermaid graph unsavable. Invalid Mermaid syntax remains an error and blocks saving.
+
+Grouping or ungrouping placements updates each repeated workflow placement reference to keep it attached to the same placement. If an ungrouped link targets the group itself, only that `placement` parameter is removed while the remaining targets, Screen, and state context are preserved.
+
+Clicking a node with a valid target set updates the Screen preview above the diagram, highlights all target placements, and fits their combined bounds in the visible canvas. Nodes without a valid placement target remain in the diagram; selecting them displays a warning without changing the existing canvas focus. Use node IDs as the `click` target; the visible label can be any descriptive text.
 
 The Screen preview in the workflow editor is read-only. The placement targeted by the selected node is highlighted for reference, but cannot be selected, moved, resized, rotated, rearranged, or edited from the inspector.
 
@@ -36,11 +40,12 @@ flowchart TD
     dashboard["Home"]
     dialogState["Add item dialog open"]
     dialog["Add item"]
+    done["Complete or canceled"]
     dashboard -->|Open add item| dialogState
     dialogState -->|Inspect add button| dialog
-    dialogState -->|Cancel| dashboard
-    dialogState -->|Save item| dashboard
-    click dashboard href "specux://screen/home/screen.yml"
-    click dialogState href "specux://screen/home/screen.yml?state=add-item-open"
-    click dialog href "specux://screen/home/screen.yml?placement=add-item&state=add-item-open"
+    dialogState -->|Cancel| done
+    dialogState -->|Save item| done
+    click dashboard href "specux://screen/home/screen.yml?placement=home-heading"
+    click dialogState href "specux://screen/home/screen.yml?placement=add-item-dialog&state=add-item-open"
+    click dialog href "specux://screen/home/screen.yml?placement=dialog.actions.save&placement=dialog.actions.cancel&state=add-item-open"
 ```

@@ -19,7 +19,7 @@ Exiting Workflow or Spec mode after cross-Screen navigation SHALL leave the canv
 - **THEN** Screen B remains displayed in Screen mode
 
 ### Requirement: Separate URL editor and canvas context
-The app's URL parameters SHALL identify the active editor and mode. A `specux` hash parameter SHALL identify the canvas Screen/state/placement target using SpecUX path structure. The fragment value SHALL be encoded as a single value so its internal query parameters remain part of the SpecUX target.
+The app's URL parameters SHALL identify the primary editor and document context using `file`, `view`, `screen`, and `owner`. A `linked` parameter SHALL identify a linked document, and an optional `node` parameter SHALL identify a selected workflow node in the linked workflow, or in the primary workflow when `linked` is absent. A `specux` hash parameter SHALL identify the complete canvas target using SpecUX path structure; multiple placements SHALL be represented by repeated `placement` keys and one shared `state`. The fragment value SHALL be encoded as a single value so its internal query parameters remain part of the SpecUX target. These contexts SHALL be restored from a copied URL without relying on `history.state`.
 
 #### Scenario: Restore editor and placement focus
 - **WHEN** a user opens a copied URL for a workflow with a named-state nested-placement canvas target in a fresh page
@@ -29,6 +29,11 @@ The app's URL parameters SHALL identify the active editor and mode. A `specux` h
 #### Scenario: Preserve inner query
 - **WHEN** a SpecUX fragment target contains both `placement` and `state`
 - **THEN** decoding the fragment preserves both target parameters without treating them as app parameters
+
+#### Scenario: Restore multiple canvas placements and linked context
+- **WHEN** a copied URL identifies a primary Spec, a linked workflow and selected node, and a SpecUX target with repeated `placement` keys
+- **THEN** the primary and linked documents, selected node, and complete canvas target set are restored
+- **AND** all placement and state query values remain inside the `specux` fragment
 
 ### Requirement: Browser history only for Screen switches
 The Studio SHALL add browser-history entries only when the displayed Screen changes from one Screen to another. Same-Screen target changes and editor/mode changes without a Screen switch SHALL update the current entry rather than add one. Initial URL synchronization and Back/Forward restoration SHALL NOT create additional entries.

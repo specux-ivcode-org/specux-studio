@@ -18,6 +18,9 @@ export class InspectorRenderer {
     this.screenDetailsTab = "properties";
     this.selectedScreenFile = null;
     this.selectedScreenLayerId = BASE_LAYER_ID;
+    this.placementNavigation = { signature: "", index: -1 };
+    this.placementNavigationButtons = [];
+    this.placementRowsByPath = new Map();
     this.selectedPreviewStateOverrideKey = null;
     this.selectedPreviewStateOverrideStateId = null;
     this.selectedPreviewStateOverrideScreenFile = null;
@@ -27,6 +30,7 @@ export class InspectorRenderer {
   render() {
     const { state, services } = this;
     const panel = services.byId("inspector-content");
+    const scrollPositions = this.captureScrollPositions(panel);
     panel.parentElement?.classList?.toggle("layers-details-open", false);
     panel.replaceChildren(services.element("h2", "panel-heading", "Details"));
     if (state.viewingProject) {
@@ -44,7 +48,10 @@ export class InspectorRenderer {
       this.renderWorkflowPreviewDetails(panel);
     } else {
       const screen = state.screens[state.activeScreenIndex]?.data;
-      if (!screen) return;
+      if (!screen) {
+        this.restoreScrollPositions(panel, scrollPositions);
+        return;
+      }
       const baseInstance = state.activeInstancePath.length
         ? services.getInstanceAtPath({ data: screen }, state.activeInstancePath)
         : null;
@@ -61,6 +68,28 @@ export class InspectorRenderer {
         state.viewingPreviewState
       );
     }
+    this.restoreScrollPositions(panel, scrollPositions);
+  }
+
+  /** Captures the inspector's independent scroll positions before its contents are rebuilt. */
+  captureScrollPositions(panel) {
+    return {
+      inspector: panel.parentElement?.scrollTop || 0,
+      details: panel.querySelector("#screen-details-panel")?.scrollTop || 0,
+      layers: panel.querySelector(".screen-layer-list")?.scrollTop || 0,
+      placements: panel.querySelector(".screen-placement-list")?.scrollTop || 0
+    };
+  }
+
+  /** Restores the inspector scroll positions after rendering replacement content. */
+  restoreScrollPositions(panel, scrollPositions) {
+    if (panel.parentElement) panel.parentElement.scrollTop = scrollPositions.inspector;
+    const details = panel.querySelector("#screen-details-panel");
+    const layers = panel.querySelector(".screen-layer-list");
+    const placements = panel.querySelector(".screen-placement-list");
+    if (details) details.scrollTop = scrollPositions.details;
+    if (layers) layers.scrollTop = scrollPositions.layers;
+    if (placements) placements.scrollTop = scrollPositions.placements;
   }
 
   /** Renders the workflow preview details from the current editor data. */
@@ -72,7 +101,7 @@ export class InspectorRenderer {
     panel.append(services.element(
       "p",
       "readonly-label",
-      "This Screen preview is read-only. The highlighted placement is the target of the selected workflow node."
+      "This Screen preview is read-only. It shows the Screen linked from the selected Workflow node."
     ));
     this.appendDetail(panel, "Screen", screenEntry.data.name || screenEntry.data.id);
     if (state.activeInstancePath.length) {
@@ -95,7 +124,14 @@ export class InspectorRenderer {
     content.setAttribute("role", "tabpanel");
     content.setAttribute("aria-labelledby", `screen-details-tab-${this.screenDetailsTab}`);
 
-    for (const [tabId, label] of [["properties", "Properties"], ["layers", "Layers"]]) {
+    const tabs = [
+      ["properties", "Properties"],
+      ["states", "States"],
+      ["layers", "Layers"],
+      ["specs-workflows", "Specs & Workflows"]
+    ];
+    tabList.dataset.tabCount = String(tabs.length);
+    for (const [tabId, label] of tabs) {
       const tab = services.element(
         "button",
         `inspector-tab${this.screenDetailsTab === tabId ? " selected" : ""}`,
@@ -116,11 +152,13 @@ export class InspectorRenderer {
       tab.addEventListener("keydown", (event) => {
         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
         event.preventDefault();
-        const nextTab = event.key === "Home"
-          ? "properties"
+        const currentIndex = tabs.findIndex(([id]) => id === this.screenDetailsTab);
+        const nextIndex = event.key === "Home"
+          ? 0
           : event.key === "End"
-            ? "layers"
-            : this.screenDetailsTab === "properties" ? "layers" : "properties";
+            ? tabs.length - 1
+            : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+        const [nextTab] = tabs[nextIndex];
         this.screenDetailsTab = nextTab;
         services.renderInspector();
         services.byId("inspector-content")
@@ -134,6 +172,10 @@ export class InspectorRenderer {
     if (this.screenDetailsTab === "layers") {
       panel.parentElement?.classList?.toggle("layers-details-open", true);
       this.renderLayersDetails(content, screen);
+    } else if (this.screenDetailsTab === "states") {
+      this.renderScreenStatesDetails(content, screen);
+    } else if (this.screenDetailsTab === "specs-workflows") {
+      this.renderSpecsWorkflowsDetails(content, screen, instance);
     } else if (viewingPreviewState || !instance) {
       this.renderScreenProperties(content, screen);
     } else {
@@ -141,11 +183,105 @@ export class InspectorRenderer {
     }
   }
 
+  /** Renders Screen state selection and state-specific overrides. */
+  renderScreenStatesDetails(panel, screen) {
+    const { state, services } = this;
+    const screenEntry = state.screens[state.activeScreenIndex];
+    const stateId = services.getActivePreviewStateId(screen);
+    const screenStates = this.getSortedScreenStates(screen);
+    const isDefault = stateId === "default";
+    this.renderScreenStateList(panel, screenStates, stateId, isDefault);
+    this.renderScreenStateChanges(panel, screen, screenEntry, stateId, isDefault);
+  }
+
+  /** Renders contextual Screen and placement specs plus Screen-owned workflows. */
+  renderSpecsWorkflowsDetails(panel, screen, instance) {
+    const { state, services } = this;
+    const screenEntry = state.screens[state.activeScreenIndex];
+    this.appendSection(panel, "Screen spec");
+    const screenSpecButton = services.element("button", "spec-action-button", "Open or create Screen spec");
+    screenSpecButton.type = "button";
+    screenSpecButton.addEventListener("click", () =>
+      services.createSpecForScreen().catch(services.showFatalError)
+    );
+    panel.append(screenSpecButton);
+
+    if (instance) {
+      this.appendSection(panel, "Placement spec");
+      const placementSpecButton = services.element(
+        "button",
+        "spec-action-button",
+        "Open or create placement spec"
+      );
+      placementSpecButton.type = "button";
+      placementSpecButton.addEventListener("click", () =>
+        services.createSpecForInstance([...state.activeInstancePath])
+          .catch(services.showFatalError)
+      );
+      panel.append(placementSpecButton);
+    }
+
+    this.appendSection(panel, "Workflows");
+    const createWorkflowButton = services.element(
+      "button",
+      "spec-action-button",
+      "Create workflow"
+    );
+    createWorkflowButton.type = "button";
+    createWorkflowButton.addEventListener("click", () =>
+      services.createWorkflowForScreen().catch(services.showFatalError)
+    );
+    panel.append(createWorkflowButton);
+
+    const screenWorkflowPrefix = `screens/${screenEntry.id}/workflows/`;
+    const workflowPaths = [...state.workflowSources.keys()]
+      .filter((filePath) => filePath.startsWith(screenWorkflowPrefix))
+      .sort((left, right) => left.localeCompare(right));
+    if (!workflowPaths.length) {
+      panel.append(services.element(
+        "p",
+        "material-selector-empty",
+        "No Screen-owned workflows are available."
+      ));
+      return;
+    }
+    for (const filePath of workflowPaths) {
+      const workflowButton = services.element(
+        "button",
+        "spec-action-button workflow-open-button",
+        filePath.slice(screenWorkflowPrefix.length).replace(/\.mmd$/i, "")
+      );
+      workflowButton.type = "button";
+      workflowButton.setAttribute("aria-label", `Open workflow ${filePath}`);
+      workflowButton.addEventListener("click", () =>
+        services.renderWorkflowEditor(filePath, state.activeScreenIndex)
+          .catch(services.showFatalError)
+      );
+      const deleteButton = services.element(
+        "button",
+        "workflow-delete-button",
+        "Delete"
+      );
+      deleteButton.type = "button";
+      deleteButton.setAttribute("aria-label", `Delete workflow ${filePath}`);
+      deleteButton.addEventListener("click", () =>
+        services.deleteWorkflow(filePath).catch(services.showFatalError)
+      );
+      const workflowItem = services.element("div", "workflow-list-item");
+      workflowItem.append(workflowButton, deleteButton);
+      panel.append(workflowItem);
+    }
+  }
+
   /** Renders the layers details from the current editor data. */
   renderLayersDetails(panel, screen) {
     const context = this.getLayerContext(screen);
     const { layerBox, layerList } = this.createLayerBox(context);
-    const { placementBox, selectedLayerName, placementList } = this.createPlacementBox();
+    const {
+      placementBox,
+      selectedLayerName,
+      placementList
+    } = this.createPlacementBox(screen);
     panel.append(layerBox, placementBox);
     this.renderLayerRows(layerList, context, selectedLayerName, placementList);
     this.renderLayerPlacements(
@@ -216,16 +352,62 @@ export class InspectorRenderer {
   }
 
   /** Builds the inspector section that lists Screen placements. */
-  createPlacementBox() {
+  createPlacementBox(screen) {
     const { services } = this;
     const placementBox = services.element("section", "screen-placement-box");
     const placementHeader = services.element("div", "screen-editor-box-header");
     placementHeader.append(services.element("h3", "screen-editor-box-title", "Placements"));
     const selectedLayerName = services.element("div", "screen-placement-layer-name");
     const placementList = services.element("div", "screen-placement-list");
+    const actions = services.element("div", "screen-editor-box-actions");
+    this.placementNavigationButtons = [
+      this.createSelectedPlacementScrollButton(
+        screen,
+        -1,
+        "↑",
+        "Previous selected placement",
+        selectedLayerName,
+        placementList
+      ),
+      this.createSelectedPlacementScrollButton(
+        screen,
+        1,
+        "↓",
+        "Next selected placement",
+        selectedLayerName,
+        placementList
+      )
+    ];
+    actions.append(...this.placementNavigationButtons);
+    placementHeader.append(actions);
     placementList.setAttribute("role", "list");
     placementBox.append(placementHeader, selectedLayerName, placementList);
     return { placementBox, selectedLayerName, placementList };
+  }
+
+  /** Creates a control that scrolls to the previous or next selected placement. */
+  createSelectedPlacementScrollButton(
+    screen,
+    direction,
+    icon,
+    label,
+    selectedLayerName,
+    placementList
+  ) {
+    const { services } = this;
+    const button = services.element("button", "spec-action-button", icon);
+    button.type = "button";
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    button.addEventListener("click", () => {
+      this.scrollToSelectedPlacement(
+        screen,
+        direction,
+        selectedLayerName,
+        placementList
+      );
+    });
+    return button;
   }
 
   /** Renders the layer rows from the current editor data. */
@@ -393,6 +575,8 @@ export class InspectorRenderer {
     for (const target of this.placementDropTargets || []) this.dropTargets.delete(target);
     this.placementDropTargets = new Set();
     placementList.replaceChildren();
+    this.placementRowsByPath = new Map();
+    this.updateSelectedPlacementScrollButtons(screen, layerId);
     const assignedPlacements = screen.materials
       .map((placement, placementIndex) => ({ placement, placementIndex }))
       .filter(({ placement }) => placement.layer === layerId);
@@ -407,10 +591,108 @@ export class InspectorRenderer {
       activeStateId,
       structureEditable,
       selectedPaths: state.activeInstancePaths || [state.activeInstancePath || []],
+      placementRowsByPath: this.placementRowsByPath,
       selectedLayerName,
       placementList
     };
     this.renderPlacementRows(screen.materials, [], 0, true, context);
+  }
+
+  /** Scrolls the selected layer's list through selected placements without changing selection. */
+  scrollToSelectedPlacement(screen, direction, selectedLayerName, placementList) {
+    const layerId = this.selectedScreenLayerId;
+    const selectedPaths = this.getSelectedPlacementPaths(screen, layerId);
+    if (!selectedPaths.length) return;
+
+    const signature = JSON.stringify([
+      this.state.screens[this.state.activeScreenIndex]?.file,
+      layerId,
+      selectedPaths
+    ]);
+    if (this.placementNavigation.signature !== signature) {
+      this.placementNavigation = {
+        signature,
+        index: selectedPaths.findIndex((path) =>
+          this.services.sameInstancePath
+            ? this.services.sameInstancePath(path, this.state.activeInstancePath || [])
+            : path.length === (this.state.activeInstancePath || []).length &&
+              path.every((part, index) => part === this.state.activeInstancePath[index])
+        )
+      };
+    }
+
+    const currentIndex = this.placementNavigation.index;
+    const nextIndex = currentIndex < 0
+      ? (direction > 0 ? 0 : selectedPaths.length - 1)
+      : (currentIndex + direction + selectedPaths.length) % selectedPaths.length;
+    this.placementNavigation.index = nextIndex;
+    const targetPath = selectedPaths[nextIndex];
+
+    if (this.expandPlacementPath(screen.materials, targetPath)) {
+      this.renderLayerPlacements(
+        screen,
+        layerId,
+        selectedLayerName,
+        placementList
+      );
+    }
+
+    this.placementRowsByPath.get(JSON.stringify(targetPath))
+      ?.scrollIntoView?.({ block: "nearest" });
+  }
+
+  /** Returns selected paths whose top-level placement belongs to the selected layer. */
+  getSelectedPlacementPaths(screen, layerId) {
+    const selectedPaths = this.state.activeInstancePaths ||
+      [this.state.activeInstancePath || []];
+    const uniquePaths = new Map();
+    for (const path of selectedPaths) {
+      if (!Array.isArray(path) || path.length === 0) continue;
+      if (screen.materials[path[0]]?.layer !== layerId) continue;
+      if (!this.isPlacementPathValid(screen.materials, path)) continue;
+      uniquePaths.set(JSON.stringify(path), path);
+    }
+    return [...uniquePaths.values()].sort((first, second) => {
+      const length = Math.min(first.length, second.length);
+      for (let index = 0; index < length; index += 1) {
+        if (first[index] !== second[index]) return first[index] - second[index];
+      }
+      return first.length - second.length;
+    });
+  }
+
+  /** Checks whether a selected placement path still exists in the Screen tree. */
+  isPlacementPathValid(placements, path) {
+    let siblings = placements;
+    for (const index of path) {
+      const placement = siblings[index];
+      if (!placement) return false;
+      siblings = placement.children || [];
+    }
+    return true;
+  }
+
+  /** Enables selected-placement navigation only when the current layer has a selection. */
+  updateSelectedPlacementScrollButtons(screen, layerId) {
+    const disabled = this.getSelectedPlacementPaths(screen, layerId).length === 0;
+    for (const button of this.placementNavigationButtons) button.disabled = disabled;
+  }
+
+  /** Expands collapsed groups that contain the target placement. */
+  expandPlacementPath(placements, path) {
+    this.expandedGroups ||= new Set();
+    let changed = false;
+    let siblings = placements;
+    for (const index of path.slice(0, -1)) {
+      const group = siblings[index];
+      if (!group || !isScreenGroup(group)) break;
+      if (!this.expandedGroups.has(group.id)) {
+        this.expandedGroups.add(group.id);
+        changed = true;
+      }
+      siblings = group.children;
+    }
+    return changed;
   }
 
   /** Renders the placement rows from the current editor data. */
@@ -427,10 +709,32 @@ export class InspectorRenderer {
         context
       );
       context.placementList.append(row);
+      context.placementRowsByPath.set(JSON.stringify(path), row);
       if (isScreenGroup(placement) && this.expandedGroups.has(placement.id)) {
         this.renderPlacementRows(placement.children, path, depth + 1, false, context);
       }
     });
+  }
+
+  /** Checks whether a placement has a spec associated with its Screen path. */
+  hasPlacementSpec(path) {
+    const { state, services } = this;
+    const screenFile = state.screens[state.activeScreenIndex]?.file;
+    const samePath = (candidate) => Array.isArray(candidate) && (
+      services.sameInstancePath
+      ? services.sameInstancePath(candidate, path)
+      : candidate.length === path.length &&
+        candidate.every((part, index) => part === path[index])
+    );
+    const ownerExists = [...(state.elementSpecOwners?.values() || [])].some((owner) =>
+      owner.screenFile === screenFile && samePath(owner.instancePath)
+    );
+    if (ownerExists) return true;
+    return [...(state.createdSpecDrafts?.values() || [])].some((draft) =>
+      draft.owner === "instance" &&
+      draft.screenFile === screenFile &&
+      samePath(draft.instancePath)
+    );
   }
 
   /** Collects visible root placements in canvas stacking order. */
@@ -452,7 +756,8 @@ export class InspectorRenderer {
     row.dataset.placementPath = JSON.stringify(path);
     if (depth === 0) row.dataset.materialIndex = String(path[0]);
     row.setAttribute("role", "listitem");
-    row.setAttribute("aria-label", `${group ? "Group" : "Placement"} ${material.id}`);
+    const hasSpec = this.hasPlacementSpec(path);
+    row.setAttribute("aria-label", this.getPlacementRowLabel(material, group, hasSpec));
     row.tabIndex = 0;
     this.bindPlacementRowDrop(row, material, path, context);
     row.append(this.createDragHandle(
@@ -466,7 +771,25 @@ export class InspectorRenderer {
     row.append(this.createPlacementSelectButton(material, path, group, row));
     row.append(this.createPlacementVisibilityButton(material, context));
     row.append(...this.createPlacementOrderButtons(material, path, orderIndex, orderCount, context));
+    this.appendSpecIndicator(row, hasSpec);
     return row;
+  }
+
+  /** Builds the accessible label for a placement row. */
+  getPlacementRowLabel(material, group, hasSpec) {
+    const type = group ? "Group" : "Placement";
+    return `${type} ${material.id}${
+      this.state.specIndicatorsEnabled && hasSpec ? ", behavior spec available" : ""
+    }`;
+  }
+
+  /** Appends the optional behavior-spec marker to a placement row. */
+  appendSpecIndicator(row, hasSpec) {
+    if (!this.state.specIndicatorsEnabled || !hasSpec) return;
+    const indicator = this.services.element("span", "spec-indicator", "S");
+    indicator.setAttribute("aria-hidden", "true");
+    indicator.title = "Behavior spec available";
+    row.append(indicator);
   }
 
   /** Checks whether the supplied instance path is in the current selection. */
@@ -684,8 +1007,6 @@ export class InspectorRenderer {
     if (!selectedState) return;
     const isDefault = selectedState.id === "default";
     this.renderScreenEditableProperties(panel, screen, screenEntry, selectedState, stateId, isDefault);
-    this.renderScreenStateList(panel, screenStates, stateId, isDefault);
-    this.renderScreenStateChanges(panel, screen, screenEntry, stateId, isDefault);
   }
 
   /** Returns the sorted screen states. */

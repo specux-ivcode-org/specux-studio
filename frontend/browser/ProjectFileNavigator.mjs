@@ -1,3 +1,9 @@
+import { getMaterialDefaultSize } from "./MaterialDefaults.mjs";
+import {
+  getMaterialPreviewFrame,
+  getMaterialPreviewSize
+} from "./MaterialPreviewFrame.mjs";
+
 /** Builds and updates navigation for files in the loaded project. */
 export class ProjectFileNavigator {
 
@@ -6,6 +12,102 @@ export class ProjectFileNavigator {
     this.state = state;
     this.services = services;
     this.projectFileTree = projectFileTree;
+    this.sidebarTab = "materials";
+    this.suppressNextMaterialClick = false;
+    this.materialContextMenuFile = null;
+    this.materialPreviewObserver = null;
+    this.materialDrag = {
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      active: false,
+      filePath: null,
+      size: null
+    };
+    this.materialDropOutline = null;
+  }
+
+  /** Binds the persistent left-panel tabs and their keyboard navigation. */
+  bindSidebarTabs() {
+    const tabs = [
+      ["materials", "sidebar-materials-tab"],
+      ["project", "sidebar-project-tab"]
+    ];
+    for (const [tabName, tabId] of tabs) {
+      const tab = this.services.byId(tabId);
+      tab.addEventListener("click", () => this.setSidebarTab(tabName));
+      tab.addEventListener("keydown", (event) => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const index = tabs.findIndex(([, candidateId]) => candidateId === tabId);
+        const nextIndex = event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? tabs.length - 1
+            : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+        const [nextTabName, nextTabId] = tabs[nextIndex];
+        this.setSidebarTab(nextTabName);
+        this.services.byId(nextTabId).focus();
+      });
+    }
+    this.setSidebarTab(this.sidebarTab);
+    this.bindMaterialContextMenu();
+    this.bindMaterialDrag();
+  }
+
+  /** Binds the Material selector context menu and its dismiss interactions. */
+  bindMaterialContextMenu() {
+    const menu = this.services.byId("material-selector-context-menu");
+    const editButton = this.services.byId("material-selector-context-edit");
+    editButton.addEventListener("click", () => {
+      const filePath = this.materialContextMenuFile;
+      this.closeMaterialContextMenu();
+      if (!filePath) return;
+      this.services.renderMaterialFile(filePath).catch((error) =>
+        this.services.showEditorMessage("Could not open Material", error.message || String(error))
+      );
+    });
+    this.services.document.addEventListener("pointerdown", (event) => {
+      if (!menu.hidden && !menu.contains(event.target)) this.closeMaterialContextMenu();
+    }, true);
+  }
+
+  /** Opens the Material edit action at the pointer position. */
+  openMaterialContextMenu(event, filePath) {
+    event.preventDefault();
+    const menu = this.services.byId("material-selector-context-menu");
+    this.materialContextMenuFile = filePath;
+    menu.hidden = false;
+    const width = menu.offsetWidth || 190;
+    const height = menu.offsetHeight || 42;
+    const window = this.services.window;
+    menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8))}px`;
+    this.services.byId("material-selector-context-edit").focus();
+  }
+
+  /** Closes the Material selector context menu. */
+  closeMaterialContextMenu() {
+    this.services.byId("material-selector-context-menu").hidden = true;
+    this.materialContextMenuFile = null;
+  }
+
+  /** Activates a left-panel view and updates its accessible tab state. */
+  setSidebarTab(tabName) {
+    if (!["materials", "project"].includes(tabName)) return;
+    this.sidebarTab = tabName;
+    const { services } = this;
+    for (const [name, tabId, panelId] of [
+      ["materials", "sidebar-materials-tab", "material-selector-panel"],
+      ["project", "sidebar-project-tab", "project-files-panel"]
+    ]) {
+      const selected = name === tabName;
+      const tab = services.byId(tabId);
+      tab.classList.toggle("selected", selected);
+      tab.setAttribute("aria-selected", String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      services.byId(panelId).hidden = !selected;
+    }
   }
 
   /** Returns the path of the currently active project file. */
@@ -27,10 +129,222 @@ export class ProjectFileNavigator {
         !state.viewingWorkflow) {
       services.byId("breadcrumb").textContent = "Screens";
     }
+    this.renderMaterialSelector();
+    this.setSidebarTab(this.sidebarTab);
     const activeFilePath = this.activeFilePath();
     if (activeFilePath) this.projectFileTree.expandPath(activeFilePath);
     this.projectFileTree.render();
     services.updateNavigationSelection();
+  }
+
+  /** Renders the reusable Material list in the left workspace panel. */
+  renderMaterialSelector() {
+    const { state, services } = this;
+    const list = services.byId("material-selector-list");
+    this.materialPreviewObserver?.disconnect();
+    this.materialPreviewObserver = null;
+    const materials = [...state.materialFiles.values()]
+      .sort((left, right) =>
+        (left.data.name || left.id).localeCompare(right.data.name || right.id)
+      );
+    if (!materials.length) {
+      list.replaceChildren(services.element(
+        "p",
+        "material-selector-empty",
+        "No reusable Materials are available in this project."
+      ));
+      return;
+    }
+    const previewLayouts = [];
+    list.replaceChildren(...materials.map((material, index) => {
+      const item = services.element("article", "material-selector-item");
+      const addButton = services.element("button", "material-selector-add");
+      addButton.type = "button";
+      addButton.setAttribute(
+        "aria-label",
+        `Add Material ${material.data.name || material.id} to the current Screen`
+      );
+      const preview = services.element("div", "material-selector-preview");
+      const previewCanvas = services.element("div", "material-selector-preview-canvas");
+      const size = getMaterialPreviewSize(material);
+      if (!size) throw new Error(`Material "${material.file}" has no supported preview size.`);
+      const frame = getMaterialPreviewFrame(state.project, material);
+      const placementSize = getMaterialDefaultSize(material.data.type);
+      if (!placementSize) {
+        throw new Error(`Material "${material.file}" has no supported placement size.`);
+      }
+      const scale = Math.min(1, 160 / frame.width, 68 / frame.height);
+      const viewport = services.element("div", "material-selector-preview-viewport");
+      viewport.style.width = `${frame.width * scale}px`;
+      viewport.style.height = `${frame.height * scale}px`;
+      previewCanvas.id = `material-selector-preview-${index}`;
+      previewCanvas.classList.add("material-instance");
+      previewCanvas.style.width = `${size.width}px`;
+      previewCanvas.style.height = `${size.height}px`;
+      previewCanvas.style.left = `${-frame.x * scale}px`;
+      previewCanvas.style.top = `${-frame.y * scale}px`;
+      previewCanvas.style.transform = `scale(${scale})`;
+      const attributes = Object.fromEntries(
+        Object.entries(material.data.attributes || {})
+          .filter(([, attribute]) =>
+            attribute.overridable === true && Object.hasOwn(attribute, "default")
+          )
+          .map(([name, attribute]) => [name, attribute.default])
+      );
+      services.templateMarkupRenderer.mount(
+        previewCanvas,
+        material.html,
+        material.base,
+        { id: material.id, src: material.file, size, attributes },
+        material
+      );
+      viewport.append(previewCanvas);
+      preview.append(viewport);
+      const heading = services.element("div", "material-selector-item-heading");
+      heading.append(
+        services.element("div", "material-selector-item-name", material.data.name || material.id),
+        services.element("div", "material-selector-item-meta", `${size.width} x ${size.height}`)
+      );
+      this.bindMaterialDragButton(addButton, material.file, placementSize);
+      addButton.append(preview, heading);
+      previewLayouts.push({ preview, viewport, previewCanvas, frame });
+      addButton.addEventListener("click", () =>
+        this.handleMaterialSelectorClick(material.file)
+      );
+      item.append(addButton);
+      item.addEventListener("contextmenu", (event) =>
+        this.openMaterialContextMenu(event, material.file)
+      );
+      return item;
+    }));
+    for (const layout of previewLayouts) this.fitMaterialSelectorPreview(layout);
+    const ResizeObserverClass = services.window?.ResizeObserver;
+    if (ResizeObserverClass) {
+      const layoutsByPreview = new Map(
+        previewLayouts.map((layout) => [layout.preview, layout])
+      );
+      this.materialPreviewObserver = new ResizeObserverClass((entries) => {
+        for (const entry of entries) {
+          const layout = layoutsByPreview.get(entry.target);
+          if (layout) this.fitMaterialSelectorPreview(layout);
+        }
+      });
+      for (const layout of previewLayouts) {
+        this.materialPreviewObserver.observe(layout.preview);
+      }
+    }
+  }
+
+  /** Scales a selector preview to fit its available width and height. */
+  fitMaterialSelectorPreview({ preview, viewport, previewCanvas, frame }) {
+    const availableWidth = Math.min(160, preview.clientWidth || 160);
+    const scale = Math.min(1, availableWidth / frame.width, 68 / frame.height);
+    viewport.style.width = `${frame.width * scale}px`;
+    viewport.style.height = `${frame.height * scale}px`;
+    previewCanvas.style.left = `${-frame.x * scale}px`;
+    previewCanvas.style.top = `${-frame.y * scale}px`;
+    previewCanvas.style.transform = `scale(${scale})`;
+  }
+
+  /** Binds pointer-drag placement to the Material selector. */
+  bindMaterialDrag() {
+    if (this.materialDragBound) return;
+    const { document } = this.services;
+    const drag = this.materialDrag;
+    const outline = this.services.element("div", "material-drop-outline");
+    outline.setAttribute("aria-hidden", "true");
+    outline.hidden = true;
+    this.materialDropOutline = outline;
+    document.addEventListener("pointermove", (event) =>
+      this.moveMaterialDrag(event, drag, outline)
+    );
+    document.addEventListener("pointerup", (event) =>
+      this.finishMaterialDrag(event, drag, outline)
+    );
+    document.addEventListener("pointercancel", () =>
+      this.cancelMaterialDrag(drag, outline)
+    );
+    this.materialDragBound = true;
+  }
+
+  /** Binds a selector tile to the shared Material drag controller. */
+  bindMaterialDragButton(button, filePath, size) {
+    this.bindMaterialDrag();
+    const drag = this.materialDrag;
+    const outline = this.materialDropOutline;
+    button.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || !Number.isFinite(event.clientX) ||
+          !Number.isFinite(event.clientY)) return;
+      drag.pointerId = event.pointerId;
+      drag.startX = event.clientX;
+      drag.startY = event.clientY;
+      drag.active = false;
+      drag.filePath = filePath;
+      drag.size = size;
+    });
+  }
+
+  /** Starts and updates the selector drag preview over the Screen canvas. */
+  moveMaterialDrag(event, drag, outline) {
+    if (drag.pointerId === null || event.pointerId !== drag.pointerId) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (!drag.active && Math.hypot(deltaX, deltaY) < 5) return;
+    drag.active = true;
+    const geometry = this.services.getMaterialDropGeometry(
+      event.clientX,
+      event.clientY,
+      drag.size
+    );
+    if (!geometry.inside) {
+      outline.hidden = true;
+      return;
+    }
+    if (!outline.isConnected) this.services.byId("screen-preview").append(outline);
+    outline.hidden = false;
+    outline.style.left = `${geometry.outline.left}px`;
+    outline.style.top = `${geometry.outline.top}px`;
+    outline.style.width = `${geometry.outline.width}px`;
+    outline.style.height = `${geometry.outline.height}px`;
+  }
+
+  /** Completes a Material selector drag over the Screen canvas. */
+  async finishMaterialDrag(event, drag, outline) {
+    if (drag.pointerId === null || event.pointerId !== drag.pointerId) return;
+    const wasActive = drag.active;
+    const geometry = wasActive
+      ? this.services.getMaterialDropGeometry(event.clientX, event.clientY, drag.size)
+      : null;
+    drag.pointerId = null;
+    drag.active = false;
+    outline.hidden = true;
+    if (!wasActive) return;
+    this.suppressNextMaterialClick = true;
+    this.services.window.setTimeout(() => {
+      this.suppressNextMaterialClick = false;
+    }, 0);
+    if (!geometry?.inside) return;
+    await this.services.placeMaterialFile(drag.filePath, geometry.position).catch((error) =>
+      this.services.showEditorMessage("Could not add Material", error.message || String(error))
+    );
+  }
+
+  /** Cancels a Material selector drag without placing it. */
+  cancelMaterialDrag(drag, outline) {
+    drag.pointerId = null;
+    drag.active = false;
+    outline.hidden = true;
+  }
+
+  /** Handles a click that adds the selected Material at the visible canvas center. */
+  handleMaterialSelectorClick(filePath) {
+    if (this.suppressNextMaterialClick) {
+      this.suppressNextMaterialClick = false;
+      return;
+    }
+    this.services.placeMaterialFile(filePath).catch((error) =>
+      this.services.showEditorMessage("Could not add Material", error.message || String(error))
+    );
   }
 
   /** Renders the screen selector from the current editor data. */
@@ -52,6 +366,10 @@ export class ProjectFileNavigator {
         ? `Choose a Screen; current Screen: ${state.screens[state.activeScreenIndex]?.data.name || state.screens[state.activeScreenIndex]?.id}`
         : "No Screens available"
     );
+    services.byId("screen-selector-current").textContent =
+      state.screens[state.activeScreenIndex]?.data.name ||
+      state.screens[state.activeScreenIndex]?.id ||
+      "Choose Screen";
     optionsContainer.replaceChildren(...matches.map(({ screen, index }) => {
       const name = screen.data.name || screen.id;
       const option = services.element("button", "screen-selector-option");
@@ -64,7 +382,7 @@ export class ProjectFileNavigator {
       option.append(services.element("span", "screen-selector-option-id", screen.id));
       option.addEventListener("click", () => {
         this.setScreenSelectorOpen(false, true);
-        services.renderScreen(index).catch(services.showFatalError);
+        services.selectScreenManually(index).catch(services.showFatalError);
       });
       return option;
     }));
@@ -199,7 +517,7 @@ export class ProjectFileNavigator {
   async renderFileAction(filePath, action) {
     const { services, state } = this;
     if (action.kind === "project") return services.renderProjectOverview();
-    if (action.kind === "screen") return services.renderScreen(action.screenIndex);
+    if (action.kind === "screen") return services.selectScreenManually(action.screenIndex);
     if (action.kind === "theme") return services.renderThemeView(filePath);
     if (action.kind === "material") return services.renderMaterialFile(filePath);
     if (action.kind === "spec") return this.renderSpecAction(filePath, action);

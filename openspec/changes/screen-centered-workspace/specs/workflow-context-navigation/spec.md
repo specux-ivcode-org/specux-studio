@@ -17,16 +17,21 @@ Workflow entry points SHALL be nodes with no incoming directed arrows. The Studi
 - **THEN** the later entry-point node is selected rather than the first written node
 
 ### Requirement: Placement targets share Screen and state
-Each workflow node SHALL expect at least one attached SpecUX placement link. Multiple placement links SHALL be accepted only if they resolve to placements on the same Screen and normalized state. Omitted state SHALL mean Default; nested dot-separated placement paths SHALL remain supported.
+Each workflow node SHALL have one Mermaid `click` directive containing a SpecUX URL with at least one `placement` query parameter. A node MAY target multiple placements by repeating the `placement` query parameter in that same URL; each target SHALL resolve to the same Screen and normalized state. Omitted state SHALL mean Default; nested dot-separated placement paths SHALL remain supported.
 
-#### Scenario: Multiple Default targets
-- **WHEN** a node references several placements on one Screen with omitted or explicit Default state
+#### Scenario: Multiple placements in one link
+- **WHEN** a node's single click URL repeats `placement` for several placements on one Screen and state
 - **THEN** the targets are accepted as one Screen/state target set
+
+#### Scenario: Single Mermaid click directive
+- **WHEN** a workflow node has multiple targets
+- **THEN** those targets are represented as repeated `placement` query parameters in one click URL
+- **AND** the workflow source does not rely on repeated Mermaid `click` directives for that node
 
 #### Scenario: Incompatible targets
 - **WHEN** a node's placement links identify different Screens or different normalized states
 - **THEN** the Studio displays a warning identifying the incompatible node targets
-- **AND** it does not arbitrarily select one link as the node's canvas target
+- **AND** it preserves the current canvas Screen and focus rather than arbitrarily selecting one link
 
 #### Scenario: Missing placement link
 - **WHEN** a node has no placement link, including when it only links to a Screen or state
@@ -43,6 +48,7 @@ Selecting a node with valid placement targets SHALL display their Screen/state, 
 #### Scenario: Broken target
 - **WHEN** the selected node references a nonexistent placement or Screen/state
 - **THEN** the Studio displays a target warning without pretending the reference resolved
+- **AND** it preserves the current canvas Screen and focus
 
 ### Requirement: Preserve workflow authoring and ownership
 Workflows SHALL remain Screen-owned and support selection, creation, and deletion from the owning Screen's Specs & Workflows tab. Current workflow editing controls and Mermaid source access SHALL be retained in Workflow mode. Reference navigation SHALL NOT reparent a workflow.

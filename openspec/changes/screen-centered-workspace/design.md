@@ -4,9 +4,9 @@ This change translates `doc/screen-centered-workflow-plan.md` and its subsequent
 
 Today, `frontend/app.mjs` coordinates separate view flags and editors. `EditorNavigation.mjs` derives a single selection that sometimes represents an artifact's owning Screen and sometimes the preview Screen. `BrowserHistory.mjs` uses `file` changes to decide when to push history. `ProjectPersistence.mjs` tracks dirty-file versions, supports multi-file save entries, and disables saving for invalid YAML or Mermaid. The redesign must separate these responsibilities without discarding the existing controllers.
 
-The existing schema supports Screen-owned Mermaid files, placement/state SpecUX references, Markdown links associating specs with workflow nodes, STML `preview-size`, and independent Screen placement geometry. It also documents Screen-only workflow links and invalid-source save guards. New placement-link diagnostics are warnings, not a reason to delete legacy nodes or make existing projects unreadable. Exact extensions for multiple links and node-spec storage remain decision gates.
+The existing schema supports Screen-owned Mermaid files, placement/state SpecUX references, Markdown links associating specs with workflow nodes, STML `preview-size`, and independent Screen placement geometry. It also documents Screen-only workflow links and invalid-source save guards. New placement-link diagnostics are warnings, not a reason to delete legacy nodes or make existing projects unreadable. Multiple-link syntax and node-spec storage were decision gates and are resolved below.
 
-The existing Project page remains a separate overview, not another Screen editing mode. The new Screen workspace applies when a Screen context exists; Material authoring remains a workspace replacement. Project-spec behavior before a Screen is selected remains explicitly open.
+The existing Project page remains a separate overview, not another Screen editing mode. Project-level specs are independent of Screen selection and can open directly from the Project page. The new Screen workspace applies when a Screen context exists; Material authoring remains a workspace replacement.
 
 ## Goals / Non-Goals
 
@@ -24,7 +24,6 @@ The existing Project page remains a separate overview, not another Screen editin
 - Project-wide workflows, executable workflow engines, or runtime interactions inside Materials.
 - A new framework, third-party history service, automatic Git commits, or automatic pushes.
 - Making thumbnail framing change placed geometry.
-- Treating suggestions about invalid-draft persistence, external-write recovery, or Project-spec empty-canvas behavior as already approved product decisions.
 
 ## Decisions
 
@@ -38,6 +37,8 @@ Introduce a small explicit workspace state managed by the navigation layer:
 - Dock stack: active linked document and the parent context to restore.
 - Panel visibility and dock height.
 - Material workspace context, separate from Screen modes.
+
+`EditorNavigation` exposes a normalized context snapshot for the current mode, document owner, canvas target, and dock primary/linked views. This keeps the navigation contract explicit while editor-specific controllers remain the source of their own editing state.
 
 An artifact's owner does not change when a workflow/spec navigates to another Screen. Details' Screen tabs follow the displayed Screen; the workflow document retains its original owner. Reuse existing editor-specific state rather than folding all editor internals into one generic editor.
 
@@ -64,7 +65,7 @@ The dock replaces only its own content, never the Screen canvas. Retain parent d
 
 Alternative: independently floating overlays. Rejected by the chosen resizable bottom-dock layout. Reuse `SplitViewLayout.mjs` mechanisms where suitable, not its assumption that each artifact owns a separate Screen preview.
 
-Escape dispatch must respect an active dialog or transient editor interaction before applying workspace-level close behavior; determine exact precedence during the interaction prototype.
+Escape dispatch gives the most local interaction priority: dismiss/cancel an active dialog or end a focused transient text-edit interaction first. Only when neither applies does Escape close the active dock view or exit Theme mode.
 
 ### 3. Navigate workflow context, not executable flows
 
@@ -72,17 +73,17 @@ Use Mermaid graph structure to identify nodes with no incoming directed arrows. 
 
 Reuse and extend SpecUX parsing in `WorkflowEditor.mjs`. Normalize an omitted state to Default. Resolve nested placement paths using existing group helpers. A selected node can reference several placements only when all targets have the same Screen and normalized state.
 
-Validate the complete target set before applying it. For a valid set, render all focus indicators and fit the union of their transformed bounds within the visible canvas above the dock. Missing, unresolved, or incompatible targets produce an actionable node warning; do not collapse the set to the first link. The exact retained-canvas behavior after an invalid selection needs confirmation.
+Validate the complete target set before applying it. For a valid set, render all focus indicators and fit the union of their transformed bounds within the visible canvas above the dock. Missing, unresolved, or incompatible targets produce an actionable node warning; do not collapse the set to the first link. If the selected node has no valid target set, preserve the current canvas Screen and focus.
 
-Mermaid's existing click handling cannot simply be assumed to support multiple directives per node. Resolve the serialized multi-link convention before changing parsers and update the workflow schema, validators, grouping reference updater, and examples together.
+Mermaid supports one click URL per node; repeated `click` directives overwrite the node URL. Serialize a multi-placement target as repeated `placement` keys in that single URL, for example `click save href "specux://screen/home/screen.yml?placement=dialog.title&placement=dialog.save&state=dialog-open"`. Update the workflow parser to collect `URLSearchParams.getAll("placement")`, validate each target, and require one shared Screen/state. Update the workflow schema, grouping reference updater, and examples together.
 
 ### 4. Keep spec ownership contextual
 
 Reuse existing project and Screen spec references and placement spec discovery. Double-click shortcuts apply in Screen mode; explicit Details actions expose the same open/create behavior. Reopening an existing spec must not create duplicates.
 
-A node-specific spec is associated with workflow identity and node identity, not its current placement target. Reuse existing Markdown workflow-node links for association where possible. Its path convention, multiplicity, rename/delete behavior, and creation API are open until resolved; do not invent a project or Screen schema field unnecessarily.
+A node-specific spec is associated with workflow identity and node identity, not its current placement target. Store exactly one node spec at `screens/<screen-id>/specs/workflow-<workflow-id>-<node-id>.md`, alongside the owning Screen's other specs. Use the existing Markdown workflow-node link shape to attach it. Renaming a node renames the corresponding file and rewrites its association; deleting a node preserves the Markdown file as an unlinked spec and surfaces that state rather than deleting user documentation. Keep node/file validation safe and case-aware; do not invent a Screen YAML field unnecessarily.
 
-A workflow graph reached from Spec mode does not become a Workflow-mode controller: it can display its referenced node without enabling mode-specific node-to-canvas navigation or node-spec creation. Existing linked-reference navigation/highlighting should be retained where compatible; the exact linked-view action set remains open.
+A workflow graph reached from Spec mode is read-only: node selection does not navigate the Screen, and node-spec creation is unavailable. It does not become a Workflow-mode controller. Close it to return to the parent Spec view.
 
 Alternative: reuse a node's Screen/Element spec. Rejected because the user chose a distinct node-specific spec.
 
@@ -90,29 +91,35 @@ Alternative: reuse a node's Screen/Element spec. Rejected because the user chose
 
 Reuse `MaterialDefaults.mjs`, STML `preview-size`, and the Material preview controllers for the known Material preview dimensions. Convert drag outlines into canvas-space geometry accounting for zoom and pan. Creating a placement must not use the scaled selector tile size.
 
-Thumbnail framing is independently resizable/repositionable in Material authoring and transformed to fit each selector tile. Its storage and uncustomized fallback must be resolved without changing Material HTML or existing placement sizes. Preserve legacy Material rendering when metadata is absent.
+Thumbnail framing is independently resizable/repositionable in Material authoring and transformed to fit each selector tile. Store the frame as project presentation metadata in a `material-previews` mapping in `project.yml`, keyed by Material ID and expressed in Material canvas coordinates; do not modify Material STML or HTML for selector framing. When no frame is stored, use the full `preview-size` rectangle, falling back to the type's default dimensions when `preview-size` is absent, so the complete Material is shown. Preserve legacy Material rendering when metadata is absent.
 
-The only new selector drag interaction is Material-to-Screen placement; Theme editing remains click-based. Click-to-add positioning and drop defaults are still open.
+Keep the Material editing workspace in its existing resizable split layout, with the preview canvas above the STML source editor. On narrow viewports, retain that vertical split and allow the workspace to scroll; the Material selector and Details become overlay panels rather than reducing the canvas width. Follow the existing responsive panel sizing and keep their persistent toolbar controls available.
+
+The only new selector drag interaction is Material-to-Screen placement; Theme editing remains click-based. Clicking a Material adds it at the center of the visible canvas using the current default state/layer rules. Dragging shows the known-size outline centered under the pointer and uses the same default state/layer rules at drop.
 
 ### 6. Give URL fields separate responsibilities
 
-Extend `BrowserHistory.mjs` rather than replacing HTTP routing. Existing app query parameters identify editor/mode and document ownership; a hash parameter named `specux` carries the canvas target in SpecUX path form. For example, the decoded fragment value can be `screen/home/screen.yml?placement=dialog.save&state=open`. Encode it as one parameter value so inner `?`, `&`, and escaped path segments are not mistaken for outer parameters.
+Extend `BrowserHistory.mjs` rather than replacing HTTP routing. Existing app query parameters identify the primary editor and its document context (`file`, `view`, `screen`, and `owner`). Add a `linked` query parameter for a linked document, and an optional `node` parameter identifying a selected workflow node in the linked workflow, or in the primary workflow when no linked document is specified. A hash parameter named `specux` carries the canvas target in SpecUX path form. For a multi-placement target, its decoded value contains repeated `placement` keys and one shared `state`, for example `screen/home/screen.yml?placement=dialog.title&placement=dialog.save&state=dialog-open`. Encode the SpecUX target as one parameter value so its inner `?`, `&`, and escaped path segments are not mistaken for outer parameters.
 
-Both contexts must survive opening the URL in a fresh page, not just restoration from `history.state`. Keep legacy query-only links readable. Define additional app parameters only where current fields cannot represent primary and linked document context; specify their serialization before implementation.
+Primary editor, linked document, selected workflow node, and canvas target must survive opening the URL in a fresh page, not just restoration from `history.state`. Keep legacy query-only links readable.
 
 Compare displayed Screen identity, not document filename, when synchronizing browser history. Replace the current entry for mode changes, node/link navigation within one Screen, and initial synchronization; push only for actual Screen-to-Screen switches. Back/Forward restoration must not push another entry.
 
-For a multi-placement node, the app's document/node context can identify the target set while the fragment remains a valid canonical SpecUX target; the exact encoding of a target set must be settled without arbitrarily focusing the first placement.
+The `specux` fragment is the canonical serialization of the complete canvas target set. A linked workflow's document and selected node remain in app query parameters; do not encode additional placements in app-specific parameters or focus only the first target.
 
 ### 7. Extend versioned persistence and share edit transactions
 
 Retain the dirty-file version tracking and serialization in `ProjectPersistence.mjs`. Add a bounded autosave scheduler that serializes writes, batches related file changes, and clears only the versions actually acknowledged. A newer edit made during an in-flight save must remain dirty. Closing an editor must not dispose of its pending source or save work.
 
-Use one project-level transaction history across Screen, Material, Workflow, Spec, and Theme edits. Group a gesture into one transaction and record coupled reference/file changes together. Navigation, selection, pan/zoom, and dock resizing do not represent artifact edits. Define text-edit coalescing and creation/deletion behavior before wiring every editor; do not leave native source undo competing with project history.
+Use one project-level transaction history across Screen, Material, Workflow, Spec, and Theme edits. Group each artifact-changing gesture into one transaction committed when the gesture ends, and record coupled reference/file changes together. Coalesce consecutive typing in the same editor into one history entry until a pause, focus change, or different edit action. Treat each create or delete action and all coupled file/reference changes as one atomic transaction. Navigation, selection, pan/zoom, and dock resizing do not represent artifact edits. Do not leave native source undo competing with project history.
+
+Undo and redo apply through the same autosave path as other edits. Keep the project-wide undo/redo stack for the current app session only; reopening the project starts with an empty history.
 
 Git records persisted file differences; it does not prove an in-memory draft has been saved and is not the application undo stack. Display pending/error persistence state independently. Autosave must never imply a failed or validation-blocked write succeeded.
 
-Invalid-source persistence and external-write conflict recovery are unresolved. Until a policy is selected, preserve existing validation guards and retain dirty drafts across editor transitions. The proposal does not authorize silently writing invalid source or overwriting a distinct external edit. Undo/redo persistence semantics are part of the same decision gate.
+When source is invalid, keep the last valid project artifact untouched and persist the invalid text as a separate recovery draft. Restore that draft when the project is reopened and visibly warn that the source is invalid and has not been saved as the project artifact. Once the source becomes valid and its canonical write succeeds, the recovery draft can be cleared.
+
+Before autosave writes a file, detect whether it changed on disk since the app loaded it. If an external change is detected, pause the write and preserve both versions until the user chooses to reload the disk version, keep the local version (overwriting the disk version only after that explicit choice), or merge them. Undo and redo use the same autosave path and the history is session-only.
 
 Alternative: separate editor histories or use browser navigation as undo. Rejected by the confirmed unified edit-only history requirement.
 
@@ -123,9 +130,9 @@ Alternative: separate editor histories or use browser navigation as undo. Reject
 - [Retaining the last Screen on exit may feel unexpected] -> Prototype and review this confirmed trial direction before finalizing UX.
 - [Dock consumes canvas space] -> Refit targets to usable canvas bounds and provide a constrained resize behavior; resolve small-window treatment in the prototype.
 - [Legacy workflows lack placement targets or entry points] -> Warn non-destructively, preserve source and rendering, and keep diagnostics separate from fatal syntax errors.
-- [Mermaid multi-link syntax and node IDs require stable mapping] -> Resolve serialization and identity before schema/API work; cover rename, deletion, and grouped-reference rewrites.
-- [Autosave races and coupled-file edits can lose changes] -> Serialize versioned writes and include concurrency, failure, and multi-file transaction tests.
-- [Unified history may affect a hidden document] -> Show which artifact the transaction changes; determine whether revealing that editor is appropriate without making navigation itself undoable.
+- [Repeated query keys or workflow node IDs may be rewritten inconsistently] -> Cover multi-placement parsing, serialization, rename, deletion, and grouped-reference rewrites together.
+- [Autosave races and coupled-file edits can lose changes] -> Serialize versioned writes, detect external changes before overwriting, and include concurrency, failure, conflict-resolution, and multi-file transaction tests.
+- [Global history may affect a different editor's artifact] -> Keep undo and redo project-wide and apply them to the last artifact transaction; navigation itself is not a history action.
 - [Existing capture/annotation hosts may move] -> Preserve coordinate-host contracts and verify representative captures after layout changes.
 - [Plan and specifications can diverge] -> Implement from this change's specs; retain the discussion plan as context and reconcile the living baseline when features land.
 
@@ -141,19 +148,6 @@ Alternative: separate editor histories or use browser navigation as undo. Reject
 
 Rollback must restore the previous UI without discarding user artifacts. Prefer backward-compatible optional metadata and avoid automatic file-format rewrites; if a new serialization is unavoidable, define its migration and rollback before shipping it.
 
-## Open Questions
+## Resolved Questions
 
-These are not additional confirmed requirements. Tasks include resolving each before its dependent implementation.
-
-- Is Theme access on the Screen background, placement context menus, or both? What is Escape precedence for dialogs/editor interactions?
-- What actions remain available in linked Spec/Workflow views, and how much nested navigation is supported?
-- What file convention identifies a node-specific spec, can there be multiple, and what happens on workflow/node rename or deletion?
-- What serializable convention represents multiple placement links for one Mermaid node? What stays visible after invalid target selection?
-- How are primary/linked documents and multi-placement canvas context serialized for reload?
-- How does a project spec open before any Screen is selected? Avoid choosing a Screen merely to satisfy the layout.
-- What is the invalid-draft autosave/recovery policy, how do external disk edits interact with saving/history, and how are undo/redo changes persisted?
-- What are transaction boundaries for typing, creation/deletion, and cross-file reference rewrites, and how is a hidden-artifact undo communicated?
-- What happens on Material click-to-add, and what layer/state/drop defaults apply?
-- Where is thumbnail framing stored, and what is its default? How are Material preview and STML arranged?
-- What minimum canvas/dock sizes, responsive layout, and panel reopen defaults preserve useful context?
-- Which existing workflow controls must remain available, and how do canvas double-click shortcuts coexist with current selection/panning tools?
+The decision gates in this document were resolved before their dependent implementation. Tasks 1.1–1.6 record the agreed behavior for navigation, node specs, multi-placement links, persistence and history boundaries, Material placement defaults, selector framing, and responsive layout. No implementation-blocking design question remains for this change.

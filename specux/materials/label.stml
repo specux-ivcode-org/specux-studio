@@ -75,5 +75,8 @@ attributes:
     type: string
     default: none
     overridable: true
+preview-size:
+  width: 46
+  height: 38
 ---
 <div class="material-visual material-visual-label" style="color:${attributes.color};background:${attributes.background};border:${attributes.border};border-radius:${attributes.border-radius}px;padding:${attributes.padding};font-size:${attributes.font-size}px;font-weight:${attributes.font-weight};line-height:${attributes.line-height};letter-spacing:${attributes.letter-spacing};text-align:${attributes.text-align};align-items:${attributes.align-items};justify-content:${attributes.justify-content};box-shadow:${attributes.shadow}">${attributes.text}</div>

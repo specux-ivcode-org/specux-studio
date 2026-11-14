@@ -43,6 +43,8 @@ export class ScreenSelectionController {
     });
     this.services.byId("screen-preview")
       ?.addEventListener("contextmenu", (event) => this.onContextMenu(event), true);
+    this.services.byId("screen-preview")
+      ?.addEventListener("dblclick", (event) => this.onDoubleClick(event), true);
     this.updateControls();
   }
 
@@ -86,6 +88,8 @@ export class ScreenSelectionController {
   /** Checks whether the active view disables Screen selection interactions. */
   isInteractionDisabled() {
     return this.state.isRenderOnly ||
+      this.state.viewingProject ||
+      this.state.viewingMaterialFile ||
       this.state.viewingWorkflow ||
       this.state.viewingTheme ||
       this.state.viewingSpec;
@@ -197,20 +201,50 @@ export class ScreenSelectionController {
   /** Handles context menu events for the related editor control. */
   onContextMenu(event) {
     if (this.isInteractionDisabled()) return;
-    const directFrame = event.composedPath?.().find((node) =>
-      node?.classList?.contains("material-frame")
-    );
-    const hitFrame = directFrame || this.services.document
-      .elementsFromPoint?.(event.clientX, event.clientY)
-      .find((node) => node?.classList?.contains("material-frame"));
+    const hitFrame = this.getHitFrame(event);
     const path = this.readPath(hitFrame?.dataset?.instancePath);
     if (!path) {
       this.services.closePlacementContextMenu?.();
+      this.services.openBackgroundContextMenu?.(event);
       return;
     }
     event.preventDefault();
     event.stopPropagation();
     this.services.openPlacementContextMenu?.(event, path);
+  }
+
+  /** Opens the spec associated with the placement or Screen under a double-click. */
+  onDoubleClick(event) {
+    if (this.isInteractionDisabled() || this.tool !== "select" ||
+        event.button !== 0 || event.detail !== 2 ||
+        this.isInteractiveDoubleClickTarget(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const path = this.readPath(this.getHitFrame(event)?.dataset?.instancePath);
+    const openSpec = path
+      ? this.services.openPlacementSpec
+      : this.services.openScreenSpec;
+    const opening = openSpec?.(path || undefined);
+    opening?.catch?.(this.services.showFatalError);
+  }
+
+  /** Resolves the placement under the pointer from the event path or hit testing. */
+  getHitFrame(event) {
+    const directFrame = event.composedPath?.().find((node) =>
+      node?.classList?.contains("material-frame")
+    );
+    return directFrame || this.services.document
+      .elementsFromPoint?.(event.clientX, event.clientY)
+      .find((node) => node?.classList?.contains("material-frame"));
+  }
+
+  /** Leaves inline editors and interactive controls in charge of their double-clicks. */
+  isInteractiveDoubleClickTarget(event) {
+    const interactiveSelector = "a, button, input, select, textarea, [contenteditable=true]";
+    const path = event.composedPath?.() || [];
+    return path.some((node) =>
+      node?.matches?.(interactiveSelector) || node?.isContentEditable
+    ) || Boolean(event.target?.closest?.(interactiveSelector));
   }
 
   /** Updates the rectangle to reflect the latest editor state. */

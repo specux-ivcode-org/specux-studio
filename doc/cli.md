@@ -36,6 +36,8 @@ Annotations are transient and held in the running editor server's memory; they a
 
 Run `specux server screenshot --output current-editor.png` while the editor is open in a connected browser. The command captures only visible preview panes from the active browser, including unsaved edits and visible annotation marks. It expands each pane to its full scrollable content and stacks the previews in editor order in one PNG, without editor toolbars or sidebars. It writes the PNG only to the requested output path and prints the active file/editor context and structured annotations as JSON so an agent can use both the image and the annotation details. It does not save or change project files.
 
+Capture targets are identified by their preview hosts, not by fixed page positions. Moving a Screen, Workflow, Spec, or Material preview into a different workspace or dock layout does not change its preview coordinate space; nested scrolling and annotation overlays remain aligned to that preview.
+
 ## Initialization
 
 Run `specux init` from the working directory where the `specux/` project folder should be created. Use `--project <directory>` to choose another working directory:

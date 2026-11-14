@@ -1,4 +1,5 @@
 const CANVAS_ZOOM_CONTROL_SETS = [
+  ["topbar-canvas-zoom-out", "topbar-canvas-zoom-reset", "topbar-canvas-zoom-in"],
   ["screen-canvas-zoom-out", "screen-canvas-zoom-reset", "screen-canvas-zoom-in"],
   ["workflow-canvas-zoom-out", "workflow-canvas-zoom-reset", "workflow-canvas-zoom-in"],
   ["spec-canvas-zoom-out", "spec-canvas-zoom-reset", "spec-canvas-zoom-in"]
@@ -197,6 +198,42 @@ export class ScreenCanvasViewportController {
     this.centerOnBounds(bounds);
   }
 
+  /** Zooms and centers the combined bounds of several canvas targets. */
+  fitOnTargets(targets, { padding = 24, maxZoom = MAXIMUM_ZOOM } = {}) {
+    if (!targets.length || !this.preview?.clientWidth || !this.preview?.clientHeight) return;
+    const bounds = this.getCombinedBounds(
+      targets.map((target) => target.getBoundingClientRect())
+    );
+    if (!bounds) return;
+    const availableWidth = Math.max(1, this.preview.clientWidth - padding * 2);
+    const availableHeight = Math.max(1, this.preview.clientHeight - padding * 2);
+    const widthScale = bounds.width ? availableWidth / bounds.width : Infinity;
+    const heightScale = bounds.height ? availableHeight / bounds.height : Infinity;
+    const nextZoom = this.clampZoom(
+      Math.min(maxZoom, this.zoom * Math.min(widthScale, heightScale))
+    );
+    const viewport = this.preview.getBoundingClientRect();
+    const left = viewport.left + this.preview.clientLeft;
+    const top = viewport.top + this.preview.clientTop;
+    const scale = nextZoom / this.zoom;
+    const centerX = bounds.left + bounds.width / 2;
+    const centerY = bounds.top + bounds.height / 2;
+    const canvasCenterX = (centerX - left - this.pan.x) / this.zoom;
+    const canvasCenterY = (centerY - top - this.pan.y) / this.zoom;
+    const canvasTop = (bounds.top - top - this.pan.y) / this.zoom;
+    const isOversized = bounds.width * scale > this.preview.clientWidth ||
+      bounds.height * scale > this.preview.clientHeight;
+
+    this.beginCenterAnimation();
+    this.zoom = nextZoom;
+    this.pan.x = this.preview.clientWidth / 2 - canvasCenterX * nextZoom;
+    this.pan.y = isOversized
+      ? -canvasTop * nextZoom
+      : this.preview.clientHeight / 2 - canvasCenterY * nextZoom;
+    this.applyCamera();
+    this.updateZoomControls();
+  }
+
   /** Combines viewport rectangles into one rectangle. */
   getCombinedBounds(rectangles) {
     const bounds = rectangles.reduce((combined, rect) => {
@@ -236,10 +273,16 @@ export class ScreenCanvasViewportController {
     const panDeltaY = isOversized
       ? top - bounds.top
       : top + height / 2 - (bounds.top + bounds.height / 2);
-    this.preview.classList.add("is-camera-animating");
+    this.beginCenterAnimation();
     this.pan.x += panDeltaX;
     this.pan.y += panDeltaY;
     this.applyCamera();
+  }
+
+  /** Starts a camera transition and keeps the rulers synchronized with it. */
+  beginCenterAnimation() {
+    this.cancelCenterAnimation();
+    this.preview.classList.add("is-camera-animating");
     this.scheduleRulerAnimationFrame();
     this.centerAnimationTimer = this.window.setTimeout(
       () => this.cancelCenterAnimation(),
@@ -348,6 +391,45 @@ export class ScreenCanvasViewportController {
     this.pan = { x: 0, y: 0 };
     this.applyCamera();
     this.updateZoomControls();
+  }
+
+  /** Returns the top-left canvas coordinate for centering a placement in view. */
+  getVisibleCanvasPlacementPosition(size) {
+    if (!this.preview?.clientWidth || !this.preview?.clientHeight) return null;
+    return {
+      x: (this.preview.clientWidth / 2 - this.pan.x) / this.zoom - size.width / 2,
+      y: (this.preview.clientHeight / 2 - this.pan.y) / this.zoom - size.height / 2
+    };
+  }
+
+  /** Returns the transformed drop position and outline bounds for a Material drag. */
+  getMaterialDropGeometry(clientX, clientY, size) {
+    if (!this.preview?.clientWidth || !this.preview?.clientHeight) {
+      return { inside: false, position: null, outline: null };
+    }
+    const bounds = this.preview.getBoundingClientRect();
+    const left = bounds.left + this.preview.clientLeft;
+    const top = bounds.top + this.preview.clientTop;
+    const pointerX = clientX - left;
+    const pointerY = clientY - top;
+    const scaledWidth = size.width * this.zoom;
+    const scaledHeight = size.height * this.zoom;
+    return {
+      inside: pointerX >= 0 &&
+        pointerY >= 0 &&
+        pointerX <= this.preview.clientWidth &&
+        pointerY <= this.preview.clientHeight,
+      position: {
+        x: (pointerX - this.pan.x) / this.zoom - size.width / 2,
+        y: (pointerY - this.pan.y) / this.zoom - size.height / 2
+      },
+      outline: {
+        left: pointerX - scaledWidth / 2,
+        top: pointerY - scaledHeight / 2,
+        width: scaledWidth,
+        height: scaledHeight
+      }
+    };
   }
 
   /** Applies camera variables and redraws rulers to match the transformed Screen. */

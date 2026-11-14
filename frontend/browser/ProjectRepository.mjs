@@ -5,6 +5,7 @@ import {
   isValidAffineMatrix,
   isValidScale
 } from "../../shared/ScreenGroups.mjs";
+import { getMaterialDefaultSize } from "./MaterialDefaults.mjs";
 
 /** Validates the Element spec target and returns its current placement path. */
 function validateElementSpecTarget(repository, references, screen, elementId, filePath) {
@@ -38,6 +39,7 @@ export class ProjectRepository {
     this.validation = validation;
     this.materialFileExtension = materialFileExtension;
     this.materialFiles = new Map();
+    this.fileHashes = new Map();
   }
 
   /** Validates a project-relative path and resolves it below the project URL root. */
@@ -100,6 +102,13 @@ export class ProjectRepository {
     if (!response.ok) {
       throw new Error(result.error || `Could not list project files (HTTP ${response.status}).`);
     }
+    this.validateProjectFileListing(result);
+    this.fileHashes = new Map(Object.entries(result.hashes || {}));
+    return result.files;
+  }
+
+  /** Validates project file paths and their optional disk-version hashes. */
+  validateProjectFileListing(result) {
     if (!Array.isArray(result.files) || result.files.some((filePath) =>
       typeof filePath !== "string" || !filePath || filePath.startsWith("/") ||
       filePath.includes("\\") || filePath.split("/").some((segment) =>
@@ -108,7 +117,14 @@ export class ProjectRepository {
     )) {
       throw new Error("The project file listing is invalid.");
     }
-    return result.files;
+    if (result.hashes !== undefined &&
+        (!result.hashes || Array.isArray(result.hashes) || typeof result.hashes !== "object" ||
+          Object.entries(result.hashes).some(([filePath, hash]) =>
+            !result.files.includes(filePath) || typeof hash !== "string" ||
+            !/^[a-f\d]{64}$/i.test(hash)
+          ))) {
+      throw new Error("The project file version listing is invalid.");
+    }
   }
 
   /** Validates the project before it is applied or saved. */
@@ -520,6 +536,7 @@ export class ProjectRepository {
 
     const materialFiles = this.createMaterialFileMap(loadedMaterials);
     this.materialFiles = materialFiles;
+    this.validateProjectMaterialPreviews(project, materialFiles);
     for (const screen of screens) this.validateScreenMaterials(screen, materialFiles);
     const { specSources, elementSpecOwners } =
       await this.loadSpecs(project, screens, projectFilePaths);
@@ -527,6 +544,7 @@ export class ProjectRepository {
     return {
       project,
       projectFilePaths,
+      fileHashes: new Map(this.fileHashes),
       materialFiles,
       screens,
       specSources,
@@ -565,12 +583,78 @@ export class ProjectRepository {
   /** Validates the project properties before it is applied or saved. */
   validateProjectProperties(project) {
     const supportedProjectProperties = new Set([
-      "name", "description", "specux", "screens", "theme", "spec", "workflows"
+      "name", "description", "specux", "screens", "theme", "spec", "workflows",
+      "material-previews"
     ]);
     for (const property of Object.keys(project)) {
       if (!supportedProjectProperties.has(property)) {
         throw new Error(`project.yml has unsupported property "${property}".`);
       }
+    }
+  }
+
+  /** Validates project-level selector framing without changing Material source data. */
+  validateProjectMaterialPreviews(project, materialFiles) {
+    const previews = project["material-previews"];
+    if (previews === undefined) return;
+    if (!this.validation.isMapping(previews)) {
+      throw new Error("project.yml material-previews must be a mapping.");
+    }
+    const materialsById = new Map(
+      [...materialFiles.values()].map((material) => [material.id, material])
+    );
+    for (const [materialId, frame] of Object.entries(previews)) {
+      this.validateProjectMaterialPreview(materialId, frame, materialsById);
+    }
+  }
+
+  /** Validates one Material's selector frame. */
+  validateProjectMaterialPreview(materialId, frame, materialsById) {
+    const material = materialsById.get(materialId);
+    if (!material) {
+      throw new Error(`project.yml material-previews references unknown Material "${materialId}".`);
+    }
+    if (!this.validation.isMapping(frame)) {
+      throw new Error(`project.yml material-previews.${materialId} must be a mapping.`);
+    }
+    for (const property of Object.keys(frame)) {
+      if (!["x", "y", "width", "height"].includes(property)) {
+        throw new Error(
+          `project.yml material-previews.${materialId} has unsupported property "${property}".`
+        );
+      }
+    }
+    this.validateProjectMaterialPreviewBounds(materialId, frame, material);
+  }
+
+  /** Validates the coordinates and size of one Material selector frame. */
+  validateProjectMaterialPreviewBounds(materialId, frame, material) {
+    for (const property of ["x", "y"]) {
+      if (!Number.isInteger(frame[property]) || frame[property] < 0) {
+        throw new Error(
+          `project.yml material-previews.${materialId}.${property} must be a non-negative integer.`
+        );
+      }
+    }
+    for (const property of ["width", "height"]) {
+      if (!Number.isInteger(frame[property]) || frame[property] < 24) {
+        throw new Error(
+          `project.yml material-previews.${materialId}.${property} must be an integer of at least 24.`
+        );
+      }
+    }
+    this.validateProjectMaterialPreviewFits(materialId, frame, material);
+  }
+
+  /** Ensures the selector frame stays within the preview canvas. */
+  validateProjectMaterialPreviewFits(materialId, frame, material) {
+    const dimensions = material.data["preview-size"] ||
+      getMaterialDefaultSize(material.data.type);
+    if (!dimensions || frame.x + frame.width > dimensions.width ||
+        frame.y + frame.height > dimensions.height) {
+      throw new Error(
+        `project.yml material-previews.${materialId} must fit inside the Material preview bounds.`
+      );
     }
   }
 
@@ -686,13 +770,15 @@ export class ProjectRepository {
         this.validation.validateSpecPath(screen.data.spec);
         specPaths.add(screen.data.spec);
       }
-      const prefix = `screens/${screen.id}/specs/element-`;
-      for (const filePath of projectFilePaths) {
-        if (!filePath.startsWith(prefix) || !filePath.endsWith(".md")) continue;
-        this.validation.validateSpecPath(filePath);
-        elementSpecPaths.push(filePath);
-        specPaths.add(filePath);
-      }
+      const screenElementSpecPaths = this.getScreenSpecPaths(
+        projectFilePaths,
+        screen.id,
+        "element-"
+      );
+      elementSpecPaths.push(...screenElementSpecPaths);
+      screenElementSpecPaths.forEach((filePath) => specPaths.add(filePath));
+      this.getScreenSpecPaths(projectFilePaths, screen.id, "workflow-")
+        .forEach((filePath) => specPaths.add(filePath));
     }
     if (project.spec !== undefined) {
       this.validation.validateSpecPath(project.spec);
@@ -710,6 +796,17 @@ export class ProjectRepository {
       this.refreshElementSpecOwner(filePath, specSources.get(filePath), screens, elementSpecOwners);
     }
     return { specSources, elementSpecOwners };
+  }
+
+  /** Returns and validates Screen-owned specs with the supplied filename prefix. */
+  getScreenSpecPaths(projectFilePaths, screenId, filePrefix) {
+    const prefix = `screens/${screenId}/specs/${filePrefix}`;
+    return projectFilePaths.filter((filePath) =>
+      filePath.startsWith(prefix) && filePath.endsWith(".md")
+    ).map((filePath) => {
+      this.validation.validateSpecPath(filePath);
+      return filePath;
+    });
   }
 
   /** Loads the workflows into the editor state. */

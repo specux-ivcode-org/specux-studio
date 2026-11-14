@@ -88,10 +88,34 @@
     const projectSpec = /^specs\/[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
     const screenSpec = /^screens\/[a-z][a-z0-9-]*\/specs\/screen\.md$/;
     const elementSpec = /^screens\/[a-z][a-z0-9-]*\/specs\/element-[a-z][a-z0-9-]*\.md$/;
+    const workflowNodeSpec =
+      /^screens\/[a-z][a-z0-9-]*\/specs\/workflow-[a-z][a-z0-9-]*-[A-Za-z][A-Za-z0-9_-]*\.md$/;
     if (typeof filePath !== "string" ||
-        (!projectSpec.test(filePath) && !screenSpec.test(filePath) && !elementSpec.test(filePath))) {
+        (!projectSpec.test(filePath) && !screenSpec.test(filePath) &&
+          !elementSpec.test(filePath) && !workflowNodeSpec.test(filePath))) {
       throw new Error(
-        'Behavior spec path must be "specs/<name>.md", "screens/<screen-id>/specs/screen.md", or "screens/<screen-id>/specs/element-<element-id>.md".'
+        'Behavior spec path must be "specs/<name>.md", "screens/<screen-id>/specs/screen.md", "screens/<screen-id>/specs/element-<element-id>.md", or "screens/<screen-id>/specs/workflow-<workflow-id>-<node-id>.md".'
+      );
+    }
+  }
+
+  function getWorkflowNodeSpecPath(screenId, workflowPath, nodeId) {
+    const workflow = typeof workflowPath === "string"
+      ? workflowPath.match(/^screens\/([a-z][a-z0-9-]*)\/workflows\/([a-z][a-z0-9-]*)\.mmd$/)
+      : null;
+    if (!workflow || workflow[1] !== screenId ||
+        typeof nodeId !== "string" || !/^[A-Za-z][A-Za-z0-9_-]*$/.test(nodeId)) {
+      throw new Error("Workflow node spec identity is invalid.");
+    }
+    return `screens/${screenId}/specs/workflow-${workflow[2]}-${nodeId}.md`;
+  }
+
+  function validateWorkflowNodeSpecPath(filePath, screenId, workflowPath, nodeId) {
+    validateSpecPath(filePath);
+    const expectedPath = getWorkflowNodeSpecPath(screenId, workflowPath, nodeId);
+    if (filePath !== expectedPath) {
+      throw new Error(
+        `Workflow node behavior spec "${filePath}" must be named "${expectedPath}".`
       );
     }
   }
@@ -762,6 +786,8 @@
     validatePreviewStates,
     validateSpecContent,
     validateSpecPath,
+    getWorkflowNodeSpecPath,
+    validateWorkflowNodeSpecPath,
     validateWorkflowPath,
     validateScreenSpecStateReferences,
     validateTheme

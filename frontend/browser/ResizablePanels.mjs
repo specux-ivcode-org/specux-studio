@@ -1,6 +1,6 @@
 const STORAGE_KEY = "specux-studio.layout.v1";
 const PANEL_LIMITS = {
-  sidebar: { min: 180, max: 420, default: 238, label: "Project structure" },
+  sidebar: { min: 180, max: 420, default: 238, label: "Materials and project files" },
   inspector: { min: 220, max: 480, default: 292, label: "Properties" }
 };
 const VISIBILITY_MODES = ["show", "hover"];
@@ -386,7 +386,7 @@ export class ResizablePanels {
     const mode = this.modes[panel];
     const isOpen = mode === "show" || (mode === "hover" && this.openOverlays[panel]);
     this.syncPanelVisibility(elements, mode, isOpen, panel);
-    this.syncModeButton(elements.button, panel, mode);
+    this.syncModeButton(elements.button, panel, mode, isOpen);
   }
 
   /** Returns the panel elements. */
@@ -417,7 +417,7 @@ export class ResizablePanels {
   }
 
   /** Synchronizes the mode button with the current editor state. */
-  syncModeButton(button, panel, mode) {
+  syncModeButton(button, panel, mode, isOpen) {
     if (!button) return;
     const config = PANEL_LIMITS[panel];
     const currentMode = this.modeLabel(mode);
@@ -426,6 +426,7 @@ export class ResizablePanels {
     if (button.dataset) button.dataset.mode = mode;
     button.setAttribute("aria-label", label);
     button.setAttribute("title", label);
+    button.setAttribute("aria-expanded", String(isOpen));
   }
 
   /** Returns the label shown for the selected panel mode. */

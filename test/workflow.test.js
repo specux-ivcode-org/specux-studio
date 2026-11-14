@@ -19,6 +19,33 @@ test("validates Screen-scoped Mermaid workflow paths", () => {
   }
 });
 
+test("preserves and reports specs whose Workflow nodes were removed", async () => {
+  const { WorkflowEditor } = await import("../frontend/browser/WorkflowEditor.mjs");
+  const statusClasses = new Set();
+  const status = {
+    textContent: "",
+    classList: {
+      add: (name) => statusClasses.add(name),
+      remove: (name) => statusClasses.delete(name)
+    }
+  };
+  const editor = Object.create(WorkflowEditor.prototype);
+  editor.entryPointWarnings = [];
+  editor.workflowTargetWarning = null;
+  editor.services = { byId: () => status };
+
+  editor.validateLinkedWorkflowNodes(
+    "flowchart TD\n  start[Start]",
+    "screens/home/workflows/add-item.mmd",
+    new Set(["start"]),
+    new Map(),
+    new Map([["saveItem", [{ filePath: "screens/home/specs/workflow-add-item-saveItem.md" }]]])
+  );
+
+  assert.match(status.textContent, /preserved as unlinked documentation/);
+  assert.equal(statusClasses.has("warning"), true);
+});
+
 /** The workflow inspector shows placement details without exposing editing controls. */
 test("workflow inspector exposes read-only placement context", async () => {
   const { InspectorRenderer } = await import("../frontend/browser/InspectorRenderer.mjs");
@@ -26,7 +53,8 @@ test("workflow inspector exposes read-only placement context", async () => {
     children: [],
     parentElement: { classList: { toggle() {} } },
     replaceChildren(...children) { this.children = children; },
-    append(...children) { this.children.push(...children); }
+    append(...children) { this.children.push(...children); },
+    querySelector() { return null; }
   };
 
   /** Creates a DOM element with the supplied content and attributes. */
@@ -37,7 +65,8 @@ test("workflow inspector exposes read-only placement context", async () => {
     children: [],
     append(...children) { this.children.push(...children); },
     setAttribute() {},
-    addEventListener() {}
+    addEventListener() {},
+    querySelector() { return null; }
   });
   const renderer = new InspectorRenderer({
     state: {
@@ -60,7 +89,7 @@ test("workflow inspector exposes read-only placement context", async () => {
     child,
     ...(child.children || [])
   ]);
-  assert.ok(rendered.some((node) => node.textContent === "This Screen preview is read-only. The highlighted placement is the target of the selected workflow node."));
+  assert.ok(rendered.some((node) => node.textContent === "This Screen preview is read-only. It shows the Screen linked from the selected Workflow node."));
   assert.ok(rendered.some((node) => node.textContent === "save-button"));
   assert.equal(rendered.some((node) => node.tagName === "button" || node.tagName === "input"), false);
 });
@@ -80,7 +109,7 @@ test("parses explicit SpecUX workflow links", async () => {
   const workflowPath = "screens/home/workflows/add-item.mmd";
   assert.deepEqual(parseWorkflowLink("specux://screen/home/screen.yml"), {
     screenId: "home",
-    placementId: null,
+    placementIds: [],
     stateId: "default"
   });
   assert.deepEqual(
@@ -89,7 +118,7 @@ test("parses explicit SpecUX workflow links", async () => {
     ),
     {
       screenId: "home",
-      placementId: "dialog-save",
+      placementIds: ["dialog-save"],
       stateId: "add-item-open"
     }
   );
@@ -99,7 +128,7 @@ test("parses explicit SpecUX workflow links", async () => {
     ),
     {
       screenId: "home",
-      placementId: "dialog.actions.save",
+      placementIds: ["dialog.actions.save"],
       stateId: "default"
     }
   );
@@ -132,9 +161,19 @@ test("parses explicit SpecUX workflow links", async () => {
   assert.equal(parsed.diagramSource, "flowchart TD\nsaveItem[Save item]\n");
   assert.deepEqual(parsed.links.get("saveItem"), {
     screenId: "home",
-    placementId: "dialog-save",
+    placementIds: ["dialog-save"],
     stateId: "add-item-open"
   });
+  assert.deepEqual(
+    parseWorkflowLink(
+      "specux://screen/home/screen.yml?placement=dialog.title&placement=dialog.actions.save&state=add-item-open"
+    ),
+    {
+      screenId: "home",
+      placementIds: ["dialog.title", "dialog.actions.save"],
+      stateId: "add-item-open"
+    }
+  );
   const specSource = [
     "# Home behavior",
     "",
@@ -190,15 +229,24 @@ test("parses explicit SpecUX workflow links", async () => {
   );
   assert.throws(() =>
     parseWorkflowLink("specux://screen/home/screen.yml?state=not-a-state&other=value"),
-    /one placement and one state query parameter/
+    /repeated placements and one state query parameter/
   );
-  assert.throws(() =>
-    parseWorkflowClickDirectives([
+  const duplicateLinks = parseWorkflowClickDirectives([
       'click saveItem href "specux://screen/home/screen.yml"',
       'click saveItem href "specux://screen/home/screen.yml?placement=about"'
-    ].join("\n")),
-    /more than one SpecUX link \(line 2, column 1\)/
+    ].join("\n"));
+  assert.equal(duplicateLinks.links.has("saveItem"), false);
+  assert.match(duplicateLinks.warnings.get("saveItem"), /more than one SpecUX click directive/);
+  const invalidTarget = parseWorkflowClickDirectives(
+    'click saveItem href "specux://screen/home/screen.yml?state=not-a-state&extra=value"'
   );
+  assert.equal(invalidTarget.links.has("saveItem"), false);
+  assert.match(invalidTarget.warnings.get("saveItem"), /repeated placements and one state/);
+  const incompatibleStates = parseWorkflowClickDirectives(
+    'click saveItem href "specux://screen/home/screen.yml?placement=save&state=default&state=edit"'
+  );
+  assert.equal(incompatibleStates.links.has("saveItem"), false);
+  assert.match(incompatibleStates.warnings.get("saveItem"), /one state query parameter/);
   const noopElement = { addEventListener() {} };
   const editor = new WorkflowEditor({
     state: {},
@@ -275,12 +323,22 @@ test("parses explicit SpecUX workflow links", async () => {
       ["workflow-view-diagram", noopControl],
       ["workflow-spec-section-previous", noopControl],
       ["workflow-spec-section-next", noopControl],
+      ["workflow-linked-back", { ...noopControl, hidden: true }],
       ["workflow-spec-file-select", noopControl],
-      ["workflow-diagram", { querySelectorAll: () => [] }],
+      ["workflow-diagram", { querySelectorAll: () => [], replaceChildren() {} }],
+      ["workflow-node-spec-preview", {
+        hidden: true,
+        replaceChildren() {},
+        ownerDocument: { createElement: () => ({}) }
+      }],
       ["workflow-spec-section-navigation", { hidden: false }],
       ["workflow-spec-section-position", { textContent: "1 of 1" }],
-      ["workflow-editor-panel", { hidden: false }],
-      ["workflow-source", { oninput() {} }]
+      ["workflow-editor-panel", {
+        hidden: false,
+        classList: { add() {}, remove() {} }
+      }],
+      ["spec-editor-panel", { hidden: false }],
+      ["workflow-source", { oninput() {}, hidden: false }]
     ]);
     const workflowPath = "screens/home/workflows/add-item.mmd";
     const editor = new WorkflowEditor({
@@ -463,6 +521,8 @@ test("parses explicit SpecUX workflow links", async () => {
   const mainClasses = new Set();
   const main = {
     classList: {
+      add(name) { mainClasses.add(name); },
+      remove(name) { mainClasses.delete(name); },
       toggle(name, enabled) {
         if (enabled) mainClasses.add(name);
         else mainClasses.delete(name);
@@ -471,6 +531,14 @@ test("parses explicit SpecUX workflow links", async () => {
   };
   const sectionNav = { hidden: true };
   const sectionPosition = { textContent: "" };
+  const workflowPanelClasses = new Set();
+  const workflowPanel = {
+    hidden: false,
+    classList: {
+      add: (name) => workflowPanelClasses.add(name),
+      remove: (name) => workflowPanelClasses.delete(name)
+    }
+  };
   const previousButton = { disabled: false, addEventListener() {} };
   const nextButton = { disabled: false, addEventListener() {} };
   const fileSelect = {
@@ -487,8 +555,18 @@ test("parses explicit SpecUX workflow links", async () => {
     services: {
       byId: (id) => id === "main" ? main
         : id === "workflow-spec-preview" ? preview
+          : id === "workflow-node-spec-preview" ? preview
         : id === "screen-preview" ? screenPreview
         : id === "screen-stage" ? stage
+          : id === "workflow-editor-panel" ? workflowPanel
+          : id === "workflow-diagram" ? { hidden: false, replaceChildren() {} }
+          : id === "workflow-source" ? { hidden: true }
+            : id === "workflow-linked-back" ? {
+              hidden: true,
+              textContent: "",
+              addEventListener() {}
+            }
+          : id === "spec-editor-panel" ? { hidden: false }
           : id === "workflow-spec-section-navigation" ? sectionNav
             : id === "workflow-spec-section-position" ? sectionPosition
               : id === "workflow-spec-file-select" ? fileSelect
@@ -560,7 +638,7 @@ test("parses explicit SpecUX workflow links", async () => {
     attributes.get("aria-label"),
     "Behavior spec preview: screens/home/specs/screen.md"
   );
-  assert.equal(stageAttributes.get("aria-label"), attributes.get("aria-label"));
+  assert.equal(stageAttributes.has("aria-label"), false);
   previewEditor.moveSpecReference(1);
   assert.equal(sectionPosition.textContent, "2 of 3");
   assert.equal(fileSelect.value, "screens/home/specs/screen.md");
@@ -593,12 +671,11 @@ test("parses explicit SpecUX workflow links", async () => {
   assert.equal(fileSelect.hidden, true);
   assert.equal(previousButton.disabled, true);
   assert.equal(nextButton.disabled, true);
-  assert.equal(mainClasses.has("workflow-spec-preview-active"), true);
-  previewEditor.activeSpecPreview = null;
-  previewEditor.updateSpecSectionNavigation();
+  assert.equal(workflowPanelClasses.has("workflow-node-spec-active"), true);
+  previewEditor.closeWorkflowNodeSpecPreview();
   assert.equal(sectionNav.hidden, true);
   assert.equal(preview.hidden, true);
-  assert.equal(mainClasses.has("workflow-spec-preview-active"), false);
+  assert.equal(workflowPanelClasses.has("workflow-node-spec-active"), false);
   assert.equal(screenPreview.className, "screen-preview");
   assert.equal(screenPreview.children, undefined);
 });
@@ -636,6 +713,472 @@ test("keeps the workflow owner Screen in the editor selection while previewing a
     },
     workflow: { file: "screens/home/workflows/account.mmd" }
   });
+});
+
+/** Checks that navigation exposes document ownership separately from canvas context. */
+test("exposes explicit workspace context for a cross-Screen workflow", async () => {
+  const { EditorNavigation } = await import(
+    "../frontend/browser/EditorNavigation.mjs"
+  );
+  const screens = [
+    { id: "home", file: "screens/home/screen.yml", data: { name: "Home" } },
+    { id: "settings", file: "screens/settings/screen.yml", data: { name: "Settings" } }
+  ];
+  const navigation = new EditorNavigation({
+    state: {
+      screens,
+      activeScreenIndex: 1,
+      activePreviewStateIds: new Map([["settings", "edit"]]),
+      activeInstancePaths: [["dialog", "save"]],
+      workflowScreenIndex: 0,
+      viewingWorkflow: true,
+      activeWorkflowPath: "screens/home/workflows/account.mmd",
+      selectedWorkflowNodeId: "save",
+      viewingProject: false,
+      viewingTheme: false,
+      viewingSpec: false,
+      viewingMaterialFile: false,
+      activeInstancePath: []
+    },
+    services: {}
+  });
+
+  assert.deepEqual(navigation.getWorkspaceContext(), {
+    activeMode: "workflow",
+    workspace: "screen",
+    document: {
+      view: "workflow",
+      file: "screens/home/workflows/account.mmd"
+    },
+    documentOwner: {
+      kind: "screen",
+      screenId: "home",
+      file: "screens/home/screen.yml"
+    },
+    canvas: {
+      screen: {
+        id: "settings",
+        name: "Settings",
+        file: "screens/settings/screen.yml"
+      },
+      stateId: "edit",
+      placementPaths: [["dialog", "save"]]
+    },
+    dock: {
+      primary: {
+        view: "workflow",
+        file: "screens/home/workflows/account.mmd",
+        nodeId: "save"
+      },
+      linked: [],
+      active: "primary",
+      reopenable: null
+    }
+  });
+});
+
+test("serializes and restores multi-placement SpecUX canvas targets", async () => {
+  const { EditorNavigation } = await import(
+    "../frontend/browser/EditorNavigation.mjs"
+  );
+  const screen = {
+    id: "home",
+    file: "screens/home/screen.yml",
+    data: {
+      name: "Home",
+      "preview-states": [{ id: "default" }, { id: "dialog-open" }],
+      materials: [{
+        id: "dialog",
+        type: "group",
+        children: [{ id: "title" }, { id: "save" }]
+      }]
+    }
+  };
+  const state = {
+    screens: [screen],
+    activeScreenIndex: 0,
+    activePreviewStateIds: new Map([["home", "dialog-open"]]),
+    activeInstancePaths: [[0, 0], [0, 1]],
+    activeInstancePath: [0, 1],
+    workflowScreenIndex: 0,
+    viewingWorkflow: true,
+    activeWorkflowPath: "screens/home/workflows/checkout.mmd",
+    viewingProject: false,
+    viewingTheme: false,
+    viewingSpec: false,
+    viewingMaterialFile: false
+  };
+  const rendered = [];
+  let selectedPaths;
+  const navigation = new EditorNavigation({
+    state,
+    services: {
+      renderScreen: async (...args) => rendered.push(args),
+      selectInstancesInPreview: (paths) => { selectedPaths = paths; },
+      showEditorMessage: (_title, message) => { throw new Error(message); }
+    }
+  });
+
+  assert.equal(
+    navigation.getCanvasSpecuxTarget(),
+    "screen/home/screen.yml?placement=dialog.title&placement=dialog.save&state=dialog-open"
+  );
+  await navigation.restoreUrlCanvasTarget({
+    canvasTarget:
+      "screen/home/screen.yml?placement=dialog.title&placement=dialog.save&state=dialog-open"
+  });
+
+  assert.deepEqual(rendered, [[0, {
+    preserveSpec: false,
+    preserveWorkflow: true,
+    previewStateSelected: true
+  }]]);
+  assert.deepEqual(selectedPaths, [[0, 0], [0, 1]]);
+  assert.deepEqual(state.activeInstancePaths, [[0, 0], [0, 1]]);
+});
+
+test("restores a linked node spec under its primary Workflow context", async () => {
+  const { EditorNavigation } = await import(
+    "../frontend/browser/EditorNavigation.mjs"
+  );
+  const screen = {
+    id: "home",
+    file: "screens/home/screen.yml",
+    data: { name: "Home", materials: [] }
+  };
+  const linked = [];
+  const navigation = new EditorNavigation({
+    state: {
+      screens: [screen],
+      activeScreenIndex: 0,
+      activePreviewStateIds: new Map(),
+      activeInstancePaths: [],
+      activeInstancePath: [],
+      workflowScreenIndex: 0,
+      viewingWorkflow: true,
+      activeWorkflowPath: "screens/home/workflows/checkout.mmd",
+      selectedWorkflowNodeId: "save",
+      workflowSources: new Map([
+        ["screens/home/workflows/checkout.mmd", "flowchart TD\\nsave"]
+      ]),
+      viewingProject: false,
+      viewingTheme: false,
+      viewingSpec: false,
+      viewingMaterialFile: false
+    },
+    services: {
+      getProjectFileAction: () => ({ kind: "spec" }),
+      showWorkflowNodeSpecPreview: (filePath, nodeId) => linked.push([filePath, nodeId]),
+      showEditorMessage: (_title, message) => { throw new Error(message); }
+    }
+  });
+
+  await navigation.restoreUrlLinkedDocument({
+    linkedFile: "screens/home/specs/workflow-checkout-save.md",
+    nodeId: "save"
+  });
+
+  assert.deepEqual(linked, [["screens/home/specs/workflow-checkout-save.md", "save"]]);
+  assert.deepEqual(navigation.getWorkspaceContext().dock.linked, [{
+    view: "spec",
+    file: "screens/home/specs/workflow-checkout-save.md",
+    nodeId: "save",
+    readOnly: false
+  }]);
+});
+
+test("restores a linked Workflow under its primary Spec without changing Spec mode", async () => {
+  const { EditorNavigation } = await import(
+    "../frontend/browser/EditorNavigation.mjs"
+  );
+  const screen = {
+    id: "home",
+    file: "screens/home/screen.yml",
+    data: { name: "Home", materials: [] }
+  };
+  const shown = [];
+  let navigation;
+  navigation = new EditorNavigation({
+    state: {
+      screens: [screen],
+      activeScreenIndex: 0,
+      activePreviewStateIds: new Map(),
+      activeInstancePaths: [],
+      activeInstancePath: [],
+      activeSpecPath: "screens/home/specs/screen.md",
+      activeSpecScreenFile: screen.file,
+      activeSpecOwner: "screen",
+      viewingWorkflow: false,
+      viewingSpec: true,
+      viewingProject: false,
+      viewingTheme: false,
+      viewingMaterialFile: false
+    },
+    services: {
+      getProjectFileAction: () => ({ kind: "workflow" }),
+      showLinkedWorkflowPreview: async (reference, specPath) => {
+        navigation.pushLinkedDock({
+          view: "workflow",
+          file: reference.workflowPath,
+          nodeId: reference.nodeId,
+          readOnly: true
+        });
+        shown.push([reference, specPath]);
+      },
+      showEditorMessage: (_title, message) => { throw new Error(message); }
+    }
+  });
+
+  await navigation.restoreUrlLinkedDocument({
+    linkedFile: "screens/home/workflows/checkout.mmd",
+    nodeId: "save"
+  });
+
+  assert.deepEqual(shown, [[{
+    workflowPath: "screens/home/workflows/checkout.mmd",
+    nodeId: "save"
+  }, "screens/home/specs/screen.md"]]);
+  assert.equal(navigation.currentSelection().view, "spec");
+  assert.equal(navigation.getWorkspaceContext().dock.active, "linked");
+});
+
+/** Checks that manual selection exits mode while reference navigation preserves it. */
+test("separates manual Screen selection from reference navigation", async () => {
+  const { EditorNavigation } = await import(
+    "../frontend/browser/EditorNavigation.mjs"
+  );
+  const screens = [
+    { id: "home", file: "screens/home/screen.yml", data: { name: "Home" } },
+    { id: "settings", file: "screens/settings/screen.yml", data: { name: "Settings" } }
+  ];
+  const state = {
+    screens,
+    activeScreenIndex: 0,
+    workflowScreenIndex: 0,
+    viewingWorkflow: true,
+    activeWorkflowPath: "screens/home/workflows/account.mmd",
+    viewingProject: false,
+    viewingTheme: false,
+    viewingSpec: false,
+    viewingMaterialFile: false,
+    activeInstancePath: []
+  };
+  const renderCalls = [];
+  const navigation = new EditorNavigation({
+    state,
+    services: {
+      getInstanceAtPath() { return null; },
+      async renderScreen(index, options) {
+        state.activeScreenIndex = index;
+        if (!options?.preserveWorkflow && !options?.preserveSpec) {
+          state.viewingWorkflow = false;
+          state.activeWorkflowPath = null;
+        }
+        renderCalls.push({ index, options });
+      }
+    }
+  });
+
+  await navigation.navigateToReferencedScreen(1, "workflow");
+  assert.equal(state.activeScreenIndex, 1);
+  assert.equal(state.workflowScreenIndex, 0);
+  assert.equal(state.viewingWorkflow, true);
+  assert.deepEqual(renderCalls[0], {
+    index: 1,
+    options: { preserveSpec: false, preserveWorkflow: true }
+  });
+
+  await navigation.selectScreenManually(state.activeScreenIndex);
+  assert.equal(state.activeScreenIndex, 1);
+  assert.equal(state.workflowScreenIndex, 1);
+  assert.equal(state.viewingWorkflow, false);
+  assert.deepEqual(renderCalls[1], {
+    index: 1,
+    options: { centerPreview: true }
+  });
+});
+
+/** Checks that linked dock views retain their parent document and canvas context. */
+test("pushes and pops linked dock documents without losing the parent context", async () => {
+  const { EditorNavigation } = await import(
+    "../frontend/browser/EditorNavigation.mjs"
+  );
+  const screens = [
+    { id: "home", file: "screens/home/screen.yml", data: { name: "Home" } },
+    { id: "settings", file: "screens/settings/screen.yml", data: { name: "Settings" } }
+  ];
+  const navigation = new EditorNavigation({
+    state: {
+      screens,
+      activeScreenIndex: 1,
+      activePreviewStateIds: new Map([["settings", "edit"]]),
+      activeInstancePaths: [["dialog", "save"]],
+      workflowScreenIndex: 0,
+      viewingWorkflow: false,
+      viewingProject: false,
+      viewingTheme: false,
+      viewingSpec: true,
+      viewingMaterialFile: false,
+      activeSpecPath: "project.spec.md",
+      activeSpecOwner: "project",
+      activeSpecScreenFile: null,
+      activeSpecInstancePath: []
+    },
+    services: {}
+  });
+  const parent = navigation.getWorkspaceContext();
+  const linked = navigation.pushLinkedDock({
+    view: "workflow",
+    file: "screens/home/workflows/account.mmd",
+    nodeId: "save",
+    readOnly: true
+  });
+  assert.deepEqual(linked.dock, {
+    primary: { view: "spec", file: "project.spec.md" },
+    linked: [{
+      view: "workflow",
+      file: "screens/home/workflows/account.mmd",
+      nodeId: "save",
+      readOnly: true
+    }],
+    active: "linked",
+    reopenable: null
+  });
+
+  assert.deepEqual(navigation.popLinkedDock(), parent);
+  assert.deepEqual(navigation.getWorkspaceContext(), parent);
+});
+
+/** Checks that Escape unwinds linked views before closing their primary document. */
+test("handles workspace Escape after local interactions and in dock order", async () => {
+  const { EditorNavigation } = await import(
+    "../frontend/browser/EditorNavigation.mjs"
+  );
+  const screen = { id: "home", file: "screens/home/screen.yml", data: { name: "Home" } };
+  const state = {
+    screens: [screen],
+    activeScreenIndex: 0,
+    activeInstancePath: [],
+    activeInstancePaths: [],
+    activePreviewStateIds: new Map(),
+    workflowScreenIndex: 0,
+    viewingWorkflow: true,
+    activeWorkflowPath: "screens/home/workflows/account.mmd",
+    viewingProject: false,
+    viewingTheme: false,
+    viewingSpec: false,
+    viewingMaterialFile: false
+  };
+  const navigation = new EditorNavigation({
+    state,
+    services: {
+      async renderScreen(index) {
+        state.activeScreenIndex = index;
+        state.viewingWorkflow = false;
+        state.activeWorkflowPath = null;
+      }
+    }
+  });
+  navigation.pushLinkedDock({ view: "spec", file: "screens/home/specs/element-save.md" });
+
+  assert.deepEqual(
+    await navigation.handleWorkspaceEscape({ localInteractionActive: true }),
+    { handled: false, reason: "local-interaction" }
+  );
+  assert.equal(navigation.getWorkspaceContext().dock.active, "linked");
+
+  assert.equal((await navigation.handleWorkspaceEscape()).action, "pop-linked");
+  assert.equal(navigation.getWorkspaceContext().dock.active, "primary");
+  assert.equal((await navigation.handleWorkspaceEscape()).action, "close-primary");
+  assert.equal(state.viewingWorkflow, false);
+  assert.equal(state.activeScreenIndex, 0);
+});
+
+/** Checks that closing and reopening a primary dock retains its canvas target. */
+test("closes and reopens the primary dock at its prior Screen and placement focus", async () => {
+  const { EditorNavigation } = await import(
+    "../frontend/browser/EditorNavigation.mjs"
+  );
+  const screens = [
+    { id: "home", file: "screens/home/screen.yml", data: { name: "Home" } },
+    { id: "settings", file: "screens/settings/screen.yml", data: { name: "Settings" } }
+  ];
+  const state = {
+    screens,
+    project: {},
+    activeScreenIndex: 1,
+    activePreviewStateIds: new Map([["settings", "edit"]]),
+    activeInstancePaths: [["dialog", "save"]],
+    activeInstancePath: ["dialog", "save"],
+    workflowScreenIndex: 0,
+    viewingWorkflow: true,
+    activeWorkflowPath: "screens/home/workflows/account.mmd",
+    workflowSources: new Map([["screens/home/workflows/account.mmd", "flowchart TD"]]),
+    viewingProject: false,
+    viewingTheme: false,
+    viewingSpec: false,
+    viewingMaterialFile: false,
+    activeSpecOwner: "instance",
+    activeSpecPath: null,
+    activeSpecScreenFile: null,
+    activeSpecInstancePath: [],
+    materialFiles: new Map(),
+    createdSpecDrafts: new Map(),
+    elementSpecOwners: new Map()
+  };
+  const renderCalls = [];
+  const navigation = new EditorNavigation({
+    state,
+    services: {
+      getInstanceAtPath() { return null; },
+      async renderScreen(index, options) {
+        state.activeScreenIndex = index;
+        if (!options?.preserveWorkflow && !options?.preserveSpec) {
+          state.viewingWorkflow = false;
+          state.activeWorkflowPath = null;
+        }
+        renderCalls.push({ index, options });
+      },
+      async renderWorkflowEditor(file, ownerIndex) {
+        state.viewingWorkflow = true;
+        state.activeWorkflowPath = file;
+        state.workflowScreenIndex = ownerIndex;
+      },
+      selectInstancesInPreview(paths) {
+        state.restoredPlacements = paths;
+      },
+      renderProjectOverview() {}
+    }
+  });
+  navigation.restoreSelection = async () => {
+    state.activeScreenIndex = 0;
+    state.viewingWorkflow = true;
+    state.activeWorkflowPath = "screens/home/workflows/account.mmd";
+    state.workflowScreenIndex = 0;
+  };
+
+  assert.equal(await navigation.closePrimaryDock(), true);
+  assert.equal(state.viewingWorkflow, false);
+  assert.equal(state.activeScreenIndex, 1);
+  assert.deepEqual(navigation.getWorkspaceContext().dock.reopenable, {
+    view: "workflow",
+    file: "screens/home/workflows/account.mmd"
+  });
+  assert.equal(await navigation.reopenPrimaryDock(), true);
+  assert.equal(state.viewingWorkflow, true);
+  assert.equal(state.workflowScreenIndex, 0);
+  assert.equal(state.activeScreenIndex, 1);
+  assert.equal(state.activePreviewStateIds.get("settings"), "edit");
+  assert.deepEqual(state.restoredPlacements, [["dialog", "save"]]);
+  assert.deepEqual(renderCalls.at(-1), {
+    index: 1,
+    options: {
+      preserveSpec: false,
+      preserveWorkflow: true,
+      previewStateSelected: true
+    }
+  });
+  assert.equal(navigation.getWorkspaceContext().dock.reopenable, null);
 });
 
 /** Checks that selection and preview state remain consistent through the interaction. */

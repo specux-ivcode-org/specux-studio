@@ -1,6 +1,8 @@
 name: Sign In
-description: A sign-in screen composed from reusable Surface, Avatar, Text Field, Checkbox, Divider, Label, and Button materials.
-note: Static preview only; fields are visual Materials and do not collect or submit credentials.
+description: A sign-in screen composed from reusable Surface, Avatar, Text
+  Field, Checkbox, Divider, Label, and Button materials.
+note: Static preview only; fields are visual Materials and do not collect or
+  submit credentials.
 layers:
   - id: base
     name: Base
@@ -103,7 +105,8 @@ materials:
     layer: base
     src: materials/label.stml
     attributes:
-      text: A clearer view of your money starts here. Move confidently toward the life you want.
+      text: A clearer view of your money starts here. Move confidently toward the life
+        you want.
       color: "#d1daf3"
       font-size: 14
       font-weight: 450
@@ -497,7 +500,8 @@ materials:
     layer: base
     src: materials/label.stml
     attributes:
-      text: By continuing, you agree to Northstar's Terms of Service and acknowledge our Privacy Policy.
+      text: By continuing, you agree to Northstar's Terms of Service and acknowledge
+        our Privacy Policy.
       color: "#909aac"
       font-size: 9
       font-weight: 450

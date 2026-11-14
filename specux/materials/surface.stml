@@ -20,5 +20,8 @@ attributes:
     type: string
     default: "var(--theme-card-shadow, 0 3px 12px rgba(32, 52, 89, 0.06))"
     overridable: true
+preview-size:
+  width: 190
+  height: 82
 ---
 <div class="material-visual" style="background:${attributes.background};border:${attributes.border};border-radius:${attributes.border-radius}px;box-shadow:${attributes.shadow}"></div>

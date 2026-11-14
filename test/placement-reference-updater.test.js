@@ -131,3 +131,45 @@ test("rewrites child and group references after ungrouping", () => {
     ].join("\n")
   );
 });
+
+/** Rewrites each repeated workflow placement reference independently. */
+test("rewrites repeated workflow placement targets after ungrouping", () => {
+  const previousPlacements = [{
+    id: "dialog",
+    type: "group",
+    children: [{ id: "save" }]
+  }, { id: "cancel" }];
+  const nextPlacements = [{ id: "save" }, { id: "cancel" }];
+  const source = 'click save href "specux://screen/home/screen.yml?placement=dialog.save&placement=dialog&state=dialog-open"';
+
+  assert.equal(
+    countScreenPlacementReferences(
+      source,
+      "workflow",
+      "home",
+      previousPlacements,
+      "save"
+    ),
+    1
+  );
+  assert.equal(
+    countScreenPlacementReferences(
+      source,
+      "workflow",
+      "home",
+      previousPlacements,
+      "dialog"
+    ),
+    1
+  );
+  assert.equal(
+    rewriteScreenPlacementReferences(
+      source,
+      "workflow",
+      "home",
+      previousPlacements,
+      nextPlacements
+    ),
+    'click save href "specux://screen/home/screen.yml?placement=save&state=dialog-open"'
+  );
+});

@@ -15,11 +15,23 @@ export class EditorEventController {
     // Connect the Screen preview and its alternate YAML view.
     this.bindScreenViewControls();
 
+    // Keep an explicit route back from Material authoring to the Screen workspace.
+    this.bindMaterialReturn();
+
+    // Keep contextual spec indicators available from the persistent toolbar.
+    this.bindSpecIndicators();
+
     // Connect Screen selection, including its keyboard and dismissal behavior.
     this.bindScreenSelector();
 
     // Connect browser navigation to editor selection restoration.
     this.bindBrowserHistory();
+
+    // Let local interactions consume Escape before workspace navigation does.
+    this.bindWorkspaceEscape();
+
+    // Delete selected placements only while the Screen workspace is active.
+    this.bindDeleteShortcut();
   }
 
   /** Binds project reload, Screen creation, and save controls. */
@@ -50,6 +62,10 @@ export class EditorEventController {
 
     // Save all pending project edits.
     services.byId("save-project").addEventListener("click", () => services.saveProjectChanges());
+
+    services.byId("theme-mode-exit").addEventListener("click", () =>
+      services.exitTheme().catch(services.showFatalError)
+    );
   }
 
   /** Binds controls that switch or open the Screen preview. */
@@ -69,6 +85,22 @@ export class EditorEventController {
     // Open the current Screen preview in a separate tab.
     services.byId("screen-preview-new-tab").addEventListener("click", services.openScreenPreview);
 
+  }
+
+  /** Binds the persistent toggle for contextual spec indicators. */
+  bindSpecIndicators() {
+    const { state, services } = this;
+    services.byId("spec-indicators-toggle").addEventListener("click", () =>
+      services.setSpecIndicatorsEnabled(!state.specIndicatorsEnabled)
+    );
+  }
+
+  /** Binds the Material workspace return action. */
+  bindMaterialReturn() {
+    this.services.byId("material-return-to-screen").addEventListener(
+      "click",
+      this.services.returnToScreen
+    );
   }
 
   /** Binds Screen selector activation, search, keyboard navigation, and dismissal. */
@@ -174,9 +206,8 @@ export class EditorEventController {
 
       // Prefer the saved editor selection and fall back to the current URL.
       const savedSelection = event.state?.specuxEditor?.selection;
-      const selection = savedSelection && typeof savedSelection === "object"
-        ? savedSelection
-        : services.selectionFromLocation();
+      const selection = services.selectionFromLocation() ||
+        (savedSelection && typeof savedSelection === "object" ? savedSelection : null);
       const wasHistoryUpdateSuppressed = state.historyUpdateSuppressed;
       state.historyUpdateSuppressed = true;
 
@@ -194,5 +225,59 @@ export class EditorEventController {
           if (!wasHistoryUpdateSuppressed) services.syncBrowserHistory(true);
         });
     });
+  }
+
+  /** Binds workspace Escape after dialogs, text fields, and local menus. */
+  bindWorkspaceEscape() {
+    const { services } = this;
+    services.document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (services.document.querySelector("dialog[open]")) return;
+
+      const activeElement = services.document.activeElement;
+      if (this.isTransientTextEditor(activeElement)) {
+        event.preventDefault();
+        activeElement.blur();
+        return;
+      }
+
+      if (services.handleLocalEscape()) {
+        event.preventDefault();
+        return;
+      }
+      if (!services.hasWorkspaceEscapeView()) return;
+      event.preventDefault();
+      services.handleWorkspaceEscape().catch(services.showFatalError);
+    });
+  }
+
+  /** Deletes selected placements from the active Screen with the Delete key. */
+  bindDeleteShortcut() {
+    const { services } = this;
+    services.document.addEventListener("keydown", (event) => {
+      if (event.key !== "Delete" || event.defaultPrevented ||
+          event.altKey || event.ctrlKey || event.metaKey ||
+          services.document.querySelector("dialog[open]") ||
+          this.isTransientTextEditor(services.document.activeElement) ||
+          this.isInteractiveDeleteTarget(event.target) ||
+          !services.canDeleteSelectedPlacements()) return;
+      event.preventDefault();
+      services.deleteSelectedPlacements().catch((error) =>
+        services.showEditorMessage("Could not delete placements", error.message || String(error))
+      );
+    });
+  }
+
+  /** Keeps focused controls and links from triggering the placement shortcut. */
+  isInteractiveDeleteTarget(target) {
+    return Boolean(target?.closest?.("a, button, input, select, textarea, [contenteditable=true]"));
+  }
+
+  /** Determines whether Escape should end a focused transient text edit first. */
+  isTransientTextEditor(target) {
+    if (target?.isContentEditable || target?.tagName === "TEXTAREA") return true;
+    if (target?.tagName !== "INPUT") return false;
+    return !["button", "checkbox", "color", "file", "hidden", "radio", "range", "reset", "submit"]
+      .includes(target.type);
   }
 }

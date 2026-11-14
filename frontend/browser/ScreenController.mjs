@@ -50,15 +50,20 @@ export class ScreenController {
       yamlSerializeVersion: 0,
       yamlTimer: null
     };
-    state.screens.push(screen);
-    state.project.screens.push({ id, file });
-    state.createdScreenFiles.add(file);
-    services.projectFileTree.expandPath(file);
-    services.markEdited(file);
-    services.markEdited("project.yml");
-    state.activeScreenIndex = state.screens.length - 1;
-    services.renderScreenSelector();
-    services.renderNavigation();
-    services.renderScreen(state.activeScreenIndex).catch(services.showFatalError);
+    services.beginEditTransaction?.();
+    try {
+      state.screens.push(screen);
+      state.project.screens.push({ id, file });
+      state.createdScreenFiles.add(file);
+      services.projectFileTree.expandPath(file);
+      services.markEdited(file);
+      services.markEdited("project.yml");
+      state.activeScreenIndex = state.screens.length - 1;
+      services.renderScreenSelector();
+      services.renderNavigation();
+      services.renderScreen(state.activeScreenIndex).catch(services.showFatalError);
+    } finally {
+      services.endEditTransaction?.();
+    }
   }
 }

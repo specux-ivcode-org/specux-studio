@@ -149,6 +149,10 @@ async function withServer(run) {
     path.join(rootDirectory, "browser", "MaterialDefaults.mjs"),
     "export function getMaterialDefaultSize() { return null; }\n"
   );
+  await fs.writeFile(
+    path.join(rootDirectory, "browser", "MaterialPreviewFrame.mjs"),
+    "export function getMaterialPreviewSize() { return null; }\n"
+  );
   await fs.writeFile(path.join(rootDirectory, "specux", "project.yml"), "name: Example\n");
   await fs.writeFile(path.join(rootDirectory, "specux", "screen.yml"), "name: Before\n");
   await fs.writeFile(
@@ -224,6 +228,7 @@ test("serves the editor root and the example project", async () => {
     const screenMaterialControllerModule = await fetch(`${baseUrl}/browser/ScreenMaterialController.mjs`);
     const screenMaterialRendererModule = await fetch(`${baseUrl}/browser/ScreenMaterialRenderer.mjs`);
     const materialDefaultsModule = await fetch(`${baseUrl}/browser/MaterialDefaults.mjs`);
+    const materialPreviewFrameModule = await fetch(`${baseUrl}/browser/MaterialPreviewFrame.mjs`);
     const project = await fetch(`${baseUrl}/specux/project.yml`);
     const encodedResource = await fetch(`${baseUrl}/specux/materials/preview%20image.png`);
     const material = await fetch(`${baseUrl}/specux/materials/demo.stml`);
@@ -316,6 +321,7 @@ test("serves the editor root and the example project", async () => {
     assert.equal(screenMaterialControllerModule.status, 200);
     assert.equal(screenMaterialRendererModule.status, 200);
     assert.equal(materialDefaultsModule.status, 200);
+    assert.equal(materialPreviewFrameModule.status, 200);
     assert.equal(project.status, 200);
     assert.deepEqual(YAML.parse(await project.text()), { name: "Example" });
     assert.equal(encodedResource.status, 200);
@@ -343,6 +349,53 @@ test("lists project files without exposing hidden paths", async () => {
       "screen.yml",
       "screens/home/screen.yml"
     ]);
+  });
+});
+
+test("reports project file hashes and refuses saves based on stale versions", async () => {
+  await withServer(async ({ baseUrl, rootDirectory }) => {
+    const listing = await fetch(`${baseUrl}/api/files`);
+    const { files, hashes } = await listing.json();
+    assert.ok(files.includes("screen.yml"));
+    assert.match(hashes["screen.yml"], /^[a-f\d]{64}$/i);
+
+    const response = await fetch(`${baseUrl}/api/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files: [{
+          path: "screen.yml",
+          expectedHash: "0".repeat(64),
+          data: { name: "Local edit" }
+        }]
+      })
+    });
+    const result = await response.json();
+
+    assert.equal(response.status, 409);
+    assert.equal(result.conflicts[0].path, "screen.yml");
+    assert.equal(result.conflicts[0].diskHash, hashes["screen.yml"]);
+    assert.equal(typeof result.conflicts[0].diskContent, "string");
+    assert.equal(
+      YAML.parse(await fs.readFile(path.join(rootDirectory, "specux", "screen.yml"), "utf8")).name,
+      "Before"
+    );
+
+    const saved = await fetch(`${baseUrl}/api/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files: [{
+          path: "screen.yml",
+          expectedHash: hashes["screen.yml"],
+          data: { name: "Updated" }
+        }]
+      })
+    });
+    const savedResult = await saved.json();
+    assert.equal(saved.status, 200);
+    assert.deepEqual(savedResult.saved, ["screen.yml"]);
+    assert.match(savedResult.hashes["screen.yml"], /^[a-f\d]{64}$/i);
   });
 });
 
@@ -1086,6 +1139,23 @@ test("creates and saves project, Screen, and Element behavior specs", async () =
       elementSpecContent
     );
 
+    const nodeSpecPath = "screens/sign-in/specs/workflow-sign-in-saveItem.md";
+    const nodeSpecContent =
+      `[Workflow node](specux://screen/sign-in/workflows/sign-in.mmd?node=saveItem)\n\n${content}`;
+    const nodeSpecCreate = await fetch(`${baseUrl}/api/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files: [{ path: nodeSpecPath, create: true, content: nodeSpecContent }]
+      })
+    });
+    assert.equal(nodeSpecCreate.status, 200);
+    assert.deepEqual(await nodeSpecCreate.json(), { saved: [nodeSpecPath] });
+    assert.equal(
+      await fs.readFile(path.join(rootDirectory, "specux", ...nodeSpecPath.split("/")), "utf8"),
+      nodeSpecContent
+    );
+
     const invalidElementHeader = await fetch(`${baseUrl}/api/save`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1206,6 +1276,89 @@ test("creates and serves Screen-scoped Mermaid workflow files", async () => {
     });
     assert.equal(invalidPath.status, 400);
     await assert.rejects(fs.access(path.join(rootDirectory, "specux", "screens", "home", "add-item.mmd")));
+  });
+});
+
+test("deletes only an existing Screen-scoped Mermaid workflow", async () => {
+  await withServer(async ({ baseUrl, rootDirectory }) => {
+    const workflowPath = "screens/home/workflows/temporary.mmd";
+    const create = await fetch(`${baseUrl}/api/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files: [{ path: workflowPath, create: true, content: "flowchart TD\n  start[Start]\n" }]
+      })
+    });
+    assert.equal(create.status, 200, await create.clone().text());
+
+    const deleteUrl = new URL("/api/workflow", baseUrl);
+    deleteUrl.searchParams.set("path", workflowPath);
+    const deleted = await fetch(deleteUrl, { method: "DELETE" });
+    assert.equal(deleted.status, 200, await deleted.clone().text());
+    assert.deepEqual(await deleted.json(), { deleted: workflowPath });
+    await assert.rejects(fs.access(path.join(rootDirectory, "specux", ...workflowPath.split("/"))));
+
+    const invalidUrl = new URL("/api/workflow", baseUrl);
+    invalidUrl.searchParams.set("path", "screens/home/screen.yml");
+    const invalid = await fetch(invalidUrl, { method: "DELETE" });
+    assert.equal(invalid.status, 400);
+    assert.match((await invalid.json()).error, /Only Screen workflow/);
+
+    const missingUrl = new URL("/api/workflow", baseUrl);
+    missingUrl.searchParams.set("path", workflowPath);
+    const missing = await fetch(missingUrl, { method: "DELETE" });
+    assert.equal(missing.status, 404);
+  });
+});
+
+test("saves guarded file deletions through the project autosave batch", async () => {
+  await withServer(async ({ baseUrl, rootDirectory }) => {
+    const workflowPath = "screens/home/workflows/undoable.mmd";
+    const create = await fetch(`${baseUrl}/api/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files: [{
+          path: workflowPath,
+          create: true,
+          expectedHash: null,
+          content: "flowchart TD\n  start[Start]\n"
+        }]
+      })
+    });
+    const created = await create.json();
+    assert.equal(create.status, 200);
+    const fileHash = created.hashes[workflowPath];
+    assert.match(fileHash, /^[a-f\d]{64}$/i);
+
+    await fs.writeFile(
+      path.join(rootDirectory, "specux", ...workflowPath.split("/")),
+      "flowchart TD\n  changed[External]\n"
+    );
+    const staleDelete = await fetch(`${baseUrl}/api/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files: [],
+        deletes: [{ path: workflowPath, expectedHash: fileHash }]
+      })
+    });
+    assert.equal(staleDelete.status, 409);
+    assert.equal((await staleDelete.json()).conflicts[0].path, workflowPath);
+
+    const currentHash = await (await fetch(`${baseUrl}/api/files`)).json()
+      .then(({ hashes }) => hashes[workflowPath]);
+    const deleted = await fetch(`${baseUrl}/api/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files: [],
+        deletes: [{ path: workflowPath, expectedHash: currentHash }]
+      })
+    });
+    assert.equal(deleted.status, 200, await deleted.clone().text());
+    assert.deepEqual(await deleted.json(), { saved: [], deleted: [workflowPath], hashes: {} });
+    await assert.rejects(fs.access(path.join(rootDirectory, "specux", ...workflowPath.split("/"))));
   });
 });
 

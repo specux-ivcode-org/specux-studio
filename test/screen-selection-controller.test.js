@@ -255,3 +255,44 @@ test("workflow preview disables selection tools and context-menu interactions", 
   assert.deepEqual(selected, []);
   assert.deepEqual(contextMenus, []);
 });
+
+/** Double-click shortcuts open the owning placement or Screen spec only in Screen mode. */
+test("double-click opens placement and Screen specs without interrupting other views", async () => {
+  const { ScreenSelectionController } =
+    await import("../frontend/browser/ScreenSelectionController.mjs");
+  const placementFrame = {
+    classList: { contains: (name) => name === "material-frame" },
+    dataset: { instancePath: "[2,1]" }
+  };
+  const calls = [];
+  const controller = new ScreenSelectionController({
+    state: {},
+    services: {
+      document: { elementsFromPoint: () => [] },
+      openPlacementSpec: async (path) => calls.push(["placement", path]),
+      openScreenSpec: async () => calls.push(["screen"])
+    }
+  });
+  controller.screenId = "home";
+  const createEvent = (path) => ({
+    button: 0,
+    detail: 2,
+    clientX: 10,
+    clientY: 10,
+    target: { closest: () => null },
+    composedPath: () => path,
+    preventDefault() {},
+    stopPropagation() {}
+  });
+
+  controller.onDoubleClick(createEvent([placementFrame]));
+  controller.onDoubleClick(createEvent([]));
+  assert.deepEqual(calls, [
+    ["placement", [2, 1]],
+    ["screen"]
+  ]);
+
+  controller.state.viewingWorkflow = true;
+  controller.onDoubleClick(createEvent([placementFrame]));
+  assert.equal(calls.length, 2);
+});

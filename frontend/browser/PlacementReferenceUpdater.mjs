@@ -98,12 +98,12 @@ function getScreenLinkRanges(source, sourceType) {
 /** Checks whether one URL targets the requested Screen placement. */
 function isReferenceToPlacement(href, screenId, placements, placementId) {
   const url = getTargetScreenUrl(href, screenId);
-  if (!url || url.searchParams.getAll("placement").length !== 1) return false;
-  const referenceId = url.searchParams.get("placement");
-  if (!referenceId) return false;
-  const path = getScreenPlacementPathById(placements, referenceId);
-  const target = path && getScreenPlacementAtPath(placements, path);
-  return target?.id === placementId;
+  if (!url) return false;
+  return url.searchParams.getAll("placement").some((referenceId) => {
+    const path = getScreenPlacementPathById(placements, referenceId);
+    const target = path && getScreenPlacementAtPath(placements, path);
+    return target?.id === placementId;
+  });
 }
 
 /** Checks whether a Markdown fence closes the active code block. */
@@ -117,21 +117,29 @@ function isClosingFence(line, fence, codeFence) {
 /** Rewrites one Screen URL to follow its stable placement ID after a tree change. */
 function rewriteScreenPlacementHref(href, screenId, previousPlacements, nextPlacements) {
   const url = getTargetScreenUrl(href, screenId);
-  if (!url || url.searchParams.getAll("placement").length !== 1) return href;
-  const oldPlacementId = url.searchParams.get("placement");
-  if (!oldPlacementId) return href;
-  const newPlacementId = getNextPlacementId(
-    previousPlacements,
-    nextPlacements,
-    oldPlacementId
-  );
-  if (newPlacementId === undefined) return href;
-  if (newPlacementId === null) {
-    url.searchParams.delete("placement");
-  } else {
-    if (newPlacementId === oldPlacementId) return href;
-    url.searchParams.set("placement", newPlacementId);
+  if (!url) return href;
+  const entries = [...url.searchParams.entries()];
+  let changed = false;
+  const rewrittenEntries = [];
+  for (const [key, value] of entries) {
+    if (key !== "placement") {
+      rewrittenEntries.push([key, value]);
+      continue;
+    }
+    const newPlacementId = getNextPlacementId(
+      previousPlacements,
+      nextPlacements,
+      value
+    );
+    if (newPlacementId === undefined || newPlacementId === value) {
+      rewrittenEntries.push([key, value]);
+      continue;
+    }
+    changed = true;
+    if (newPlacementId !== null) rewrittenEntries.push([key, newPlacementId]);
   }
+  if (!changed) return href;
+  url.search = new URLSearchParams(rewrittenEntries).toString();
   return url.toString();
 }
 

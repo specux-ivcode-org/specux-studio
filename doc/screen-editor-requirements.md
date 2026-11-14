@@ -33,7 +33,7 @@ When a Screen-editor requirement is added, changed, or removed, update this docu
 
 | ID | Requirement |
 |---|---|
-| SE-020 | The Screen Details inspector has Properties and Layers tabs. Properties contains the selected Screen, Screen State, or placement's editable details; Layers contains the layer and placement lists. |
+| SE-020 | The Screen Details inspector has Properties, States, Layers, and Specs & Workflows tabs. Properties contains the selected Screen, Screen State, or placement's editable details; States exposes Screen State controls; Layers contains the layer and placement lists; Specs & Workflows exposes contextual Screen specs and Screen-owned workflows. |
 | SE-021 | Every Screen has at least one layer, and every placement must explicitly reference an existing layer. Reject missing or invalid layer assignments in Screen YAML and project validation; do not silently assign a layer during parsing or normalization. |
 | SE-022 | New Screens start with a `Base` layer. Base is an ordinary layer: it can be renamed, reordered, hidden, and deleted under the same rules as other layers. |
 | SE-023 | Users can create and rename layers. Layer order is topmost to bottommost, and placements in a higher layer render above placements in a lower layer. Layer visibility controls whether its placements are rendered. |
@@ -41,6 +41,7 @@ When a Screen-editor requirement is added, changed, or removed, update this docu
 | SE-025 | Deleting a layer deletes its placements. Do not move its placements to another layer. The last remaining layer cannot be deleted. |
 | SE-026 | Present one row per layer in a Layers box and the selected layer's placements in a separate Placements box below it. The Layers box occupies 30% of the available inspector height; Placements uses the remainder. These proportions do not change with item count, and each list scrolls internally. |
 | SE-027 | Layer rows and placement rows support reordering by drag-and-drop. Do not use a per-placement layer dropdown; dropping a placement on a layer row is the layer-assignment interaction. Keep the two-list organization compact and omit redundant read-only labels or helper text. |
+| SE-090 | Provide previous/next controls in the Placements header to cycle through selected placements assigned to the selected layer, wrapping at either end and scrolling the list to each placement without changing selection. Disable the controls when no placements on the selected layer are selected. |
 
 ## Grouping
 
@@ -113,7 +114,7 @@ When a Screen-editor requirement is added, changed, or removed, update this docu
 
 | ID | Requirement |
 |---|---|
-| SE-050 | Persist Screen edits through the editor's explicit save flow and the backend's project-file validation. Follow the general save, error-reporting, and data-preservation requirements in [Editor Requirements](editor.md). |
+| SE-050 | Persist valid Screen edits automatically through version-aware autosave and backend project-file validation. Keep pending edits on failure and provide an explicit Save action for an immediate save. Follow the general persistence, error-reporting, and data-preservation requirements in [Editor Requirements](editor.md). |
 | SE-051 | Validate placement dimensions and transforms, referenced Materials, layer definitions, and placement-to-layer references before accepting or saving Screen data. Do not accept a placement without a valid layer. |
 | SE-082 | Reject the CSS `z-index` property in reusable Material styles; Screen layers and placement order exclusively control stacking. |
 
@@ -129,6 +130,14 @@ When a Screen-editor requirement is added, changed, or removed, update this docu
 |---|---|
 | SE-085 | Let users independently toggle the project-structure and Properties sidebars between Show and Hover to show using persistent icon-only controls at opposite ends of the top bar: project structure at the far left and Properties at the far right. Each icon communicates its panel side and distinguishes Show from Hover to show; accessible names and tooltips identify the panel, current mode, and next mode. Hover to show provides an accessible thin edge trigger; after one second of pointer hover it opens the sidebar as an overlay. Close it one second after the pointer leaves the trigger, panel, and resize handle, canceling the pending close if the pointer re-enters any of them, including after resizing. Close immediately when the user presses or selects anything outside them, regardless of focus remaining in the sidebar or pointer capture. Keyboard focus and activation must also allow access to the panel. Keep the existing resize handle usable while the overlay is open: resize project structure from its inner/right edge and Properties from its inner/left edge, preserving the saved width without dismissing the overlay during a drag. Keep the main view underneath the overlay, Show as the default, and preserve each sidebar's resize width and the main view's usable responsive layout. Migrate a previously persisted Hide mode to Hover to show so the sidebar always retains an edge trigger. |
 | SE-086 | The Screen preview in the behavior spec editor uses the shared Screen canvas presentation, including zoom, grid, rulers, and a clipped viewport without native scrollbars. Keep the referenced Screen read-only: pointer dragging pans the canvas, and placements cannot be selected, transformed, or opened in context menus. |
+| SE-087 | Keep the Screen canvas as the primary workspace in Screen, Workflow, Spec, and Theme modes whenever a Screen context exists. Preserve the Project Overview and its project-spec action. Material authoring is the only mode that replaces the Screen workspace. |
+| SE-088 | Keep the Material selector/project-file view on the left and contextual Details on the right, with a resizable bottom dock for Workflow and Spec views. The Screen remains visible above the dock. On narrow viewports, side panels overlay the workspace rather than consuming horizontal canvas space. |
+
+## Project edit history
+
+| ID | Requirement |
+|---|---|
+| SE-089 | Provide one session-only project edit history across Screen, Material, Workflow, Spec, and Theme artifacts. Undo and redo persist through the normal autosave path. Coalesce same-editor typing until a pause, focus change, or different action; record an artifact-changing gesture as one step; and include coupled creation, deletion, placement-tree, and reference changes in one transaction. Navigation, selection, pan/zoom, and panel resizing are not undoable. |
 
 ## Related requirements and specifications
 

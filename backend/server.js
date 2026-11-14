@@ -70,7 +70,8 @@ class EditorServer {
       ["/api/yaml/stringify", (request, response) => this.#stringifyYaml(request, response)]
     ]);
     this.#deleteRoutes = new Map([
-      ["/api/annotations", (request, response, url) => this.#clearAnnotations(response, url)]
+      ["/api/annotations", (request, response, url) => this.#clearAnnotations(response, url)],
+      ["/api/workflow", (_request, response, url) => this.#deleteWorkflow(response, url)]
     ]);
   }
 
@@ -101,7 +102,9 @@ class EditorServer {
 
   /** Returns the visible project file list. */
   async #getFiles(response) {
-    sendJson(response, 200, { files: await this.projectFiles.listFiles() });
+    const files = await this.projectFiles.listFiles();
+    const hashes = await this.projectFiles.listFileHashes(files);
+    sendJson(response, 200, { files, hashes });
   }
 
   /** Returns the editor's current state snapshot. */
@@ -209,6 +212,16 @@ class EditorServer {
     sendJson(response, 200, await this.session.clearAnnotations(screenId));
   }
 
+  /** Deletes one Screen-owned Mermaid workflow. */
+  async #deleteWorkflow(response, requestUrl) {
+    const paths = requestUrl.searchParams.getAll("path");
+    if (paths.length !== 1 || !paths[0]) {
+      throw requestError("Workflow deletion requires exactly one project-relative path.");
+    }
+    const deleted = await this.projectFiles.deleteWorkflow(paths[0]);
+    sendJson(response, 200, { deleted });
+  }
+
   /** Publishes a project-updated event after validating a supplied origin. */
   #publishUpdate(request, response) {
     validateUpdateOrigin(request.headers.origin);
@@ -224,7 +237,7 @@ class EditorServer {
     if (!body || Array.isArray(body) || typeof body !== "object") {
       throw requestError("Save request must be a JSON object.");
     }
-    const result = await this.projectFiles.saveFiles(body.files);
+    const result = await this.projectFiles.saveFiles(body.files, body.deletes || []);
     sendJson(response, 200, result);
   }
 
@@ -281,7 +294,10 @@ class EditorServer {
       const requestUrl = new URL(request.url, "http://localhost");
       await this.#dispatchRequest(request, response, requestUrl);
     } catch (error) {
-      sendJson(response, error.statusCode || 500, { error: error.message || "Request failed." });
+      sendJson(response, error.statusCode || 500, {
+        error: error.message || "Request failed.",
+        ...(error.conflicts ? { conflicts: error.conflicts } : {})
+      });
     }
   }
 }

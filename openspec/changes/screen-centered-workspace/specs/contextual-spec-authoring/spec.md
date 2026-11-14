@@ -16,7 +16,7 @@ In Screen mode, double-clicking a placement SHALL open its Element spec, creatin
 - **THEN** it has the same ownership and open/create outcome as the double-click shortcut
 
 ### Requirement: Node-specific specs
-A workflow node's contextual spec SHALL belong to that workflow node, separately from its target Screen or placement spec. Double-clicking a node in Workflow mode SHALL open its node-specific spec, creating it if absent, without entering Spec mode.
+A workflow node SHALL have at most one contextual spec at `screens/<screen-id>/specs/workflow-<workflow-id>-<node-id>.md`. It SHALL belong to that workflow node, separately from its target Screen or placement spec, and associate using the existing Markdown workflow-node link shape. Double-clicking a node in Workflow mode SHALL open its node-specific spec, creating it if absent, without entering Spec mode. Renaming a node SHALL rename its spec file and update its association. Deleting a node SHALL preserve its spec as unlinked documentation instead of deleting it.
 
 #### Scenario: Create node spec
 - **WHEN** the user double-clicks a workflow node that targets a placement already having an Element spec
@@ -26,6 +26,16 @@ A workflow node's contextual spec SHALL belong to that workflow node, separately
 #### Scenario: Reopen node spec
 - **WHEN** the user repeats the action on a node with an existing contextual spec
 - **THEN** that existing spec is opened without creating a duplicate
+
+#### Scenario: Rename node
+- **WHEN** a node with an associated spec is renamed
+- **THEN** its spec file name and workflow-node association are updated to the new node ID
+- **AND** the spec content is preserved
+
+#### Scenario: Delete node
+- **WHEN** a node with an associated spec is deleted
+- **THEN** the spec file is preserved and reported as unlinked
+- **AND** the file is not silently deleted
 
 ### Requirement: Spec links preserve underlying mode
 Spec-mode link navigation SHALL traverse Screen and workflow links in document order. Screen/placement references SHALL center their canvas targets. Workflow references SHALL open a linked graph view in the bottom dock without entering Workflow mode or activating Workflow-mode node-navigation behavior. A spec opened from Workflow mode SHALL remain a linked view under Workflow mode, not become the primary Spec-mode editor.
@@ -38,7 +48,7 @@ Spec-mode link navigation SHALL traverse Screen and workflow links in document o
 - **WHEN** the user follows a workflow reference from Spec mode
 - **THEN** the graph opens in the bottom dock under Spec mode
 - **AND** closing it restores the Spec view
-- **AND** Workflow-mode node-to-canvas navigation is not activated
+- **AND** the graph is read-only, with node-to-canvas navigation and node-spec creation disabled
 
 #### Scenario: View spec from workflow
 - **WHEN** a node-specific spec opens from Workflow mode
@@ -62,3 +72,7 @@ Project-level specs SHALL be creatable from the Project overview. Screen specs S
 #### Scenario: Edit reusable Material
 - **WHEN** a Material is shared by placements on several Screens
 - **THEN** those placements' behavior specs remain placement-owned rather than becoming a shared Material spec
+
+#### Scenario: Open project spec without Screen
+- **WHEN** the user opens a project-level spec from the Project overview with no Screen selected
+- **THEN** the project spec opens independently of Screen selection

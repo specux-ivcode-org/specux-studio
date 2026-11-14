@@ -18,7 +18,10 @@ export class ThemeEditor {
     this.previewPointerLeaveHandler = () => this.hideRadiusCursor();
     this.outsidePointerHandler = (event) => this.closeColorPopupOutsidePreview(event);
     this.escapeHandler = (event) => {
-      if (event.key === "Escape") this.closeColorPopup();
+      if (event.key === "Escape" && this.colorPopup) {
+        event.preventDefault();
+        this.closeColorPopup();
+      }
     };
     this.previewPointerBound = false;
   }
@@ -538,6 +541,11 @@ export class ThemeEditor {
   closeColorPopup() {
     this.colorPopup?.remove();
     this.colorPopup = null;
+  }
+
+  /** Reports whether a color-editing popup should consume workspace Escape. */
+  hasOpenColorPopup() {
+    return Boolean(this.colorPopup);
   }
 
   /** Updates the radius cursor to reflect the latest editor state. */

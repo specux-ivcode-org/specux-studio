@@ -908,6 +908,47 @@ test("treats Base as an ordinary layer and deletes layers with placements", asyn
   assert.equal(calls.rendered, 11);
 });
 
+test("deletes selected placements together and prunes groups emptied by the removal", async () => {
+  const { ScreenMaterialController } = await import("../frontend/browser/ScreenMaterialController.mjs");
+  const screen = {
+    file: "screens/home/screen.yml",
+    data: {
+      materials: [
+        {
+          id: "group",
+          type: "group",
+          children: [{ id: "first" }, { id: "second" }]
+        },
+        { id: "remove" },
+        { id: "keep" }
+      ]
+    }
+  };
+  const state = { screens: [screen], activeScreenIndex: 0 };
+  const calls = { begun: 0, ended: 0, edited: 0, rendered: 0, removedIds: [], selections: [] };
+  const controller = new ScreenMaterialController({
+    state,
+    services: {
+      beginEditTransaction() { calls.begun += 1; },
+      endEditTransaction() { calls.ended += 1; },
+      removePlacementStateOverrides(_screen, ids) { calls.removedIds = ids; },
+      selectInstance(path) { calls.selections.push(path); },
+      markEdited() { calls.edited += 1; },
+      async renderScreen() { calls.rendered += 1; }
+    }
+  });
+
+  await controller.deleteMany([[0, 0], [0, 1], [1]]);
+
+  assert.deepEqual(screen.data.materials, [{ id: "keep" }]);
+  assert.deepEqual(new Set(calls.removedIds), new Set(["group", "first", "second", "remove"]));
+  assert.deepEqual(calls.selections, [[]]);
+  assert.equal(calls.begun, 1);
+  assert.equal(calls.ended, 1);
+  assert.equal(calls.edited, 1);
+  assert.equal(calls.rendered, 1);
+});
+
 /** Deleting a layer removes its placements and leaves selection paths valid for survivors. */
 test("deleting a layer removes its placements and keeps surviving selection valid", async () => {
   const { ScreenMaterialController } = await import("../frontend/browser/ScreenMaterialController.mjs");
@@ -1103,6 +1144,7 @@ test("shows one-line layers above placements for the selected layer", async () =
       addEventListener(type, callback) { listeners.set(type, callback); },
       setAttribute(name, value) { attributes.set(name, value); },
       getBoundingClientRect() { return { top: 0, height: 20 }; },
+      scrollIntoView(options) { this.scrollOptions = options; },
       closest() { return null; }
     };
   }
@@ -1122,7 +1164,8 @@ test("shows one-line layers above placements for the selected layer", async () =
     state: {
       screens: [{ file: "screens/home/screen.yml", data: screen }],
       activeScreenIndex: 0,
-      activeInstancePath: []
+      activeInstancePath: [2],
+      activeInstancePaths: [[1], [2]]
     },
     services: {
       element,
@@ -1154,6 +1197,8 @@ test("shows one-line layers above placements for the selected layer", async () =
   const [layerBox, placementBox] = panel.children;
   const layerList = layerBox.children[1];
   const placementList = placementBox.children[2];
+  const [previousSelectedPlacement, nextSelectedPlacement] =
+    placementBox.children[0].children[1].children;
   assert.equal(layerList.children.length, 2);
   assert.equal(layerList.children[1].attributes.get("aria-current"), "true");
   assert.ok(layerList.children[1].children.some((child) =>
@@ -1161,6 +1206,20 @@ test("shows one-line layers above placements for the selected layer", async () =
   ));
   assert.equal(placementList.children[0].dataset.materialIndex, "1");
   assert.equal(placementList.children[0].children.length, 5);
+  assert.equal(previousSelectedPlacement.disabled, false);
+  assert.equal(nextSelectedPlacement.disabled, false);
+  assert.equal(previousSelectedPlacement.attributes.get("aria-label"), "Previous selected placement");
+  assert.equal(nextSelectedPlacement.attributes.get("aria-label"), "Next selected placement");
+  nextSelectedPlacement.listeners.get("click")();
+  assert.deepEqual(placementList.children[0].scrollOptions, { block: "nearest" });
+  nextSelectedPlacement.listeners.get("click")();
+  assert.deepEqual(placementList.children[1].scrollOptions, { block: "nearest" });
+  nextSelectedPlacement.listeners.get("click")();
+  assert.deepEqual(placementList.children[0].scrollOptions, { block: "nearest" });
+  previousSelectedPlacement.listeners.get("click")();
+  assert.deepEqual(placementList.children[1].scrollOptions, { block: "nearest" });
+  assert.deepEqual(renderer.state.activeInstancePath, [2]);
+  assert.deepEqual(renderer.state.activeInstancePaths, [[1], [2]]);
   const footerVisibility = placementList.children[1].children
     .find((child) => child.className.startsWith("placement-visibility-toggle"));
   assert.equal(footerVisibility.textContent, "Visible");
@@ -1230,6 +1289,8 @@ test("shows one-line layers above placements for the selected layer", async () =
   layerList.children[0].listeners.get("click")({ target: layerList.children[0] });
   assert.equal(layerList.children[0].attributes.get("aria-current"), "true");
   assert.equal(placementList.children[0].dataset.materialIndex, "0");
+  assert.equal(previousSelectedPlacement.disabled, true);
+  assert.equal(nextSelectedPlacement.disabled, true);
 
   screen.layers = [{ id: "base", name: "Base" }];
   const singleLayerPanel = element("div");
@@ -1249,10 +1310,115 @@ test("shows one-line layers above placements for the selected layer", async () =
   namedStateVisibility.listeners.get("click")();
   assert.equal(visibilityCalls[1][3], "dialog");
   assert.equal(singleLayerDelete.title, "At least one layer must remain");
+
+  activeStateId = "default";
+  screen.materials = [{
+    id: "group",
+    type: "group",
+    layer: "base",
+    children: [{ id: "nested-placement" }]
+  }];
+  renderer.state.activeInstancePath = [0, 0];
+  renderer.state.activeInstancePaths = [[0, 0]];
+  const groupedPanel = element("div");
+  renderer.renderLayersDetails(groupedPanel, screen);
+  const groupedPlacementBox = groupedPanel.children[1];
+  const groupedPlacementList = groupedPlacementBox.children[2];
+  const nextGroupedPlacement = groupedPlacementBox.children[0].children[1].children[1];
+  nextGroupedPlacement.listeners.get("click")();
+  assert.equal(
+    groupedPlacementList.children[0].children.find((child) =>
+      child.className === "placement-expand-button"
+    ).attributes.get("aria-expanded"),
+    "true"
+  );
+  assert.deepEqual(groupedPlacementList.children[1].scrollOptions, { block: "nearest" });
 });
 
-/** Inspector fields combine Screen defaults with state overrides; resetting one property preserves sibling overrides. */
-test("combines Screen and Screen State properties and resets one state change", async () => {
+/** Rebuilding the inspector preserves its independent layer and placement scroll positions. */
+test("preserves placement-list scroll when rerendering the inspector", async () => {
+  const { InspectorRenderer } = await import("../frontend/browser/InspectorRenderer.mjs");
+
+  /** Creates a lightweight DOM element with recursive selector support. */
+  function element(tagName, className = "", textContent = "") {
+    const node = {
+      tagName,
+      className,
+      id: "",
+      textContent,
+      children: [],
+      scrollTop: 0,
+      classList: { toggle() {} },
+      append(...children) {
+        this.children.push(...children);
+        for (const child of children) child.parentElement = this;
+      },
+      replaceChildren(...children) {
+        this.children = children;
+        for (const child of children) child.parentElement = this;
+      },
+      querySelector(selector) {
+        const matches = (candidate) => selector.startsWith("#")
+          ? candidate.id === selector.slice(1)
+          : candidate.className.split(/\s+/).includes(selector.slice(1));
+        const visit = (candidate) => {
+          for (const child of candidate.children) {
+            if (matches(child)) return child;
+            const nested = visit(child);
+            if (nested) return nested;
+          }
+          return null;
+        };
+        return visit(this);
+      }
+    };
+    return node;
+  }
+  const panel = element("div", "inspector-content");
+  const inspector = element("aside", "inspector");
+  panel.parentElement = inspector;
+  const renderer = new InspectorRenderer({
+    state: {
+      viewingProject: false,
+      viewingTheme: false,
+      viewingSpec: false,
+      viewingMaterialFile: false,
+      viewingWorkflow: false,
+      screens: [{ data: { layers: [], materials: [] } }],
+      activeScreenIndex: 0,
+      activeInstancePath: []
+    },
+    services: {
+      byId: () => panel,
+      element,
+      getActivePreviewStateId: () => "default"
+    }
+  });
+  renderer.renderScreenEditorDetails = (target) => {
+    const details = element("section", "screen-details-panel");
+    details.id = "screen-details-panel";
+    details.append(
+      element("div", "screen-layer-list"),
+      element("div", "screen-placement-list")
+    );
+    target.append(details);
+  };
+
+  renderer.render();
+  inspector.scrollTop = 18;
+  panel.querySelector("#screen-details-panel").scrollTop = 12;
+  panel.querySelector(".screen-layer-list").scrollTop = 86;
+  panel.querySelector(".screen-placement-list").scrollTop = 314;
+  renderer.render();
+
+  assert.equal(inspector.scrollTop, 18);
+  assert.equal(panel.querySelector("#screen-details-panel").scrollTop, 12);
+  assert.equal(panel.querySelector(".screen-layer-list").scrollTop, 86);
+  assert.equal(panel.querySelector(".screen-placement-list").scrollTop, 314);
+});
+
+/** Properties and States stay distinct; resetting one state change preserves sibling overrides. */
+test("separates Screen properties from state controls and resets one state change", async () => {
   const { InspectorRenderer } = await import("../frontend/browser/InspectorRenderer.mjs");
 
   /** Creates a DOM element with the supplied content and attributes. */
@@ -1317,7 +1483,7 @@ test("combines Screen and Screen State properties and resets one state change", 
       getElementLabel: (placement) => placement.label,
       renderInspector() {
         panel.replaceChildren();
-        renderer.renderScreenProperties(panel, screen.data);
+        renderer.renderScreenStatesDetails(panel, screen.data);
       },
       resetPreviewStateOverride: (...args) => { resetCalls.push(args); },
       markEdited: (file) => editedFiles.push(file),
@@ -1351,6 +1517,8 @@ test("combines Screen and Screen State properties and resets one state change", 
     ["Name", "Dialog"],
     ["Description", "Show a dialog."]
   ]);
+  panel.replaceChildren();
+  renderer.renderScreenStatesDetails(panel, screen.data);
   const select = findElement(panel, (node) =>
     node.className === "preview-state-override-select"
   );
@@ -1387,6 +1555,8 @@ test("combines Screen and Screen State properties and resets one state change", 
     ["Name", "Home"],
     ["Description", "The home screen."]
   ]);
+  panel.replaceChildren();
+  renderer.renderScreenStatesDetails(panel, screen.data);
   const stateList = findElement(panel, (node) => node.className === "screen-state-list");
   assert.equal(stateList.children[0].children[0].textContent, "Default");
   assert.equal(stateList.children[0].children.length, 1);
@@ -1455,6 +1625,46 @@ test("reuses one Material file with independent placement transforms", async () 
     }
   ]);
   assert.equal(calls.renders, 2);
+});
+
+test("adds a selector Material at the visible canvas center with default geometry", async () => {
+  const { ScreenMaterialController } = await import("../frontend/browser/ScreenMaterialController.mjs");
+  const screen = { id: "home", file: "screens/home/screen.yml", data: { materials: [] } };
+  const definition = {
+    id: "action",
+    file: "materials/action.stml",
+    data: { id: "action", name: "Action", type: "button" },
+    html: "<button>Continue</button>"
+  };
+  const requestedSizes = [];
+  const controller = new ScreenMaterialController({
+    state: {
+      screens: [screen],
+      activeScreenIndex: 0,
+      materialFiles: new Map([[definition.file, definition]])
+    },
+    services: {
+      markEdited() {},
+      async renderScreen() {},
+      selectInstance() {},
+      getVisibleCanvasPlacementPosition(size) {
+        requestedSizes.push(size);
+        return { x: 120, y: 80 };
+      }
+    }
+  });
+
+  await controller.addFromFile(definition.file);
+
+  assert.deepEqual(requestedSizes, [{ width: 160, height: 48 }]);
+  assert.deepEqual(screen.data.materials[0], {
+    id: "action",
+    src: "materials/action.stml",
+    position: { x: 120, y: 80 },
+    size: { width: 160, height: 48 },
+    rotation: 0,
+    layer: "base"
+  });
 });
 
 /** New placements receive the expected default dimensions for their Material kind. */

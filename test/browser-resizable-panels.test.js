@@ -195,6 +195,10 @@ test("places icon-only sidebar controls at opposite topbar edges with accessible
   }
   assert.match(sidebarButton, /data-side="left"/);
   assert.match(inspectorButton, /data-side="right"/);
+  assert.ok(html.indexOf('id="screen-quick-selector"') < html.indexOf("</header>"));
+  assert.ok(html.indexOf('id="create-screen"') < html.indexOf("</header>"));
+  assert.ok(html.indexOf('id="topbar-canvas-zoom-controls"') < html.indexOf("</header>"));
+  assert.match(html, /id="workspace-mode-label"/);
   const styles = fs.readFileSync(path.join(__dirname, "../frontend/styles.css"), "utf8");
   assert.match(styles, /data-mode="hover"\]\s+\.panel-mode-icon__show\s*\{\s*display:\s*none/);
   assert.match(styles, /data-side="right"\]\s+\.panel-mode-icon\s*\{\s*transform:\s*scaleX\(-1\)/);
@@ -215,15 +219,17 @@ test("toggles independent visibility modes between Show and Hover to show", asyn
   const sidebarResizer = harness.handles.get("sidebar-resizer");
   const sidebarModeButton = harness.handles.get("sidebar-mode");
   assert.equal(sidebarModeButton.dataset.mode, "show");
-  assert.equal(sidebarModeButton.attributes["aria-label"], "Project structure: Show. Activate to switch to Hover to show.");
+  assert.equal(sidebarModeButton.attributes["aria-label"], "Materials and project files: Show. Activate to switch to Hover to show.");
+  assert.equal(sidebarModeButton.attributes["aria-expanded"], "true");
   assert.equal(sidebarModeButton.attributes.title, sidebarModeButton.attributes["aria-label"]);
   sidebarModeButton.listeners.get("click")();
   assert.equal(harness.workspace.dataset.sidebarMode, "hover");
   assert.equal(sidebarModeButton.dataset.mode, "hover");
   assert.equal(sidebar.hidden, true);
+  assert.equal(sidebarModeButton.attributes["aria-expanded"], "false");
   assert.equal(sidebarTrigger.hidden, false);
   assert.equal(sidebarResizer.hidden, true);
-  assert.equal(sidebarModeButton.attributes["aria-label"], "Project structure: Hover to show. Activate to switch to Show.");
+  assert.equal(sidebarModeButton.attributes["aria-label"], "Materials and project files: Hover to show. Activate to switch to Show.");
   assert.doesNotMatch(sidebarModeButton.attributes["aria-label"], /Hide/);
   sidebarTrigger.listeners.get("pointerenter")();
   harness.windowObject.advanceTime(999);
@@ -256,7 +262,7 @@ test("toggles independent visibility modes between Show and Hover to show", asyn
   assert.equal(sidebar.hidden, false);
   assert.equal(sidebarTrigger.hidden, true);
   assert.equal(sidebarResizer.hidden, false);
-  assert.equal(sidebarModeButton.attributes["aria-label"], "Project structure: Show. Activate to switch to Hover to show.");
+  assert.equal(sidebarModeButton.attributes["aria-label"], "Materials and project files: Show. Activate to switch to Hover to show.");
   sidebarModeButton.listeners.get("click")();
   assert.equal(harness.workspace.dataset.sidebarMode, "hover");
   assert.equal(sidebar.hidden, true);
@@ -596,7 +602,7 @@ test("migrates saved Hide modes to Hover to show and keeps the edge trigger avai
   assert.equal(harness.handles.get("sidebar-edge-trigger").hidden, false);
   assert.equal(harness.handles.get("details-inspector").hidden, true);
   assert.equal(harness.handles.get("inspector-edge-trigger").hidden, false);
-  assert.equal(harness.handles.get("sidebar-mode").attributes.title, "Project structure: Hover to show. Activate to switch to Show.");
+  assert.equal(harness.handles.get("sidebar-mode").attributes.title, "Materials and project files: Hover to show. Activate to switch to Show.");
   assert.equal(harness.handles.get("inspector-mode").attributes.title, "Properties: Hover to show. Activate to switch to Show.");
   assert.deepEqual(JSON.parse(harness.values.get("specux-studio.layout.v1")), {
     sidebar: 300,

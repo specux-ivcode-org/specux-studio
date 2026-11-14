@@ -66,6 +66,7 @@ const EDITOR_ASSETS = new Set([
   "/browser/ScreenMaterialController.mjs",
   "/browser/ScreenMaterialRenderer.mjs",
   "/browser/MaterialDefaults.mjs",
+  "/browser/MaterialPreviewFrame.mjs",
   "/browser/SpecEditor.mjs",
   "/browser/SplitViewLayout.mjs",
   "/browser/ThemeEditor.mjs",

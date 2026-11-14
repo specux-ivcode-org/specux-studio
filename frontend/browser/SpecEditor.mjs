@@ -581,7 +581,7 @@ export class SpecEditor {
     const elementSpecError = this.validateEditedElementSpec(filePath, source);
     const referenceError = this.refreshEditedSpecReferences(filePath, source);
     if (this.updatePendingDraft(filePath, source)) return;
-    services.markEdited(filePath);
+    services.markEdited(filePath, { coalesce: true });
     this.showSpecInputError(filePath, elementSpecError, referenceError);
   }
 
@@ -766,6 +766,122 @@ export class SpecEditor {
     services.projectFileTree.expandPath(filePath);
     services.renderNavigation();
     await this.render(filePath, [], "project");
+  }
+
+  /** Opens or creates the contextual spec for one node in the active Workflow. */
+  async createForWorkflowNode(workflowPath, nodeId) {
+    const { state, services } = this;
+    const screen = this.getWorkflowNodeSpecScreen(workflowPath);
+    const filePath = services.validation.getWorkflowNodeSpecPath(screen.id, workflowPath, nodeId);
+    const linkedSpecs = this.findWorkflowNodeSpecs(workflowPath, nodeId);
+    if (linkedSpecs.length > 1) {
+      throw new Error(`Workflow node "${nodeId}" has more than one behavior spec.`);
+    }
+    if (linkedSpecs.length && linkedSpecs[0].filePath !== filePath) {
+      throw new Error(
+        `Workflow node "${nodeId}" is linked to "${linkedSpecs[0].filePath}" instead of "${filePath}".`
+      );
+    }
+
+    const source = await this.loadOrCreateWorkflowNodeSpec(
+      filePath,
+      screen,
+      workflowPath,
+      nodeId
+    );
+    const references = parseWorkflowSpecReferences(source, workflowPath)
+      .filter((reference) => reference.nodeId === nodeId);
+    if (!references.length) {
+      throw new Error(`Behavior spec "${filePath}" is not linked to Workflow node "${nodeId}".`);
+    }
+    services.showWorkflowNodeSpec({ filePath, source, references }, nodeId);
+    return filePath;
+  }
+
+  /** Restores a linked node-spec preview from a URL or browser-history entry. */
+  restoreWorkflowNodeSpecPreview(filePath, nodeId) {
+    const source = this.state.specSources.get(filePath);
+    if (source === undefined) throw new Error(`Behavior spec "${filePath}" is not available.`);
+    const references = parseWorkflowSpecReferences(source, this.state.activeWorkflowPath)
+      .filter((reference) => reference.nodeId === nodeId);
+    if (!references.length) {
+      throw new Error(`Behavior spec "${filePath}" is not linked to Workflow node "${nodeId}".`);
+    }
+    this.services.showWorkflowNodeSpec({ filePath, source, references }, nodeId);
+  }
+
+  /** Returns the Screen that owns an active Workflow document. */
+  getWorkflowNodeSpecScreen(workflowPath) {
+    const { state } = this;
+    if (!state.viewingWorkflow || state.activeWorkflowPath !== workflowPath ||
+        !state.workflowSources.has(workflowPath)) {
+      throw new Error("Open the owning Workflow before opening a node spec.");
+    }
+    const screen = state.screens.find((entry) =>
+      workflowPath.startsWith(`screens/${entry.id}/workflows/`)
+    );
+    if (!screen) throw new Error(`Workflow "${workflowPath}" has no owning Screen.`);
+    return screen;
+  }
+
+  /** Finds specs already associated with a Workflow node. */
+  findWorkflowNodeSpecs(workflowPath, nodeId) {
+    const linkedSpecs = [];
+    for (const [filePath, source] of this.state.specSources) {
+      const references = parseWorkflowSpecReferences(source, workflowPath)
+        .filter((reference) => reference.nodeId === nodeId);
+      if (references.length) linkedSpecs.push({ filePath, source, references });
+    }
+    return linkedSpecs;
+  }
+
+  /** Loads an existing node spec or creates its pending draft. */
+  async loadOrCreateWorkflowNodeSpec(filePath, screen, workflowPath, nodeId) {
+    const { state, services } = this;
+    let source = state.specSources.get(filePath);
+    if (source === undefined) {
+      const response = await services.fetcher(services.safeProjectUrl(filePath));
+      if (response.status !== 404) {
+        if (!response.ok) {
+          throw new Error(
+            `Could not check whether behavior spec "${filePath}" already exists (HTTP ${response.status}).`
+          );
+        }
+        source = await services.loadText(filePath);
+        state.specSources.set(filePath, source);
+      } else {
+        source = [
+          `# ${nodeId} behavior`,
+          "",
+          `[Workflow node](specux://screen/${workflowPath.slice("screens/".length)}?node=${encodeURIComponent(nodeId)})`,
+          "",
+          "## Purpose",
+          "",
+          "Describe the behavior represented by this Workflow node.",
+          "",
+          "## Requirements",
+          "",
+          "### Requirement: Follow the node behavior",
+          "The system SHALL perform the behavior represented by this Workflow node.",
+          "",
+          "#### Scenario: The node behavior occurs",
+          "- **WHEN** this Workflow node is reached",
+          "- **THEN** describe the observable outcome."
+        ].join("\n");
+        state.specSources.set(filePath, source);
+        state.createdSpecFiles.add(filePath);
+        state.createdSpecDrafts.set(filePath, {
+          owner: "workflow-node",
+          initialContent: source,
+          screenFile: screen.file,
+          workflowPath,
+          nodeId
+        });
+        services.projectFileTree.expandPath(filePath);
+        services.renderNavigation();
+      }
+    }
+    return source;
   }
 
   /** Builds the Screen-level spec draft and associates it with the selected Screen. */

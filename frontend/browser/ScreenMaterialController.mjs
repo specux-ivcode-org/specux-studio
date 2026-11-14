@@ -30,15 +30,20 @@ export class ScreenMaterialController {
       .find((material) =>
         material.data.type === "label" && material.html.includes("${attributes.text}")
       );
-    if (!definition) {
-      definition = this.createLabelDefinition();
-      this.state.materialFiles.set(definition.file, definition);
-      this.state.createdMaterialFiles.add(definition.file);
-      this.state.projectFilePaths.push(definition.file);
-      this.services.markEdited(definition.file);
-      this.services.renderNavigation();
+    this.services.beginEditTransaction?.();
+    try {
+      if (!definition) {
+        definition = this.createLabelDefinition();
+        this.state.materialFiles.set(definition.file, definition);
+        this.state.createdMaterialFiles.add(definition.file);
+        this.state.projectFilePaths.push(definition.file);
+        this.services.markEdited(definition.file);
+        this.services.renderNavigation();
+      }
+      await this.addFromFile(definition.file, position);
+    } finally {
+      this.services.endEditTransaction?.();
     }
-    await this.addFromFile(definition.file, position);
   }
 
   /** Builds the Label Material definition used when inserting a Label instance. */
@@ -80,7 +85,16 @@ export class ScreenMaterialController {
     const size = getMaterialDefaultSize(definition.data.type);
     if (!size) throw new Error(`Material "${filePath}" has an unsupported type.`);
     const materials = screen.data.materials;
-    const material = this.createPlacement(screen, definition, filePath, size, position);
+    const placementPosition = position ||
+      services.getVisibleCanvasPlacementPosition?.(size) ||
+      null;
+    const material = this.createPlacement(
+      screen,
+      definition,
+      filePath,
+      size,
+      placementPosition
+    );
     materials.push(material);
     services.markEdited(screen.file);
     await services.renderScreen(state.activeScreenIndex);
@@ -326,24 +340,29 @@ export class ScreenMaterialController {
   async group(paths) {
     const screen = this.getActiveScreen();
     this.requireDefaultState(screen);
-    const previousPlacements = structuredClone(screen.data.materials);
-    const id = this.getUniqueGroupId(screen.data.materials);
-    const stateSnapshots = this.captureNamedStatePlacements(screen);
-    for (const { stateId, placements } of stateSnapshots) {
-      createScreenPlacementGroup(placements, paths, id);
+    this.services.beginEditTransaction?.();
+    try {
+      const previousPlacements = structuredClone(screen.data.materials);
+      const id = this.getUniqueGroupId(screen.data.materials);
+      const stateSnapshots = this.captureNamedStatePlacements(screen);
+      for (const { stateId, placements } of stateSnapshots) {
+        createScreenPlacementGroup(placements, paths, id);
+      }
+      const { path } = createScreenPlacementGroup(screen.data.materials, paths, id);
+      for (const { stateId, placements } of stateSnapshots) {
+        this.services.persistStatePlacements?.(screen, placements, stateId);
+      }
+      this.services.updateScreenPlacementReferences?.(
+        screen,
+        previousPlacements,
+        screen.data.materials
+      );
+      await this.commitLayerChange(screen);
+      this.services.selectInstance?.(path, null);
+      return path;
+    } finally {
+      this.services.endEditTransaction?.();
     }
-    const { path } = createScreenPlacementGroup(screen.data.materials, paths, id);
-    for (const { stateId, placements } of stateSnapshots) {
-      this.services.persistStatePlacements?.(screen, placements, stateId);
-    }
-    this.services.updateScreenPlacementReferences?.(
-      screen,
-      previousPlacements,
-      screen.data.materials
-    );
-    await this.commitLayerChange(screen);
-    this.services.selectInstance?.(path, null);
-    return path;
   }
 
   /** Ungroups the selected group while preserving transformed child placements. */
@@ -356,26 +375,31 @@ export class ScreenMaterialController {
     if (await this.services.confirmUngroupPlacementReferences?.(screen, groupId) === false) {
       return null;
     }
-    const previousPlacements = structuredClone(screen.data.materials);
-    const stateSnapshots = this.captureNamedStatePlacements(screen);
-    const stateChildVisibility = this.captureUngroupedStateVisibility(stateSnapshots, path, screen);
-    this.applyBaseUngroupVisibility(screen, path);
-    const children = ungroupScreenPlacement(screen.data.materials, path);
-    if (groupId) this.services.removePlacementStateOverrides?.(screen, [groupId]);
-    for (const { stateId, placements } of stateSnapshots) {
-      this.services.persistStatePlacements?.(screen, placements, stateId);
+    this.services.beginEditTransaction?.();
+    try {
+      const previousPlacements = structuredClone(screen.data.materials);
+      const stateSnapshots = this.captureNamedStatePlacements(screen);
+      const stateChildVisibility = this.captureUngroupedStateVisibility(stateSnapshots, path, screen);
+      this.applyBaseUngroupVisibility(screen, path);
+      const children = ungroupScreenPlacement(screen.data.materials, path);
+      if (groupId) this.services.removePlacementStateOverrides?.(screen, [groupId]);
+      for (const { stateId, placements } of stateSnapshots) {
+        this.services.persistStatePlacements?.(screen, placements, stateId);
+      }
+      this.restoreUngroupedChildVisibility(screen, stateChildVisibility);
+      this.services.updateScreenPlacementReferences?.(
+        screen,
+        previousPlacements,
+        screen.data.materials
+      );
+      await this.commitLayerChange(screen);
+      const first = children[0];
+      const instance = getScreenPlacementAtPath(screen.data.materials, first);
+      this.services.selectInstance?.(first, instance?.src || null);
+      return children;
+    } finally {
+      this.services.endEditTransaction?.();
     }
-    this.restoreUngroupedChildVisibility(screen, stateChildVisibility);
-    this.services.updateScreenPlacementReferences?.(
-      screen,
-      previousPlacements,
-      screen.data.materials
-    );
-    await this.commitLayerChange(screen);
-    const first = children[0];
-    const instance = getScreenPlacementAtPath(screen.data.materials, first);
-    this.services.selectInstance?.(first, instance?.src || null);
-    return children;
   }
 
   /** Captures the ungrouped state visibility for the current editor state. */
@@ -428,31 +452,85 @@ export class ScreenMaterialController {
 
   /** Deletes the selected entry and updates dependent editor state. */
   async delete(path) {
+    return this.deleteMany([path]);
+  }
+
+  /** Deletes selected placements together, pruning groups emptied by the removal. */
+  async deleteMany(paths) {
     const { state, services } = this;
     const screen = state.screens[state.activeScreenIndex];
-    if (!screen || !Array.isArray(path) || path.length === 0) {
+    if (!screen || !Array.isArray(paths)) {
       throw new Error("Select a Material placement before deleting it.");
     }
     this.requireDefaultState(screen);
-    const location = getScreenPlacementLocation(screen.data.materials, path);
-    const id = location.placement.id;
-    const removedPlacementIds = this.getPlacementIds(location.placement);
-    location.siblings.splice(location.index, 1);
-    let parentPath = location.parentPath;
-    while (parentPath.length) {
-      const parent = getScreenPlacementAtPath(screen.data.materials, parentPath);
-      if (!isScreenGroup(parent) || parent.children.length > 0) break;
-      removedPlacementIds.push(parent.id);
-      const parentLocation = getScreenPlacementLocation(screen.data.materials, parentPath);
-      parentLocation.siblings.splice(parentLocation.index, 1);
-      parentPath = parentLocation.parentPath;
+    const selectedPaths = this.getTopLevelSelectedPaths(paths);
+    if (!selectedPaths.length) {
+      throw new Error("Select a Material placement before deleting it.");
     }
-    this.services.removePlacementStateOverrides?.(screen, removedPlacementIds);
-    if (!getScreenPlacementPathById(screen.data.materials, id)) {
+
+    for (const path of selectedPaths) {
+      getScreenPlacementLocation(screen.data.materials, path);
+    }
+
+    services.beginEditTransaction?.();
+    try {
+      const selectedPathKeys = new Set(selectedPaths.map((path) => path.join(".")));
+      const removedPlacementIds = [];
+      this.removeSelectedPlacements(screen.data.materials, [], selectedPathKeys, removedPlacementIds);
+      services.removePlacementStateOverrides?.(screen, removedPlacementIds);
       services.selectInstance?.([], null);
+      services.markEdited(screen.file);
+      await services.renderScreen(state.activeScreenIndex);
+    } finally {
+      services.endEditTransaction?.();
     }
-    services.markEdited(screen.file);
-    await services.renderScreen(state.activeScreenIndex);
+  }
+
+  /** Removes selected descendants when an ancestor is also selected. */
+  getTopLevelSelectedPaths(paths) {
+    const candidates = paths
+      .filter((path) => Array.isArray(path) && path.length > 0 &&
+        path.every((index) => Number.isInteger(index) && index >= 0))
+      .map((path) => [...path]);
+    const unique = candidates.filter((path, index) =>
+      candidates.findIndex((candidate) =>
+        candidate.length === path.length && candidate.every((indexValue, pathIndex) =>
+          indexValue === path[pathIndex]
+        )
+      ) === index
+    );
+    return unique.filter((path) => !unique.some((candidate) =>
+      candidate.length < path.length &&
+      candidate.every((index, pathIndex) => index === path[pathIndex])
+    ));
+  }
+
+  /** Removes selected paths from a placement tree without invalidating sibling paths. */
+  removeSelectedPlacements(siblings, parentPath, selectedPathKeys, removedPlacementIds) {
+    let removedAny = false;
+    for (let index = siblings.length - 1; index >= 0; index -= 1) {
+      const path = [...parentPath, index];
+      const placement = siblings[index];
+      if (selectedPathKeys.has(path.join("."))) {
+        removedPlacementIds.push(...this.getPlacementIds(placement));
+        siblings.splice(index, 1);
+        removedAny = true;
+        continue;
+      }
+      if (!isScreenGroup(placement)) continue;
+      const removedChild = this.removeSelectedPlacements(
+        placement.children,
+        path,
+        selectedPathKeys,
+        removedPlacementIds
+      );
+      if (removedChild && placement.children.length === 0) {
+        siblings.splice(index, 1);
+        removedPlacementIds.push(placement.id);
+      }
+      removedAny ||= removedChild;
+    }
+    return removedAny;
   }
 
   /** Returns the active screen. */
