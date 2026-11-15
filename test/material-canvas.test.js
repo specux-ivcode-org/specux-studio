@@ -6,9 +6,23 @@ function createElement(tagName) {
   const listeners = new Map();
   const attributes = new Map();
   const children = [];
+  const stylePriorities = new Map();
   const style = {
-    setProperty(name, value) {
+    setProperty(name, value, priority = "") {
       this[name] = value;
+      stylePriorities.set(name, priority);
+    },
+    getPropertyValue(name) {
+      return this[name] || "";
+    },
+    getPropertyPriority(name) {
+      return stylePriorities.get(name) || "";
+    },
+    removeProperty(name) {
+      const previousValue = this[name] || "";
+      delete this[name];
+      stylePriorities.delete(name);
+      return previousValue;
     }
   };
   return {
@@ -189,11 +203,13 @@ test("moves a selected material in canvas coordinates and persists its position"
     clientY: 125,
     target: frame
   }));
+  assert.equal(frame.style.cursor, "move");
   frame.listeners.get("pointerup")(createPointerEvent({
     clientX: 140,
     clientY: 125,
     target: frame
   }));
+  assert.equal(frame.style.cursor, undefined);
 
   assert.deepEqual(instance.position, { x: 50, y: 45 });
   assert.equal(frame.style.left, "50px");
@@ -251,6 +267,7 @@ test("resizes and rotates materials with pointer handles", async () => {
     clientY: 80,
     target: southeast
   }));
+  assert.equal(frame.style.cursor, "nwse-resize");
   frame.listeners.get("pointermove")(createPointerEvent({
     clientX: 140,
     clientY: 100,
@@ -261,6 +278,7 @@ test("resizes and rotates materials with pointer handles", async () => {
     clientY: 100,
     target: frame
   }));
+  assert.equal(frame.style.cursor, undefined);
   assert.deepEqual(instance.size, { width: 130, height: 80 });
 
   const rotate = frame.querySelector(".material-rotate-control");
@@ -272,6 +290,7 @@ test("resizes and rotates materials with pointer handles", async () => {
     clientY: centerY,
     target: rotate
   }));
+  assert.equal(frame.style.cursor, "var(--material-rotate-cursor)");
   frame.listeners.get("pointermove")(createPointerEvent({
     clientX: centerX,
     clientY: centerY + 15,
@@ -282,6 +301,7 @@ test("resizes and rotates materials with pointer handles", async () => {
     clientY: centerY + 15,
     target: frame
   }));
+  assert.equal(frame.style.cursor, undefined);
   assert.equal(instance.rotation, 90);
   assert.equal(frame.style.transform, "rotate(90deg)");
   assert.equal(calls.edited, 2);
@@ -313,6 +333,42 @@ test("resizes and rotates materials with pointer handles", async () => {
   );
   assert.deepEqual(transform.size, { width: 110, height: 60 });
   assert.deepEqual(transform.position, { x: 5, y: 25 });
+});
+
+test("keeps the directional resize cursor during pointer capture", async () => {
+  const { frame } = await createHarness();
+  const expectedCursors = {
+    n: "ns-resize",
+    ne: "nesw-resize",
+    e: "ew-resize",
+    se: "nwse-resize",
+    s: "ns-resize",
+    sw: "nesw-resize",
+    w: "ew-resize",
+    nw: "nwse-resize"
+  };
+
+  for (const [index, [direction, cursor]] of Object.entries(expectedCursors).entries()) {
+    const handle = frame.querySelectorAll(".material-resize-control")
+      .find((candidate) => candidate.dataset.resizeDirection === direction);
+    const pointerId = index + 10;
+    handle.listeners.get("pointerdown")(createPointerEvent({
+      pointerId,
+      clientX: 110,
+      clientY: 80,
+      target: handle
+    }));
+    assert.equal(frame.style.cursor, cursor);
+    assert.equal(frame.style.getPropertyPriority("cursor"), "important");
+
+    frame.listeners.get("pointerup")(createPointerEvent({
+      pointerId,
+      clientX: 110,
+      clientY: 80,
+      target: frame
+    }));
+    assert.equal(frame.style.cursor, undefined);
+  }
 });
 
 /** Transform resizing persists scale components without rewriting the placement's declared dimensions. */

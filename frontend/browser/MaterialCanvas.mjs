@@ -14,6 +14,16 @@ const CONTROL_SIZE = 10;
 const ROTATE_HANDLE_OFFSET = 21;
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const IDENTITY_MATRIX = { a: 1, b: 0, c: 0, d: 1 };
+const RESIZE_CURSORS = {
+  n: "ns-resize",
+  ne: "nesw-resize",
+  e: "ew-resize",
+  se: "nwse-resize",
+  s: "ns-resize",
+  sw: "nesw-resize",
+  w: "ew-resize",
+  nw: "nwse-resize"
+};
 
 /** Returns a non-overlapping starting position for a Material placement. */
 export function defaultMaterialPosition(index) {
@@ -417,10 +427,7 @@ export class MaterialCanvas {
     const gesture = this.createGestureState(context, event, mode, direction, geometry);
     this.initializeGestureSelection(gesture, event, geometry.canvasBounds);
     context.frame._materialGesture = gesture;
-    if (mode !== "move") {
-      context.frame.setPointerCapture(event.pointerId);
-      gesture.captured = true;
-    }
+    if (mode !== "move") this.captureGesturePointer(context.frame, event, gesture);
   }
 
   /** Checks whether the current preview context allows a pointer gesture. */
@@ -558,8 +565,29 @@ export class MaterialCanvas {
   /** Captures the gesture pointer for the current editor state. */
   captureGesturePointer(frame, event, gesture) {
     if (gesture.captured) return;
+    this.setGestureCursor(frame, gesture);
     frame.setPointerCapture(event.pointerId);
     gesture.captured = true;
+  }
+
+  /** Applies the active gesture cursor to the element that owns pointer capture. */
+  setGestureCursor(frame, gesture) {
+    gesture.previousCursor = {
+      value: frame.style.getPropertyValue("cursor"),
+      priority: frame.style.getPropertyPriority("cursor")
+    };
+    const cursor = gesture.mode === "resize"
+      ? RESIZE_CURSORS[gesture.direction] || "auto"
+      : gesture.mode === "rotate" ? "var(--material-rotate-cursor)" : "move";
+    frame.style.setProperty("cursor", cursor, "important");
+  }
+
+  /** Restores the frame's inline cursor after a captured gesture ends. */
+  restoreGestureCursor(frame, gesture) {
+    if (!gesture.previousCursor) return;
+    const { value, priority } = gesture.previousCursor;
+    if (value) frame.style.setProperty("cursor", value, priority);
+    else frame.style.removeProperty("cursor");
   }
 
   /** Applies the gesture pointer change to the current editor state. */
@@ -650,6 +678,7 @@ export class MaterialCanvas {
     if (gesture.captured && frame.hasPointerCapture(event.pointerId)) {
       frame.releasePointerCapture(event.pointerId);
     }
+    this.restoreGestureCursor(frame, gesture);
     if (gesture.changed) {
       this.services.markEdited(screen.file);
       this.services.renderInspector();

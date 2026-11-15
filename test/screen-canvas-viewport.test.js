@@ -1,4 +1,6 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 
 class FakeElement {
@@ -61,6 +63,7 @@ class FakeElement {
 function createViewportHarness() {
   const preview = new FakeElement();
   const main = new FakeElement();
+  const body = new FakeElement();
   main.classList.add("screen-editing");
   const elements = new Map([
     ["screen-preview", preview],
@@ -78,10 +81,22 @@ function createViewportHarness() {
     ["spec-canvas-grid-toggle", new FakeElement()]
   ]);
   const documentObject = {
+    body,
     listeners: new Map(),
+    listenerOptions: new Map(),
     getElementById: (id) => elements.get(id),
-    addEventListener(name, callback) {
+    addEventListener(name, callback, options) {
       this.listeners.set(name, callback);
+      this.listenerOptions.set(name, options);
+    },
+    dispatch(name, event = {}) {
+      const dispatchedEvent = {
+        preventDefault() { this.defaultPrevented = true; },
+        stopPropagation() { this.propagationStopped = true; },
+        ...event
+      };
+      this.listeners.get(name)?.(dispatchedEvent);
+      return dispatchedEvent;
     }
   };
   let nextTimerId = 0;
@@ -125,6 +140,7 @@ function createViewportHarness() {
     elements,
     preview,
     main,
+    body,
     documentObject,
     windowObject,
     runTimers: () => windowObject.runTimers(),
@@ -147,6 +163,8 @@ test("pans the canvas by the pointer delta and ends cleanly on pointer release",
     renderRulers: harness.renderRulers
   });
   controller.bind();
+  assert.equal(harness.documentObject.listenerOptions.get("pointermove"), true);
+  assert.equal(harness.preview.listeners.has("pointermove"), false);
 
   harness.preview.dispatch("pointerdown", {
     button: 1,
@@ -155,18 +173,99 @@ test("pans the canvas by the pointer delta and ends cleanly on pointer release",
     clientY: 30
   });
   assert.equal(harness.preview.classList.contains("is-panning"), true);
+  assert.equal(harness.body.classList.contains("screen-canvas-panning"), true);
 
-  harness.preview.dispatch("pointermove", {
+  const pointerMove = harness.documentObject.dispatch("pointermove", {
     pointerId: 7,
     clientX: 65,
     clientY: 5
   });
+  assert.equal(pointerMove.defaultPrevented, true);
+  assert.equal(pointerMove.propagationStopped, true);
   assert.equal(harness.preview.styleValues.get("--screen-canvas-pan-x"), "45px");
   assert.equal(harness.preview.styleValues.get("--screen-canvas-pan-y"), "-25px");
 
-  harness.preview.dispatch("pointerup", { pointerId: 7 });
+  harness.documentObject.dispatch("pointerup", { pointerId: 7 });
   assert.equal(harness.preview.classList.contains("is-panning"), false);
+  assert.equal(harness.body.classList.contains("screen-canvas-panning"), false);
   assert.ok(harness.getRulerRenderCount() >= 2);
+});
+
+test("clears an active pan when the browser window loses focus", async () => {
+  const { ScreenCanvasViewportController } = await import(
+    "../frontend/browser/ScreenCanvasViewportController.mjs"
+  );
+  const harness = createViewportHarness();
+  const controller = new ScreenCanvasViewportController({
+    documentObject: harness.documentObject,
+    windowObject: harness.windowObject,
+    renderRulers: harness.renderRulers
+  });
+  controller.bind();
+  harness.preview.dispatch("pointerdown", {
+    button: 1,
+    pointerId: 7,
+    clientX: 20,
+    clientY: 30
+  });
+
+  harness.windowObject.listeners.get("blur")();
+
+  assert.equal(harness.preview.classList.contains("is-panning"), false);
+  assert.equal(harness.body.classList.contains("screen-canvas-panning"), false);
+});
+
+test("keeps mouse pan state through pointer cancellation until mouse release", async () => {
+  const { ScreenCanvasViewportController } = await import(
+    "../frontend/browser/ScreenCanvasViewportController.mjs"
+  );
+  const harness = createViewportHarness();
+  const controller = new ScreenCanvasViewportController({
+    documentObject: harness.documentObject,
+    windowObject: harness.windowObject,
+    renderRulers: harness.renderRulers
+  });
+  controller.bind();
+  harness.preview.dispatch("pointerdown", {
+    button: 0,
+    pointerId: 7,
+    pointerType: "mouse",
+    clientX: 20,
+    clientY: 30
+  });
+
+  harness.documentObject.dispatch("pointercancel", { pointerId: 7 });
+  assert.equal(harness.preview.classList.contains("is-panning"), true);
+  assert.equal(harness.body.classList.contains("screen-canvas-panning"), true);
+
+  harness.documentObject.dispatch("mouseup", { button: 0 });
+  assert.equal(harness.preview.classList.contains("is-panning"), false);
+  assert.equal(harness.body.classList.contains("screen-canvas-panning"), false);
+});
+
+test("ends non-mouse pan when the browser cancels its pointer stream", async () => {
+  const { ScreenCanvasViewportController } = await import(
+    "../frontend/browser/ScreenCanvasViewportController.mjs"
+  );
+  const harness = createViewportHarness();
+  const controller = new ScreenCanvasViewportController({
+    documentObject: harness.documentObject,
+    windowObject: harness.windowObject,
+    renderRulers: harness.renderRulers
+  });
+  controller.bind();
+  harness.preview.dispatch("pointerdown", {
+    button: 0,
+    pointerId: 8,
+    pointerType: "touch",
+    clientX: 20,
+    clientY: 30
+  });
+
+  harness.documentObject.dispatch("pointercancel", { pointerId: 8 });
+
+  assert.equal(harness.preview.classList.contains("is-panning"), false);
+  assert.equal(harness.body.classList.contains("screen-canvas-panning"), false);
 });
 
 /** The Screen grid is visible by default and can be toggled without changing camera state. */
@@ -227,7 +326,7 @@ test("pans from empty canvas with left-drag without intercepting placements", as
   assert.equal(emptyCanvasEvent.defaultPrevented, true);
   assert.equal(harness.preview.classList.contains("is-panning"), true);
 
-  harness.preview.dispatch("pointermove", {
+  harness.documentObject.dispatch("pointermove", {
     pointerId: 9,
     clientX: 35,
     clientY: 10
@@ -261,7 +360,7 @@ test("pans from placements with left-drag while editing a workflow", async () =>
   assert.equal(pointerDown.defaultPrevented, true);
   assert.equal(harness.preview.classList.contains("is-panning"), true);
 
-  harness.preview.dispatch("pointermove", {
+  harness.documentObject.dispatch("pointermove", {
     pointerId: 10,
     clientX: 25,
     clientY: 70
@@ -296,7 +395,7 @@ test("pans from placements with left-drag while viewing a behavior spec", async 
   assert.equal(pointerDown.defaultPrevented, true);
   assert.equal(harness.preview.classList.contains("is-panning"), true);
 
-  harness.preview.dispatch("pointermove", {
+  harness.documentObject.dispatch("pointermove", {
     pointerId: 12,
     clientX: 25,
     clientY: 70
@@ -623,6 +722,7 @@ test("uses Space as a pan modifier except when a control owns the key", async ()
     renderRulers: harness.renderRulers
   });
   controller.bind();
+  assert.equal(harness.documentObject.listenerOptions.get("keydown"), true);
 
   const buttonEvent = {
     code: "Space",
@@ -649,11 +749,32 @@ test("uses Space as a pan modifier except when a control owns the key", async ()
     clientY: 15
   });
   assert.equal(pointerDown.propagationStopped, true);
-  harness.preview.dispatch("pointermove", {
+  const dragStart = harness.preview.dispatch("dragstart", {});
+  assert.equal(dragStart.defaultPrevented, true);
+  const pointerMove = harness.documentObject.dispatch("pointermove", {
     pointerId: 9,
     clientX: 20,
     clientY: 5
   });
+  assert.equal(pointerMove.defaultPrevented, true);
+  assert.equal(pointerMove.propagationStopped, true);
   assert.equal(harness.preview.styleValues.get("--screen-canvas-pan-x"), "10px");
   assert.equal(harness.preview.styleValues.get("--screen-canvas-pan-y"), "-10px");
+});
+
+test("shows grab cursors over Screen content while panning with Space", () => {
+  const styles = fs.readFileSync(path.join(__dirname, "../frontend/styles.css"), "utf8");
+
+  assert.match(
+    styles,
+    /\.canvas\.screen-editing \.screen-preview\.pan-ready,\s*\.canvas\.screen-editing \.screen-preview\.pan-ready \* \{\s*cursor:\s*grab !important;/
+  );
+  assert.match(
+    styles,
+    /\.canvas\.screen-editing \.screen-preview\.is-panning \* \{\s*cursor:\s*grabbing !important;/
+  );
+  assert.match(
+    styles,
+    /body\.screen-canvas-panning \* \{\s*cursor:\s*grabbing !important;/
+  );
 });

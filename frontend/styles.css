@@ -49,6 +49,7 @@
       --studio-border: var(--ui-border-strong);
       --studio-muted: var(--ui-text-soft);
       --studio-on-primary: var(--ui-on-primary);
+      --material-rotate-cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke='%231f2937' stroke-linecap='round' stroke-linejoin='round' stroke-width='4'%3E%3Cpath d='M19 10a7 7 0 0 0-13-2M5 4v4h4'/%3E%3Cpath d='M5 14a7 7 0 0 0 13 2m1 4v-4h-4'/%3E%3C/g%3E%3Cg fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'%3E%3Cpath d='M19 10a7 7 0 0 0-13-2M5 4v4h4'/%3E%3Cpath d='M5 14a7 7 0 0 0 13 2m1 4v-4h-4'/%3E%3C/g%3E%3C/svg%3E") 12 12, crosshair;
       font-family: Inter, "Segoe UI", Arial, sans-serif;
     }
 
@@ -2257,8 +2258,12 @@
     .spec-source-highlight.annotation-mode,
     .material-source-highlight.annotation-mode { cursor: crosshair; }
     .screen-preview.marquee-selection-mode { cursor: crosshair; }
-    .canvas.screen-editing .screen-preview.pan-ready { cursor: grab; }
-    .canvas.screen-editing .screen-preview.is-panning { cursor: grabbing; }
+    .canvas.screen-editing .screen-preview.pan-ready,
+    .canvas.screen-editing .screen-preview.pan-ready * { cursor: grab !important; }
+    .canvas.screen-editing .screen-preview.is-panning,
+    .canvas.screen-editing .screen-preview.is-panning * { cursor: grabbing !important; }
+    body.screen-canvas-panning,
+    body.screen-canvas-panning * { cursor: grabbing !important; }
     .screen-selection-overlay {
       position: absolute;
       inset: 0;
@@ -2553,7 +2558,7 @@
     .material-resize-control[data-resize-direction="nw"] { cursor: nwse-resize; }
     .material-rotate-control {
       border-radius: 3px;
-      cursor: grab;
+      cursor: var(--material-rotate-cursor);
     }
     .material-control:focus-visible { outline: 2px solid var(--studio-focus); outline-offset: 3px; }
 

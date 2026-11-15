@@ -42,18 +42,22 @@ export class ScreenCanvasViewportController {
 
     // Let users pan with the middle button, Space+left-drag, or left-drag on empty canvas.
     this.preview.addEventListener("pointerdown", (event) => this.startPan(event), true);
-    this.preview.addEventListener("pointermove", (event) => this.movePan(event));
-    this.preview.addEventListener("pointerup", (event) => this.endPan(event));
-    this.preview.addEventListener("pointercancel", (event) => this.endPan(event));
-    this.preview.addEventListener("lostpointercapture", (event) => this.endPan(event));
+    this.document.addEventListener("pointermove", (event) => this.movePan(event), true);
+    this.document.addEventListener("pointerup", (event) => this.endPan(event), true);
+    this.document.addEventListener("pointercancel", (event) => this.handlePointerCancel(event), true);
+    this.document.addEventListener("mouseup", (event) => this.endMousePan(event), true);
+    this.preview.addEventListener("dragstart", (event) => this.preventNativeDrag(event), true);
 
     // Zoom around the pointer so the location under the cursor stays fixed.
     this.preview.addEventListener("wheel", (event) => this.handleWheel(event), { passive: false });
 
     // Track Space as a pan modifier without taking keyboard focus from editor controls.
-    this.document.addEventListener("keydown", (event) => this.handleKeyDown(event));
-    this.document.addEventListener("keyup", (event) => this.handleKeyUp(event));
-    this.window.addEventListener("blur", () => this.clearPanModifier());
+    this.document.addEventListener("keydown", (event) => this.handleKeyDown(event), true);
+    this.document.addEventListener("keyup", (event) => this.handleKeyUp(event), true);
+    this.window.addEventListener("blur", () => {
+      this.clearPanModifier();
+      this.clearActivePan();
+    });
 
     // Keep toolbar zoom controls synchronized with camera changes.
     this.bindZoomControls();
@@ -118,11 +122,13 @@ export class ScreenCanvasViewportController {
     event.stopPropagation();
     this.activePointer = {
       id: event.pointerId,
+      pointerType: event.pointerType || "mouse",
+      button: event.button,
       x: event.clientX,
       y: event.clientY
     };
     this.preview.classList.add("is-panning");
-    this.preview.setPointerCapture?.(event.pointerId);
+    this.document.body?.classList.add("screen-canvas-panning");
   }
 
   /** Allows left-button panning in read-only views or on empty Screen canvas. */
@@ -144,6 +150,8 @@ export class ScreenCanvasViewportController {
   /** Moves the viewport by the pointer delta without changing Screen coordinates. */
   movePan(event) {
     if (!this.activePointer || this.activePointer.id !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
     this.pan.x += event.clientX - this.activePointer.x;
     this.pan.y += event.clientY - this.activePointer.y;
     this.activePointer.x = event.clientX;
@@ -151,14 +159,42 @@ export class ScreenCanvasViewportController {
     this.applyCamera();
   }
 
-  /** Ends the active pan gesture and releases pointer capture. */
+  /** Prevents native link or content dragging from replacing the pan cursor. */
+  preventNativeDrag(event) {
+    if (!this.spacePressed && !this.activePointer) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  /** Ends the active pan gesture. */
   endPan(event) {
     if (!this.activePointer || this.activePointer.id !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.clearActivePan();
+  }
+
+  /** Keeps mouse panning active if the browser cancels its pointer stream mid-drag. */
+  handlePointerCancel(event) {
+    if (!this.activePointer || this.activePointer.id !== event.pointerId) return;
+    if (this.activePointer.pointerType !== "mouse") this.endPan(event);
+  }
+
+  /** Ends a mouse pan on release, including after a browser pointer cancellation. */
+  endMousePan(event) {
+    if (!this.activePointer || this.activePointer.pointerType !== "mouse" ||
+        this.activePointer.button !== event.button) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.clearActivePan();
+  }
+
+  /** Clears active pan state when the browser window loses focus. */
+  clearActivePan() {
+    if (!this.activePointer) return;
     this.activePointer = null;
-    this.preview.classList.remove("is-panning");
-    if (this.preview.hasPointerCapture?.(event.pointerId)) {
-      this.preview.releasePointerCapture(event.pointerId);
-    }
+    this.preview?.classList.remove("is-panning");
+    this.document.body?.classList.remove("screen-canvas-panning");
   }
 
   /** Checks whether the editor is showing a Screen or spec canvas viewport. */
