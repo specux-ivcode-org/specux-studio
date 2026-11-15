@@ -3,6 +3,8 @@
 ### Requirement: Automatic persistence
 The Studio SHALL automatically persist edits during ordinary work rather than require a separate Save action. Closing views or switching modes SHALL NOT discard pending edits. Git SHALL remain the mechanism for identifying persisted changes relative to the last commit; autosave SHALL NOT create commits or pushes.
 
+The workspace SHALL show an icon-only autosave indicator rather than Save/Saved text or a manual Save or reset-from-files action. The indicator SHALL animate while edits are pending or saving, use a quiet completion mark after a successful save, and expose errors through an accessible label and existing error reporting.
+
 #### Scenario: Edit and switch modes
 - **WHEN** the user edits an artifact and switches modes
 - **THEN** the edit remains available for automatic persistence rather than being discarded with the editor view

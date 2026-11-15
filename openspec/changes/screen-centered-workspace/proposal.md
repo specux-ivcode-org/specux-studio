@@ -11,7 +11,7 @@ Separate Screen, Workflow, Spec, and Theme views make users lose the spatial con
 - Navigate workflow placement targets, including multiple placements on one Screen/state. Highlight and fit their combined bounds; warn about missing/invalid links and invalid entry-point structure.
 - Open/create Screen and placement specs by contextual double-click or Details actions. Give workflow nodes their own specs rather than reusing their target's spec.
 - Enter Theme mode from the Screen context menu and edit colors/variables through click-based controls. Exit through toolbar controls or Escape.
-- Replace the Screen workspace only for Material editing, with integrated STML source and preview. Drag Materials from the selector using a known-size outline; keep selector preview framing separate from placed geometry.
+- Replace the Screen workspace only for Material editing, with integrated STML source and preview. Drag Materials from the selector using a known-size outline; show the full Material preview in each selector tile.
 - Use a subtle dot grid and optional spec indicators on the canvas and Layers list, hidden by default.
 - Restore editor/mode context from app URL parameters and canvas focus from `#specux=<path>`. Add browser-history entries only for Screen switches.
 - Autosave edits and provide one project-wide undo/redo history across Screen, Material, Workflow, Spec, and Theme edits; exclude navigation and selection.
@@ -24,7 +24,7 @@ Separate Screen, Workflow, Spec, and Theme views make users lose the spatial con
 - `workspace-navigation`: Separate editor/canvas identity, SpecUX fragment routing, and Screen-switch-only browser history.
 - `workflow-context-navigation`: Entry-point diagnostics, placement-link validation, multi-target framing, and mode-preserving navigation.
 - `contextual-spec-authoring`: Screen/placement/node spec ownership, contextual creation, linked dock views, and optional indicators.
-- `material-selection-workspace`: Material selector, outlined dragging, independent thumbnail framing, and dedicated Material authoring.
+- `material-selection-workspace`: Material selector, outlined dragging, full-preview thumbnails, and dedicated Material authoring.
 - `workspace-edit-history`: Autosave, visible persistence failures, and unified edit-only undo/redo.
 
 ### Modified Capabilities

@@ -1017,8 +1017,6 @@ export class ThemeEditor {
     state.activeInstancePath = [];
     services.clearPreviewSelection();
     state.viewingTheme = true;
-    services.byId("breadcrumb").textContent = "Project theme";
-    services.byId("screen-heading").textContent = "Theme";
     services.hideEditorMessage();
     services.updateNavigationSelection();
     services.renderInspector();

@@ -183,6 +183,81 @@ test("Material preview resizing dispatches the overlay resize event", async () =
   assert.deepEqual(eventTypes, ["material-preview-resized"]);
 });
 
+/** Material selection stays active until a blank-canvas pointer clears it. */
+test("clicking blank canvas clears a Material preview selection", async () => {
+  const { MaterialFileEditor } = await import("../frontend/browser/MaterialFileEditor.mjs");
+  let selection = null;
+  let onPointerDown;
+  const sample = {
+    querySelector(selector) {
+      return selector === ":scope > .material-file-preview-selection" ? selection : null;
+    },
+    append(element) {
+      selection = element;
+    }
+  };
+  const preview = {
+    addEventListener(type, handler, capture) {
+      if (type === "pointerdown") {
+        assert.equal(capture, true);
+        onPointerDown = handler;
+      }
+    },
+    querySelector(selector) {
+      return selector === ".material-file-preview-selection" ? selection : null;
+    }
+  };
+  const document = {
+    createElement(tagName) {
+      return {
+        tagName,
+        className: "",
+        children: [],
+        dataset: {},
+        style: {},
+        append(element) {
+          this.children.push(element);
+        },
+        setAttribute() {},
+        remove() {
+          selection = null;
+        }
+      };
+    }
+  };
+  const filePath = "materials/button.stml";
+  const editor = new MaterialFileEditor({
+    state: {
+      viewingMaterialFile: true,
+      activeMaterialFilePath: filePath
+    },
+    services: {
+      byId: (id) => id === "screen-preview" ? preview : null,
+      document
+    }
+  });
+  const sampleEvent = {
+    button: 0,
+    target: {
+      closest(selector) {
+        return selector === ".material-file-preview-sample" ? sample : null;
+      }
+    }
+  };
+
+  onPointerDown(sampleEvent);
+  assert.equal(editor.selectedPreviewFilePath, filePath);
+  assert.ok(selection);
+
+  onPointerDown(sampleEvent);
+  assert.equal(editor.selectedPreviewFilePath, filePath);
+  assert.ok(selection);
+
+  onPointerDown({ button: 0, target: { closest() { return null; } } });
+  assert.equal(editor.selectedPreviewFilePath, null);
+  assert.equal(selection, null);
+});
+
 /** Material files open with source and canvas visible in Split mode. */
 test("opens Material files in Split mode", async () => {
   const { MaterialFileEditor } = await import("../frontend/browser/MaterialFileEditor.mjs");
@@ -204,9 +279,7 @@ test("opens Material files in Split mode", async () => {
     ["main", createElement()],
     ["spec-editor-panel", createElement()],
     ["spec-source", createElement()],
-    ["screen-heading", createElement()],
     ["screen-stage", createElement()],
-    ["breadcrumb", createElement()],
     ["material-document-editor-panel", createElement()],
     ["material-document-editor-heading", createElement()],
     ["material-document-source", createElement()]

@@ -1519,6 +1519,8 @@ test("separates Screen properties from state controls and resets one state chang
   ]);
   panel.replaceChildren();
   renderer.renderScreenStatesDetails(panel, screen.data);
+  assert.equal(panel.children[0].className, "section-title");
+  assert.equal(panel.children[0].textContent, "SCREEN STATE");
   const select = findElement(panel, (node) =>
     node.className === "preview-state-override-select"
   );

@@ -1,16 +1,9 @@
 import { getMaterialDefaultSize } from "./MaterialDefaults.mjs";
-import {
-  getMaterialPreviewFrame,
-  getMaterialPreviewSize
-} from "./MaterialPreviewFrame.mjs";
 
 const MIN_PREVIEW_SIZE = 24;
 const PREVIEW_RESIZE_DIRECTIONS = ["e", "s", "se"];
-const SELECTOR_FRAME_DIRECTIONS = [
-  "n", "ne", "e", "se", "s", "sw", "w", "nw"
-];
 
-/** Manages Material source editing, preview framing, and source highlighting. */
+/** Manages Material source editing, preview sizing, and source highlighting. */
 export class MaterialFileEditor {
 
   /** Stores the injected collaborators and initializes the instance state. */
@@ -19,14 +12,12 @@ export class MaterialFileEditor {
     this.services = services;
     this.selectedPreviewFilePath = null;
     this.previewResizeGesture = null;
-    this.selectorFrameEditing = false;
-    this.selectorFrameGesture = null;
-    services.byId("material-selector-frame-toggle")?.addEventListener(
-      "click",
-      () => this.toggleSelectorFrameEditing()
-    );
     const preview = services.byId("screen-preview");
-    preview?.addEventListener("pointerdown", (event) => this.onPreviewPointerDown(event));
+    preview?.addEventListener(
+      "pointerdown",
+      (event) => this.onPreviewPointerDown(event),
+      true
+    );
     preview?.addEventListener("pointermove", (event) => this.onPreviewPointerMove(event));
     preview?.addEventListener("pointerup", (event) => this.endPreviewResize(event));
     preview?.addEventListener("pointercancel", (event) => this.endPreviewResize(event));
@@ -75,9 +66,6 @@ export class MaterialFileEditor {
     if (!material) throw new Error(`Material file "${filePath}" is not available.`);
     this.selectedPreviewFilePath = null;
     this.previewResizeGesture = null;
-    this.selectorFrameGesture = null;
-    this.selectorFrameEditing = false;
-    this.updateSelectorFrameToggle();
     services.discardUneditedActiveSpecDraft();
     state.activeProjectFilePath = filePath;
     state.activeMaterialFilePath = filePath;
@@ -102,12 +90,10 @@ export class MaterialFileEditor {
     services.byId("spec-source").oninput = null;
     services.hideEditorMessage();
     services.updateNavigationSelection();
-    services.byId("screen-heading").textContent = `${material.data.name} Material`;
     services.byId("screen-stage").setAttribute(
       "aria-label",
       `${material.data.name} Material preview`
     );
-    services.byId("breadcrumb").textContent = "Materials";
     services.byId("material-document-editor-panel").hidden = false;
     services.setMaterialViewMode("split");
     services.byId("material-document-editor-heading").textContent =
@@ -285,7 +271,6 @@ export class MaterialFileEditor {
     services.renderNavigation();
     services.updateSaveControls();
     if (state.viewingMaterialFile && state.activeMaterialFilePath === filePath) {
-      services.byId("screen-heading").textContent = `${data.name} Material`;
       services.byId("material-document-editor-heading").textContent =
         `${data.name} — ${filePath.split("/").pop()}`;
       services.byId("material-document-source").setAttribute(
@@ -350,17 +335,11 @@ export class MaterialFileEditor {
     if (sample && this.selectedPreviewFilePath === material.file) {
       this.renderPreviewSelection(sample);
     }
-    if (sample && this.selectorFrameEditing) this.renderSelectorFrame(sample, material);
   }
 
   /** Handles preview pointer down events for the related editor control. */
   onPreviewPointerDown(event) {
     if (!this.state.viewingMaterialFile || event.button !== 0) return;
-    if (this.selectorFrameEditing) {
-      const frame = event.target?.closest?.(".material-selector-frame");
-      if (frame) this.beginSelectorFrameGesture(event, frame);
-      return;
-    }
     const resizeHandle = event.target?.closest?.(".material-file-preview-resize-control");
     if (resizeHandle) {
       this.beginPreviewResize(event, resizeHandle);
@@ -475,11 +454,6 @@ export class MaterialFileEditor {
 
   /** Handles preview pointer move events for the related editor control. */
   onPreviewPointerMove(event) {
-    const frameGesture = this.selectorFrameGesture;
-    if (frameGesture && frameGesture.pointerId === event.pointerId) {
-      this.updateSelectorFrameGesture(event, frameGesture);
-      return;
-    }
     const gesture = this.previewResizeGesture;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     const deltaX = (event.clientX - gesture.startX) / gesture.scaleX;
@@ -504,11 +478,6 @@ export class MaterialFileEditor {
 
   /** Ends the preview resize for the current editor state. */
   endPreviewResize(event) {
-    const frameGesture = this.selectorFrameGesture;
-    if (frameGesture && frameGesture.pointerId === event.pointerId) {
-      this.finishSelectorFrameGesture(event, frameGesture);
-      return;
-    }
     const gesture = this.previewResizeGesture;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     this.previewResizeGesture = null;
@@ -526,184 +495,6 @@ export class MaterialFileEditor {
     this.renderSourceHighlight(true);
     this.handleSourceInput(gesture.material, updatedSource);
     this.dispatchPreviewResizeEvent();
-  }
-
-  /** Toggles the distinct selector-frame editing mode. */
-  toggleSelectorFrameEditing() {
-    if (!this.state.viewingMaterialFile) return;
-    this.selectorFrameEditing = !this.selectorFrameEditing;
-    this.selectedPreviewFilePath = null;
-    this.updateSelectorFrameToggle();
-    const material = this.state.materialFiles.get(this.state.activeMaterialFilePath);
-    if (material) this.renderPreview(material);
-  }
-
-  /** Updates the selector-frame editing control. */
-  updateSelectorFrameToggle() {
-    const toggle = this.services.byId("material-selector-frame-toggle");
-    if (!toggle) return;
-    toggle.setAttribute("aria-pressed", String(this.selectorFrameEditing));
-    toggle.textContent = this.selectorFrameEditing
-      ? "Done framing"
-      : "Edit selector frame";
-  }
-
-  /** Renders the project-level Material selector frame and its controls. */
-  renderSelectorFrame(sample, material) {
-    const selection = this.services.element(
-      "div",
-      "material-selector-frame-selection"
-    );
-    const frame = this.services.element("div", "material-selector-frame");
-    const bounds = getMaterialPreviewFrame(this.state.project, material);
-    this.setSelectorFrameElementBounds(frame, bounds);
-    for (const direction of SELECTOR_FRAME_DIRECTIONS) {
-      const handle = this.services.element("button", "material-selector-frame-handle");
-      handle.type = "button";
-      handle.dataset.direction = direction;
-      handle.setAttribute("aria-label", `Resize selector frame from ${direction}`);
-      const anchors = {
-        n: ["50%", "0%"],
-        ne: ["100%", "0%"],
-        e: ["100%", "50%"],
-        se: ["100%", "100%"],
-        s: ["50%", "100%"],
-        sw: ["0%", "100%"],
-        w: ["0%", "50%"],
-        nw: ["0%", "0%"]
-      };
-      handle.style.left = anchors[direction][0];
-      handle.style.top = anchors[direction][1];
-      frame.append(handle);
-    }
-    selection.append(frame);
-    sample.append(selection);
-  }
-
-  /** Begins moving or resizing the selector frame. */
-  beginSelectorFrameGesture(event, frameElement) {
-    const target = this.getSelectorFrameGestureTarget(frameElement);
-    if (!target) return;
-    const { material, sample, size } = target;
-    const handle = event.target?.closest?.(".material-selector-frame-handle");
-    const { scaleX, scaleY } = this.getPreviewCanvasScale(sample);
-    this.selectorFrameGesture = {
-      pointerId: event.pointerId,
-      target: handle || frameElement,
-      frameElement,
-      material,
-      size,
-      frame: getMaterialPreviewFrame(this.state.project, material),
-      direction: handle?.dataset.direction || "move",
-      startX: event.clientX,
-      startY: event.clientY,
-      scaleX: scaleX || 1,
-      scaleY: scaleY || 1,
-      changed: false
-    };
-    event.preventDefault();
-    event.stopPropagation();
-    this.selectorFrameGesture.target.setPointerCapture?.(event.pointerId);
-  }
-
-  /** Returns the Material, preview, and dimensions for a selector-frame gesture. */
-  getSelectorFrameGestureTarget(frameElement) {
-    const material = this.state.materialFiles.get(this.state.activeMaterialFilePath);
-    const sample = frameElement.closest(".material-file-preview-sample");
-    const size = material && getMaterialPreviewSize(material);
-    return material && sample && size ? { material, sample, size } : null;
-  }
-
-  /** Returns the current canvas zoom scales for the supplied preview. */
-  getPreviewCanvasScale(sample) {
-    const bounds = sample.getBoundingClientRect();
-    return {
-      scaleX: bounds.width / (sample.offsetWidth || bounds.width || 1) || 1,
-      scaleY: bounds.height / (sample.offsetHeight || bounds.height || 1) || 1
-    };
-  }
-
-  /** Applies a pointer update to the active selector-frame gesture. */
-  updateSelectorFrameGesture(event, gesture) {
-    const deltaX = (event.clientX - gesture.startX) / gesture.scaleX;
-    const deltaY = (event.clientY - gesture.startY) / gesture.scaleY;
-    const next = this.getUpdatedSelectorFrame(gesture, deltaX, deltaY);
-    if (this.sameSelectorFrame(next, gesture.frame)) return;
-    gesture.currentFrame = next;
-    gesture.changed = true;
-    this.setSelectorFrameElementBounds(gesture.frameElement, next);
-    event.preventDefault();
-  }
-
-  /** Returns selector-frame bounds after the current move or resize gesture. */
-  getUpdatedSelectorFrame(gesture, deltaX, deltaY) {
-    const { frame, size, direction } = gesture;
-    if (direction === "move") {
-      return {
-        ...frame,
-        x: this.clamp(Math.round(frame.x + deltaX), 0, size.width - frame.width),
-        y: this.clamp(Math.round(frame.y + deltaY), 0, size.height - frame.height)
-      };
-    }
-    let left = frame.x;
-    let top = frame.y;
-    let right = frame.x + frame.width;
-    let bottom = frame.y + frame.height;
-    if (direction.includes("w")) {
-      left = this.clamp(Math.round(frame.x + deltaX), 0, right - MIN_PREVIEW_SIZE);
-    }
-    if (direction.includes("e")) {
-      right = this.clamp(
-        Math.round(frame.x + frame.width + deltaX),
-        left + MIN_PREVIEW_SIZE,
-        size.width
-      );
-    }
-    if (direction.includes("n")) {
-      top = this.clamp(Math.round(frame.y + deltaY), 0, bottom - MIN_PREVIEW_SIZE);
-    }
-    if (direction.includes("s")) {
-      bottom = this.clamp(
-        Math.round(frame.y + frame.height + deltaY),
-        top + MIN_PREVIEW_SIZE,
-        size.height
-      );
-    }
-    return { x: left, y: top, width: right - left, height: bottom - top };
-  }
-
-  /** Finishes and persists a changed selector-frame gesture. */
-  finishSelectorFrameGesture(event, gesture) {
-    this.selectorFrameGesture = null;
-    if (gesture.target.hasPointerCapture?.(event.pointerId)) {
-      gesture.target.releasePointerCapture(event.pointerId);
-    }
-    if (!gesture.changed) return;
-    const project = this.state.project;
-    project["material-previews"] ||= {};
-    project["material-previews"][gesture.material.id] = gesture.currentFrame;
-    this.services.markEdited("project.yml");
-    this.services.renderNavigation();
-  }
-
-  /** Sets the visible selector-frame bounds. */
-  setSelectorFrameElementBounds(element, frame) {
-    element.style.left = `${frame.x}px`;
-    element.style.top = `${frame.y}px`;
-    element.style.width = `${frame.width}px`;
-    element.style.height = `${frame.height}px`;
-  }
-
-  /** Checks whether two selector frames have identical bounds. */
-  sameSelectorFrame(left, right) {
-    return ["x", "y", "width", "height"].every(
-      (property) => left[property] === right[property]
-    );
-  }
-
-  /** Restricts a value to the supplied inclusive bounds. */
-  clamp(value, minimum, maximum) {
-    return Math.min(maximum, Math.max(minimum, value));
   }
 
   /** Rewrites Material preview-size values while retaining other source text. */

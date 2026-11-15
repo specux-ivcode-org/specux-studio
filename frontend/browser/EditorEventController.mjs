@@ -10,7 +10,7 @@ export class EditorEventController {
   /** Attaches the configured event listeners to the editor controls. */
   bind() {
     // Connect project reload, Screen creation, and save actions.
-    this.bindProjectActions();
+    this.bindWorkspaceActions();
 
     // Connect the Screen preview and its alternate YAML view.
     this.bindScreenViewControls();
@@ -34,24 +34,9 @@ export class EditorEventController {
     this.bindDeleteShortcut();
   }
 
-  /** Binds project reload, Screen creation, and save controls. */
-  bindProjectActions() {
-    const { state, services } = this;
-
-    // Confirm before discarding edits, then reload the project's files.
-    services.byId("reset-project").addEventListener("click", async () => {
-      if (state.hasEdits && !services.confirm("Discard unsaved changes and reload project files?")) return;
-
-      const button = services.byId("reset-project");
-      button.disabled = true;
-      button.textContent = "Reloading...";
-
-      // Fetch the latest project files before restoring the reset control.
-      await services.loadProject();
-
-      button.disabled = false;
-      button.textContent = "Reset from files";
-    });
+  /** Binds Screen creation and Theme exit. */
+  bindWorkspaceActions() {
+    const { services } = this;
 
     // Create a Screen and report creation failures in the editor.
     services.byId("create-screen").addEventListener("click", () =>
@@ -59,9 +44,6 @@ export class EditorEventController {
         services.showEditorMessage("Could not create Screen", error.message || String(error))
       )
     );
-
-    // Save all pending project edits.
-    services.byId("save-project").addEventListener("click", () => services.saveProjectChanges());
 
     services.byId("theme-mode-exit").addEventListener("click", () =>
       services.exitTheme().catch(services.showFatalError)
@@ -231,10 +213,24 @@ export class EditorEventController {
   bindWorkspaceEscape() {
     const { services } = this;
     services.document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || !this.state.viewingMaterialFile ||
+          services.document.querySelector("dialog[open]")) return;
+      if (this.handleMaterialWorkspaceEscape(event)) event.stopPropagation();
+    }, true);
+    services.document.addEventListener("keydown", (event) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       if (services.document.querySelector("dialog[open]")) return;
 
       const activeElement = services.document.activeElement;
+      if (services.shouldCloseWorkflowNodeSpecOnEscape?.()) {
+        if (services.handleLocalEscape()) {
+          event.preventDefault();
+          return;
+        }
+        event.preventDefault();
+        services.handleWorkspaceEscape().catch(services.showFatalError);
+        return;
+      }
       if (this.isTransientTextEditor(activeElement)) {
         event.preventDefault();
         activeElement.blur();
@@ -249,6 +245,19 @@ export class EditorEventController {
       event.preventDefault();
       services.handleWorkspaceEscape().catch(services.showFatalError);
     });
+  }
+
+  /** Returns from Material authoring on Escape after dismissing local UI first. */
+  handleMaterialWorkspaceEscape(event) {
+    if (!this.state.viewingMaterialFile) return false;
+    const { services } = this;
+    if (services.handleLocalEscape()) {
+      event.preventDefault();
+      return true;
+    }
+    event.preventDefault();
+    services.handleWorkspaceEscape().catch(services.showFatalError);
+    return true;
   }
 
   /** Deletes selected placements from the active Screen with the Delete key. */

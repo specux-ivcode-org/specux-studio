@@ -163,25 +163,18 @@ async function createProject() {
   return root;
 }
 
-test("validates project-level Material selector frames", async () => {
+test("ignores legacy Material selector frame metadata", async () => {
   const root = await createProject();
   try {
     const manifestPath = path.join(root, "project.yml");
     const project = YAML.parse(await fs.readFile(manifestPath, "utf8"));
     project["material-previews"] = {
-      brand: { x: 8, y: 4, width: 120, height: 40 }
+      brand: { x: 100, y: 0, width: 160, height: 24 }
     };
     await fs.writeFile(manifestPath, YAML.stringify(project));
 
-    let result = await validateProject(root);
+    const result = await validateProject(root);
     assert.equal(result.errors.some((error) => error.includes("material-previews")), false);
-
-    project["material-previews"].brand = { x: 100, y: 0, width: 160, height: 24 };
-    await fs.writeFile(manifestPath, YAML.stringify(project));
-    result = await validateProject(root);
-    assert.ok(result.errors.some((error) =>
-      error.includes("material-previews.brand must fit inside the Material preview bounds")
-    ));
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

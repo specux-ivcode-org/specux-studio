@@ -7,17 +7,6 @@ const { validateProjectMaterials } = require("./materialValidator");
 const { validateProjectScreens } = require("./screenValidator");
 
 const SPECUX_VERSION = "0.1.0-SNAPSHOT";
-const MATERIAL_DEFAULT_SIZES = {
-  label: { width: 240, height: 56 },
-  button: { width: 160, height: 48 },
-  surface: { width: 240, height: 120 },
-  avatar: { width: 48, height: 48 },
-  "navigation-item": { width: 160, height: 40 },
-  "text-field": { width: 280, height: 48 },
-  progress: { width: 240, height: 24 },
-  divider: { width: 120, height: 24 },
-  checkbox: { width: 24, height: 24 }
-};
 
 /** Validates the CLI version declared in the project manifest. */
 function validateProjectVersion(project, errors) {
@@ -43,6 +32,7 @@ function validateProjectProperties(project, errors) {
   // Restrict the manifest to supported keys and require its Screen list.
   const projectProperties = new Set([
     "name", "description", "specux", "screens", "theme", "spec", "workflows",
+    // Older project files may retain this metadata; selector previews ignore it.
     "material-previews"
   ]);
   for (const property of Object.keys(project)) {
@@ -54,71 +44,6 @@ function validateProjectProperties(project, errors) {
   if (Object.hasOwn(project, "workflows")) {
     errors.push("project.yml: workflows are no longer supported; use project.spec or a Screen behavior spec.");
   }
-}
-
-/** Validates optional Material selector crop metadata against each preview canvas. */
-function validateMaterialPreviewFrames(project, materialFiles, errors) {
-  const previews = project["material-previews"];
-  if (previews === undefined) return;
-  if (!validation.isMapping(previews)) {
-    errors.push("project.yml: material-previews must be a mapping.");
-    return;
-  }
-  const materialsById = new Map(
-    [...materialFiles.values()].map((material) => [material.data.id, material])
-  );
-  for (const [materialId, frame] of Object.entries(previews)) {
-    validateMaterialPreviewFrame(materialId, frame, materialsById, errors);
-  }
-}
-
-/** Validates one Material's selector frame. */
-function validateMaterialPreviewFrame(materialId, frame, materialsById, errors) {
-  const material = materialsById.get(materialId);
-  if (!material) {
-    errors.push(`project.yml: material-previews references unknown Material "${materialId}".`);
-    return;
-  }
-  if (!validation.isMapping(frame)) {
-    errors.push(`project.yml: material-previews.${materialId} must be a mapping.`);
-    return;
-  }
-  for (const property of Object.keys(frame)) {
-    if (!["x", "y", "width", "height"].includes(property)) {
-      errors.push(
-        `project.yml: material-previews.${materialId} has unsupported property "${property}".`
-      );
-    }
-  }
-  if (!validateMaterialPreviewCoordinates(materialId, frame, errors)) return;
-  const size = material.data["preview-size"] || MATERIAL_DEFAULT_SIZES[material.data.type];
-  if (size && (frame.x + frame.width > size.width || frame.y + frame.height > size.height)) {
-    errors.push(
-      `project.yml: material-previews.${materialId} must fit inside the Material preview bounds.`
-    );
-  }
-}
-
-/** Validates the integer size and origin of one Material selector frame. */
-function validateMaterialPreviewCoordinates(materialId, frame, errors) {
-  let valid = true;
-  for (const property of ["x", "y"]) {
-    if (!Number.isInteger(frame[property]) || frame[property] < 0) {
-      errors.push(
-        `project.yml: material-previews.${materialId}.${property} must be a non-negative integer.`
-      );
-      valid = false;
-    }
-  }
-  for (const property of ["width", "height"]) {
-    if (!Number.isInteger(frame[property]) || frame[property] < 24) {
-      errors.push(
-        `project.yml: material-previews.${materialId}.${property} must be an integer of at least 24.`
-      );
-      valid = false;
-    }
-  }
-  return valid;
 }
 
 /** Validates and records the project-level behavior spec path. */
@@ -342,7 +267,6 @@ async function validateProject(projectRoot) {
   validateScreenEntryPaths(screenEntries, errors);
   await loadProjectScreens(screenEntries, readYaml, screens);
   await validateProjectMaterials({ projectRoot, YAML, errors, yamlDocuments, materialFiles, checkFile });
-  validateMaterialPreviewFrames(project, materialFiles, errors);
 
   // Validate Screen structures before resolving their behavior-spec references.
   const linkedSpecsByScreen = await validateProjectScreens({

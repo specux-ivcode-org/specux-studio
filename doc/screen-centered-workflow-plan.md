@@ -168,7 +168,7 @@ This is a proposal to review, not a confirmed decision.
 - Users can click a Material to add it at the center of the visible canvas or drag it onto the Screen to create a placement; dragging centers the known-size outline under the pointer and uses the same default state/layer rules as click-to-add. Selector thumbnail framing does not affect placement size.
 - Users can resize and close the Workflow/Spec bottom dock, and close/reopen the Material selector and Details pane independently.
 - Editing a Material switches to a Material editing workspace instead of opening the STML source as an overlay.
-- Selector previews can be framed without changing Material markup or placed geometry and fit into the selector tiles.
+- Selector previews show the full Material `preview-size` (or its type default) and fit into the selector tiles; legacy crop metadata is ignored.
 - Users can undo and redo Screen, Material, Workflow, Spec, and Theme edits through one project-wide history; navigation and selection changes are not undoable.
 - Edits persist automatically, Git identifies changes since the last commit, and closing dock views or switching modes does not discard them.
 - Existing Screen composition, workflow references, and save behavior continue to work.

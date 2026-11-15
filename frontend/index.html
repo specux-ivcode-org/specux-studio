@@ -73,22 +73,8 @@
       </div>
       <button class="create-screen-button" id="create-screen" type="button" aria-label="Create new Screen" title="Create an empty Screen" disabled>+</button>
     </div>
-    <div class="workspace-context" id="workspace-context">
-      <div class="context-title">
-        <div class="eyebrow" id="breadcrumb">Screens</div>
-        <h1 id="screen-heading">Loading project...</h1>
-        <span class="workspace-mode-label" id="workspace-mode-label">Screen</span>
-      </div>
+    <div id="workspace-context">
       <button class="screen-view-button theme-mode-exit" id="theme-mode-exit" type="button" hidden>Exit Theme</button>
-    </div>
-    <div class="screen-zoom-controls topbar-canvas-zoom-controls" id="topbar-canvas-zoom-controls" role="group" aria-label="Screen canvas zoom">
-      <button class="screen-zoom-button" id="topbar-canvas-zoom-out" type="button" aria-label="Zoom out" title="Zoom out">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"></path></svg>
-      </button>
-      <button class="screen-zoom-button screen-zoom-value" id="topbar-canvas-zoom-reset" type="button" aria-label="Reset canvas view to 100%" title="Reset view">100%</button>
-      <button class="screen-zoom-button" id="topbar-canvas-zoom-in" type="button" aria-label="Zoom in" title="Zoom in">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8 3v10"></path></svg>
-      </button>
     </div>
     <button
       class="screen-view-button spec-indicators-toggle"
@@ -101,9 +87,15 @@
     <div class="topbar-spacer"></div>
     <button class="screen-view-button" id="undo-project-edit" type="button" aria-label="Undo project edit" title="Undo project edit" disabled>Undo</button>
     <button class="screen-view-button" id="redo-project-edit" type="button" aria-label="Redo project edit" title="Redo project edit" disabled>Redo</button>
-    <button class="save-button" id="save-project" type="button" disabled>Save</button>
-    <span class="save-status" id="save-status" role="status" aria-live="polite"></span>
-    <button class="reset-button" id="reset-project" type="button">Reset from files</button>
+    <span
+      class="autosave-indicator"
+      id="autosave-status"
+      role="status"
+      aria-live="polite"
+      aria-label="All changes saved"
+      title="All changes saved"
+      data-state="saved"
+    ></span>
     <button
       class="panel-mode-button"
       id="inspector-mode"
@@ -240,13 +232,6 @@
       <div class="material-view-toolbar" aria-label="Material preview layout">
         <h2 class="material-view-heading" id="material-view-heading">Preview</h2>
         <div class="material-toolbar-actions">
-          <button
-            class="screen-view-button"
-            id="material-selector-frame-toggle"
-            type="button"
-            aria-pressed="false"
-            title="Edit the Material selector crop frame"
-          >Edit selector frame</button>
           <button
             class="screen-view-button"
             id="material-return-to-screen"
@@ -728,6 +713,13 @@
             <button class="screen-view-button" id="workflow-panel-diagram" type="button" aria-pressed="true">Diagram</button>
             <button class="screen-view-button" id="workflow-panel-source" type="button" aria-pressed="false">Source</button>
           </div>
+          <button
+            class="screen-view-button workflow-mode-exit"
+            id="workflow-mode-exit"
+            type="button"
+            aria-label="Exit Workflow mode"
+            title="Exit Workflow mode"
+          >×</button>
         </div>
         <div class="workflow-diagram" id="workflow-diagram" data-annotation-preview="workflow-diagram" aria-label="Mermaid workflow diagram"></div>
         <article
@@ -817,7 +809,6 @@
     ></div>
     <aside class="inspector" id="details-inspector" aria-label="Selected item details">
       <div id="inspector-content">
-        <h2 class="panel-heading">Details</h2>
         <div class="loading-message">Loading details...</div>
       </div>
     </aside>

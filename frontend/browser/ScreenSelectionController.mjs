@@ -44,6 +44,8 @@ export class ScreenSelectionController {
     this.services.byId("screen-preview")
       ?.addEventListener("contextmenu", (event) => this.onContextMenu(event), true);
     this.services.byId("screen-preview")
+      ?.addEventListener("click", (event) => this.onClick(event), true);
+    this.services.byId("screen-preview")
       ?.addEventListener("dblclick", (event) => this.onDoubleClick(event), true);
     this.updateControls();
   }
@@ -211,6 +213,13 @@ export class ScreenSelectionController {
     event.preventDefault();
     event.stopPropagation();
     this.services.openPlacementContextMenu?.(event, path);
+  }
+
+  /** Clears placement selection when the user clicks empty Screen canvas space. */
+  onClick(event) {
+    if (this.isInteractionDisabled() || this.tool !== "select" || event.button !== 0) return;
+    if (this.getHitFrame(event)) return;
+    this.services.selectInstances([]);
   }
 
   /** Opens the spec associated with the placement or Screen under a double-click. */

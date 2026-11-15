@@ -34,11 +34,15 @@ function createPersistenceHarness(overrides = {}) {
   const timers = new Map();
   const calls = [];
   let nextTimerId = 0;
-  const saveButton = { disabled: false, textContent: "", title: "" };
-  const status = { dataset: {}, textContent: "", title: "" };
+  const status = {
+    dataset: {},
+    attributes: {},
+    textContent: "should be cleared",
+    title: "",
+    setAttribute(name, value) { this.attributes[name] = value; }
+  };
   const services = {
-    byId: (id) => id === "save-project" ? saveButton
-      : id === "save-status" ? status
+    byId: (id) => id === "autosave-status" ? status
         : { disabled: false },
     showEditorMessage() {},
     renderNavigation() {},
@@ -61,11 +65,33 @@ function createPersistenceHarness(overrides = {}) {
       services,
       timers,
       calls,
-      saveButton,
       status
     })
   );
 }
+
+test("shows icon-only autosave states without manual save or reset controls", async () => {
+  const harness = await createPersistenceHarness();
+  harness.persistence.updateSaveControls();
+  assert.equal(harness.status.dataset.state, "saved");
+  assert.equal(harness.status.attributes["aria-label"], "All changes saved");
+  assert.equal(harness.status.textContent, "");
+
+  harness.persistence.setPersistenceStatus("pending", "Pending changes");
+  assert.equal(harness.status.attributes["aria-busy"], "true");
+  assert.equal(harness.status.attributes["aria-label"], "Changes queued for autosave");
+
+  harness.persistence.setPersistenceStatus("saving", "Saving changes");
+  assert.equal(harness.status.dataset.state, "saving");
+  assert.equal(harness.status.attributes["aria-label"], "Saving changes");
+
+  harness.persistence.setPersistenceStatus("error", "External file changes need review");
+  assert.equal(
+    harness.status.attributes["aria-label"],
+    "Autosave needs attention: External file changes need review"
+  );
+  assert.equal(harness.status.attributes["aria-busy"], "false");
+});
 
 test("debounces autosave but enforces a maximum wait during continuous edits", async () => {
   let now = 100;
@@ -132,7 +158,7 @@ test("reports autosave failures without clearing pending edits", async () => {
 
   assert.equal(harness.state.dirtyFiles.has("project.yml"), true);
   assert.equal(harness.status.dataset.state, "error");
-  assert.match(harness.status.textContent, /disk unavailable/);
+  assert.match(harness.status.attributes["aria-label"], /disk unavailable/);
   assert.deepEqual(messages, [["Could not save changes", "disk unavailable"]]);
 });
 
@@ -201,7 +227,7 @@ test("keeps a validation-blocked source dirty and does not send it to the save A
   assert.equal(requests, 0);
   assert.equal(harness.state.dirtyFiles.has(filePath), true);
   assert.equal(harness.status.dataset.state, "error");
-  assert.match(harness.status.textContent, /Fix invalid source/);
+  assert.match(harness.status.attributes["aria-label"], /Fix invalid source/);
 });
 
 test("restores invalid Screen source as a separate pending recovery draft", async () => {
@@ -240,7 +266,7 @@ test("restores invalid Screen source as a separate pending recovery draft", asyn
     "Unexpected end of flow sequence"
   );
   assert.equal(harness.state.dirtyFiles.has(screen.file), true);
-  assert.match(harness.status.textContent, /Fix invalid source/);
+  assert.match(harness.status.attributes["aria-label"], /Fix invalid source/);
 });
 
 test("restores invalid Material and Workflow source drafts", async () => {

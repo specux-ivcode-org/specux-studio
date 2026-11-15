@@ -16,8 +16,11 @@ export class InspectorRenderer {
     this.state = state;
     this.services = services;
     this.screenDetailsTab = "properties";
+    this.keepScreenDetails = false;
     this.selectedScreenFile = null;
     this.selectedScreenLayerId = BASE_LAYER_ID;
+    this.selectedWorkflowPath = null;
+    this.selectedWorkflowScreenFile = null;
     this.placementNavigation = { signature: "", index: -1 };
     this.placementNavigationButtons = [];
     this.placementRowsByPath = new Map();
@@ -31,8 +34,9 @@ export class InspectorRenderer {
     const { state, services } = this;
     const panel = services.byId("inspector-content");
     const scrollPositions = this.captureScrollPositions(panel);
+    if (!state.viewingWorkflow) this.keepScreenDetails = false;
     panel.parentElement?.classList?.toggle("layers-details-open", false);
-    panel.replaceChildren(services.element("h2", "panel-heading", "Details"));
+    panel.replaceChildren();
     if (state.viewingProject) {
       this.renderProjectDetails(panel);
     } else if (state.viewingTheme) {
@@ -44,31 +48,34 @@ export class InspectorRenderer {
         panel,
         state.materialFiles.get(state.activeMaterialFilePath)
       );
-    } else if (state.viewingWorkflow) {
+    } else if (state.viewingWorkflow && !this.keepScreenDetails) {
       this.renderWorkflowPreviewDetails(panel);
     } else {
-      const screen = state.screens[state.activeScreenIndex]?.data;
-      if (!screen) {
-        this.restoreScrollPositions(panel, scrollPositions);
-        return;
-      }
-      const baseInstance = state.activeInstancePath.length
-        ? services.getInstanceAtPath({ data: screen }, state.activeInstancePath)
-        : null;
-      const stateId = services.getActivePreviewStateId(screen);
-      const instance = baseInstance
-        ? services.resolvePlacementForState(baseInstance, stateId, screen)
-        : null;
-      const material = instance ? state.materialFiles.get(instance.src) : null;
-      this.renderScreenEditorDetails(
-        panel,
-        screen,
-        instance,
-        material,
-        state.viewingPreviewState
-      );
+      this.renderActiveScreenDetails(panel);
     }
     this.restoreScrollPositions(panel, scrollPositions);
+  }
+
+  /** Renders the active Screen's editor details when the inspector remains Screen-owned. */
+  renderActiveScreenDetails(panel) {
+    const { state, services } = this;
+    const screen = state.screens[state.activeScreenIndex]?.data;
+    if (!screen) return;
+    const baseInstance = state.activeInstancePath.length
+      ? services.getInstanceAtPath({ data: screen }, state.activeInstancePath)
+      : null;
+    const stateId = services.getActivePreviewStateId(screen);
+    const instance = baseInstance
+      ? services.resolvePlacementForState(baseInstance, stateId, screen)
+      : null;
+    const material = instance ? state.materialFiles.get(instance.src) : null;
+    this.renderScreenEditorDetails(
+      panel,
+      screen,
+      instance,
+      material,
+      state.viewingPreviewState
+    );
   }
 
   /** Captures the inspector's independent scroll positions before its contents are rebuilt. */
@@ -116,6 +123,9 @@ export class InspectorRenderer {
   /** Renders the screen editor details from the current editor data. */
   renderScreenEditorDetails(panel, screen, instance, material, viewingPreviewState) {
     const { services } = this;
+    if (!["properties", "layers"].includes(this.screenDetailsTab)) {
+      this.screenDetailsTab = "properties";
+    }
     const tabList = services.element("div", "inspector-tabs");
     tabList.setAttribute("role", "tablist");
     tabList.setAttribute("aria-label", "Screen details");
@@ -126,11 +136,8 @@ export class InspectorRenderer {
 
     const tabs = [
       ["properties", "Properties"],
-      ["states", "States"],
-      ["layers", "Layers"],
-      ["specs-workflows", "Specs & Workflows"]
+      ["layers", "Layers"]
     ];
-    tabList.dataset.tabCount = String(tabs.length);
     for (const [tabId, label] of tabs) {
       const tab = services.element(
         "button",
@@ -172,14 +179,15 @@ export class InspectorRenderer {
     if (this.screenDetailsTab === "layers") {
       panel.parentElement?.classList?.toggle("layers-details-open", true);
       this.renderLayersDetails(content, screen);
-    } else if (this.screenDetailsTab === "states") {
-      this.renderScreenStatesDetails(content, screen);
-    } else if (this.screenDetailsTab === "specs-workflows") {
-      this.renderSpecsWorkflowsDetails(content, screen, instance);
-    } else if (viewingPreviewState || !instance) {
-      this.renderScreenProperties(content, screen);
     } else {
-      this.renderInstanceDetails(content, instance, material);
+      const screenPropertiesSelected = viewingPreviewState || !instance;
+      if (screenPropertiesSelected) {
+        this.renderScreenProperties(content, screen);
+        this.renderSpecsWorkflowsDetails(content, screen);
+        this.renderScreenStatesDetails(content, screen);
+      } else {
+        this.renderInstanceDetails(content, instance, material);
+      }
     }
   }
 
@@ -190,12 +198,13 @@ export class InspectorRenderer {
     const stateId = services.getActivePreviewStateId(screen);
     const screenStates = this.getSortedScreenStates(screen);
     const isDefault = stateId === "default";
+    this.appendSection(panel, "SCREEN STATE");
     this.renderScreenStateList(panel, screenStates, stateId, isDefault);
     this.renderScreenStateChanges(panel, screen, screenEntry, stateId, isDefault);
   }
 
   /** Renders contextual Screen and placement specs plus Screen-owned workflows. */
-  renderSpecsWorkflowsDetails(panel, screen, instance) {
+  renderSpecsWorkflowsDetails(panel, screen) {
     const { state, services } = this;
     const screenEntry = state.screens[state.activeScreenIndex];
     this.appendSection(panel, "Screen spec");
@@ -206,39 +215,65 @@ export class InspectorRenderer {
     );
     panel.append(screenSpecButton);
 
-    if (instance) {
-      this.appendSection(panel, "Placement spec");
-      const placementSpecButton = services.element(
-        "button",
-        "spec-action-button",
-        "Open or create placement spec"
-      );
-      placementSpecButton.type = "button";
-      placementSpecButton.addEventListener("click", () =>
-        services.createSpecForInstance([...state.activeInstancePath])
-          .catch(services.showFatalError)
-      );
-      panel.append(placementSpecButton);
-    }
-
     this.appendSection(panel, "Workflows");
+    const workflowsBox = services.element("section", "screen-property-box");
+    const workflowsHeader = services.element("div", "screen-editor-box-header");
+    workflowsHeader.append(services.element("h3", "screen-editor-box-title", "Workflows"));
+    const workflowActions = services.element("div", "screen-editor-box-actions");
     const createWorkflowButton = services.element(
       "button",
       "spec-action-button",
-      "Create workflow"
+      "Create"
     );
     createWorkflowButton.type = "button";
+    createWorkflowButton.setAttribute("aria-label", "Create workflow");
+    createWorkflowButton.title = "Create workflow";
     createWorkflowButton.addEventListener("click", () =>
       services.createWorkflowForScreen().catch(services.showFatalError)
     );
-    panel.append(createWorkflowButton);
+    const deleteWorkflowButton = services.element(
+      "button",
+      "spec-action-button workflow-delete-button",
+      "Delete"
+    );
+    deleteWorkflowButton.type = "button";
+    deleteWorkflowButton.disabled = true;
+    deleteWorkflowButton.setAttribute("aria-label", "Delete selected workflow");
+    deleteWorkflowButton.title = "Select a workflow to delete";
+    deleteWorkflowButton.addEventListener("click", () => {
+      const filePath = this.selectedWorkflowPath;
+      if (!filePath) return;
+      services.deleteWorkflow(filePath)
+        .then((deleted) => {
+          if (deleted) this.selectedWorkflowPath = null;
+        })
+        .catch(services.showFatalError);
+    });
+    workflowActions.append(createWorkflowButton, deleteWorkflowButton);
+    workflowsHeader.append(workflowActions);
+    const workflowList = services.element("div", "screen-state-list");
+    workflowList.setAttribute("role", "list");
+    workflowList.setAttribute("aria-label", "Screen workflows");
+    workflowsBox.append(workflowsHeader, workflowList);
+    panel.append(workflowsBox);
 
     const screenWorkflowPrefix = `screens/${screenEntry.id}/workflows/`;
     const workflowPaths = [...state.workflowSources.keys()]
       .filter((filePath) => filePath.startsWith(screenWorkflowPrefix))
       .sort((left, right) => left.localeCompare(right));
+    const screenFile = screenEntry.file;
+    if (this.selectedWorkflowScreenFile !== screenFile ||
+        !workflowPaths.includes(this.selectedWorkflowPath)) {
+      this.selectedWorkflowPath = null;
+      this.selectedWorkflowScreenFile = screenFile;
+    }
+    const workflowRows = [];
+    deleteWorkflowButton.disabled = this.selectedWorkflowPath === null;
+    deleteWorkflowButton.title = deleteWorkflowButton.disabled
+      ? "Select a workflow to delete"
+      : `Delete ${this.selectedWorkflowPath}`;
     if (!workflowPaths.length) {
-      panel.append(services.element(
+      workflowList.append(services.element(
         "p",
         "material-selector-empty",
         "No Screen-owned workflows are available."
@@ -248,28 +283,36 @@ export class InspectorRenderer {
     for (const filePath of workflowPaths) {
       const workflowButton = services.element(
         "button",
-        "spec-action-button workflow-open-button",
+        "screen-state-select",
         filePath.slice(screenWorkflowPrefix.length).replace(/\.mmd$/i, "")
       );
       workflowButton.type = "button";
-      workflowButton.setAttribute("aria-label", `Open workflow ${filePath}`);
-      workflowButton.addEventListener("click", () =>
+      workflowButton.setAttribute("aria-label", `Select workflow ${filePath}`);
+      workflowButton.setAttribute(
+        "aria-pressed",
+        String(filePath === this.selectedWorkflowPath)
+      );
+      const workflowItem = services.element("div", "screen-state-row workflow-selector-row");
+      workflowItem.dataset.workflowPath = filePath;
+      workflowItem.setAttribute("role", "listitem");
+      workflowItem.classList.toggle("selected", filePath === this.selectedWorkflowPath);
+      workflowButton.addEventListener("click", () => {
+        this.selectedWorkflowPath = filePath;
+        this.selectedWorkflowScreenFile = screenFile;
+        for (const row of workflowRows) {
+          const selected = row.dataset.workflowPath === filePath;
+          row.classList.toggle("selected", selected);
+          row.children[0].setAttribute("aria-pressed", String(selected));
+        }
+        deleteWorkflowButton.disabled = false;
+        deleteWorkflowButton.title = `Delete ${filePath}`;
+        this.keepScreenDetails = true;
         services.renderWorkflowEditor(filePath, state.activeScreenIndex)
-          .catch(services.showFatalError)
-      );
-      const deleteButton = services.element(
-        "button",
-        "workflow-delete-button",
-        "Delete"
-      );
-      deleteButton.type = "button";
-      deleteButton.setAttribute("aria-label", `Delete workflow ${filePath}`);
-      deleteButton.addEventListener("click", () =>
-        services.deleteWorkflow(filePath).catch(services.showFatalError)
-      );
-      const workflowItem = services.element("div", "workflow-list-item");
-      workflowItem.append(workflowButton, deleteButton);
-      panel.append(workflowItem);
+          .catch(services.showFatalError);
+      });
+      workflowItem.append(workflowButton);
+      workflowRows.push(workflowItem);
+      workflowList.append(workflowItem);
     }
   }
 
@@ -1340,8 +1383,22 @@ export class InspectorRenderer {
       this.renderScreenSpecDetails(panel, screen);
       return;
     }
+    if (state.activeSpecOwner === "workflow-node") {
+      this.renderWorkflowNodeSpecDetails(panel);
+      return;
+    }
     const instance = screen && services.getInstanceAtPath(screen, state.activeSpecInstancePath);
     this.renderElementSpecDetails(panel, screen, instance);
+  }
+
+  /** Renders the active Workflow node spec details. */
+  renderWorkflowNodeSpecDetails(panel) {
+    const { state } = this;
+    this.appendSection(panel, "Workflow node behavior spec");
+    this.appendDetail(panel, "File", state.activeSpecPath || "Unavailable");
+    this.appendDetail(panel, "Workflow", state.activeSpecWorkflowPath || "Unavailable");
+    this.appendDetail(panel, "Node", state.activeSpecWorkflowNodeId || "Unavailable");
+    this.appendDetail(panel, "Format", "OpenSpec behavior contract; not executable.");
   }
 
   /** Renders the project spec details from the current editor data. */
@@ -1393,8 +1450,11 @@ export class InspectorRenderer {
       return;
     }
     this.appendSection(panel, "Selected Material");
-    this.appendDetail(panel, "Material ID", instance.id);
-    this.appendDetail(panel, "Type", instance.type);
+    this.appendPlacementPropertiesTable(panel, [
+      ["Material ID", instance.id],
+      ["Type", instance.type]
+    ]);
+    this.appendPlacementSpecAction(panel);
     const screen = state.screens[state.activeScreenIndex];
     const stateId = services.getActivePreviewStateId?.(screen.data) || "default";
     const contentProperty = instance.type === "text" ? "content" : "label";
@@ -1419,8 +1479,11 @@ export class InspectorRenderer {
     const screen = state.screens[state.activeScreenIndex];
     const stateId = services.getActivePreviewStateId(screen.data);
     this.appendSection(panel, "Placement group");
-    this.appendDetail(panel, "Group ID", group.id);
-    this.appendDetail(panel, "Children", String(group.children.length));
+    this.appendPlacementPropertiesTable(panel, [
+      ["Group ID", group.id],
+      ["Children", String(group.children.length)]
+    ]);
+    this.appendPlacementSpecAction(panel);
     if (state.activeInstancePath.length > 1) {
       this.renderNestedGroupTransform(panel, group);
       return;
@@ -1448,50 +1511,44 @@ export class InspectorRenderer {
   renderEditableGroupTransform(panel, group, screen) {
     const { services } = this;
     this.appendSection(panel, "Group transform");
-    for (const key of ["x", "y"]) {
-      services.appendEditableField(
-        panel,
-        `Position ${key.toUpperCase()}`,
-        group.position[key],
-        (value) => {
-          if (value === undefined) return;
-          group.position[key] = value;
-          services.persistPlacementState(group);
-          services.markEdited(screen.file);
-          services.refreshActiveView();
-        },
-        { numberFormat: "integer" }
-      );
-    }
-    for (const key of ["width", "height"]) {
-      services.appendEditableField(
-        panel,
-        key === "width" ? "Width" : "Height",
-        group.size[key],
-        (value) => {
-          if (value === undefined) return;
-          if (value < 24) {
-            services.showEditorMessage("Invalid group size", "Group dimensions must be at least 24 pixels.");
-            return;
-          }
-          const ratio = value / group.size[key];
-          const axis = key === "width" ? "x" : "y";
-          if (!this.canScaleGroupGeometry(group, axis, ratio)) {
-            services.showEditorMessage(
-              "Invalid group size",
-              "Group dimensions cannot scale a child below 24 pixels."
-            );
-            return;
-          }
-          this.scaleGroupGeometry(group, axis, ratio);
-          group.size[key] = value;
-          services.persistPlacementState(group);
-          services.markEdited(screen.file);
-          services.refreshActiveView();
-        },
-        { numberFormat: "integer" }
-      );
-    }
+    this.appendEditableFieldRow(panel, ["x", "y"].map((key) => ({
+      label: `Position ${key.toUpperCase()}`,
+      value: group.position[key],
+      onChange: (value) => {
+        if (value === undefined) return;
+        group.position[key] = value;
+        services.persistPlacementState(group);
+        services.markEdited(screen.file);
+        services.refreshActiveView();
+      },
+      options: { numberFormat: "integer" }
+    })));
+    this.appendEditableFieldRow(panel, ["width", "height"].map((key) => ({
+      label: key === "width" ? "Width" : "Height",
+      value: group.size[key],
+      onChange: (value) => {
+        if (value === undefined) return;
+        if (value < 24) {
+          services.showEditorMessage("Invalid group size", "Group dimensions must be at least 24 pixels.");
+          return;
+        }
+        const ratio = value / group.size[key];
+        const axis = key === "width" ? "x" : "y";
+        if (!this.canScaleGroupGeometry(group, axis, ratio)) {
+          services.showEditorMessage(
+            "Invalid group size",
+            "Group dimensions cannot scale a child below 24 pixels."
+          );
+          return;
+        }
+        this.scaleGroupGeometry(group, axis, ratio);
+        group.size[key] = value;
+        services.persistPlacementState(group);
+        services.markEdited(screen.file);
+        services.refreshActiveView();
+      },
+      options: { numberFormat: "integer" }
+    })));
     this.appendTransformScaleFields(panel, group, screen);
     services.appendEditableField(
       panel,
@@ -1557,26 +1614,56 @@ export class InspectorRenderer {
     const stateId = services.getActivePreviewStateId(screen.data);
     const isGroupedPlacement = state.activeInstancePath.length > 1;
     this.renderMaterialPlacementHeader(panel, instance, material);
+    this.renderMaterialPlacementTransform(panel, instance, screen, isGroupedPlacement);
     this.renderInstanceVariables(panel, instance, material, screen, isGroupedPlacement);
-    this.renderMaterialPlacementTransform(panel, instance, screen, stateId, isGroupedPlacement);
+    if (stateId === "default" && !isGroupedPlacement) {
+      this.renderRemovePlacementButton(panel, instance);
+    }
   }
 
   /** Renders the material placement header from the current editor data. */
   renderMaterialPlacementHeader(panel, instance, material) {
     const { services } = this;
     this.appendSection(panel, "Material placement");
-    this.appendDetail(panel, "Placement ID", instance.id);
-    this.appendDetail(panel, "Material", material.data.name || material.id);
-    this.appendDetail(panel, "Type", material.data.type);
-    this.appendDetail(panel, "File", material.file);
-    const openMaterial = services.element("button", "spec-action-button", "Edit shared Material");
+    const openMaterial = services.element(
+      "button",
+      "spec-action-button placement-properties-edit-button",
+      "Edit"
+    );
     openMaterial.type = "button";
+    openMaterial.title = "Edit shared Material";
+    openMaterial.setAttribute("aria-label", "Edit shared Material");
     openMaterial.addEventListener("click", () =>
       services.renderMaterialFile(material.file).catch((error) =>
         services.showEditorMessage("Could not open Material", error.message || String(error))
       )
     );
-    panel.append(openMaterial);
+    const fileValue = services.element("div", "placement-properties-file");
+    fileValue.append(services.element("span", "", material.file), openMaterial);
+    this.appendPlacementPropertiesTable(panel, [
+      ["Placement ID", instance.id],
+      ["Material", material.data.name || material.id],
+      ["Type", material.data.type],
+      ["File", fileValue]
+    ]);
+    this.appendPlacementSpecAction(panel);
+  }
+
+  /** Adds the placement-specific spec action below the placement metadata. */
+  appendPlacementSpecAction(panel) {
+    const { state, services } = this;
+    this.appendSection(panel, "Placement spec");
+    const placementSpecButton = services.element(
+      "button",
+      "spec-action-button",
+      "Open or create placement spec"
+    );
+    placementSpecButton.type = "button";
+    placementSpecButton.addEventListener("click", () =>
+      services.createSpecForInstance([...state.activeInstancePath])
+        .catch(services.showFatalError)
+    );
+    panel.append(placementSpecButton);
   }
 
   /** Renders the instance variables from the current editor data. */
@@ -1612,14 +1699,13 @@ export class InspectorRenderer {
   }
 
   /** Renders the material placement transform from the current editor data. */
-  renderMaterialPlacementTransform(panel, instance, screen, stateId, isGroupedPlacement) {
+  renderMaterialPlacementTransform(panel, instance, screen, isGroupedPlacement) {
     this.appendSection(panel, "Placement transform");
     if (isGroupedPlacement) {
       this.renderGroupedPlacementTransform(panel, instance);
       return;
     }
     this.renderEditablePlacementTransform(panel, instance, screen);
-    if (stateId === "default") this.renderRemovePlacementButton(panel, instance);
   }
 
   /** Renders the grouped placement transform from the current editor data. */
@@ -1647,30 +1733,38 @@ export class InspectorRenderer {
 
   /** Adds the position fields for the current editor state. */
   appendPositionFields(panel, instance, screen) {
-    const { services } = this;
-    for (const key of ["x", "y"]) {
-      services.appendEditableField(
-        panel,
-        `Position ${key.toUpperCase()}`,
-        instance.position?.[key],
-        (value) => this.updateMaterialTransform(instance, "position", key, value, screen),
-        { numberFormat: "integer" }
-      );
-    }
+    this.appendEditableFieldRow(panel, ["x", "y"].map((key) => ({
+      label: `Position ${key.toUpperCase()}`,
+      value: instance.position?.[key],
+      onChange: (value) => this.updateMaterialTransform(instance, "position", key, value, screen),
+      options: { numberFormat: "integer" }
+    })));
   }
 
   /** Adds the size fields for the current editor state. */
   appendSizeFields(panel, instance, screen) {
+    this.appendEditableFieldRow(panel, ["width", "height"].map((key) => ({
+      label: key === "width" ? "Width" : "Height",
+      value: instance.size?.[key],
+      onChange: (value) => this.updateMaterialTransform(instance, "size", key, value, screen, 24),
+      options: { numberFormat: "integer" }
+    })));
+  }
+
+  /** Renders related editable fields together in one two-column row. */
+  appendEditableFieldRow(panel, fields) {
     const { services } = this;
-    for (const key of ["width", "height"]) {
+    const row = services.element("div", "editor-field-row");
+    for (const field of fields) {
       services.appendEditableField(
-        panel,
-        key === "width" ? "Width" : "Height",
-        instance.size?.[key],
-        (value) => this.updateMaterialTransform(instance, "size", key, value, screen, 24),
-        { numberFormat: "integer" }
+        row,
+        field.label,
+        field.value,
+        field.onChange,
+        field.options
       );
     }
+    panel.append(row);
   }
 
   /** Updates the material transform to reflect the latest editor state. */
@@ -1724,31 +1818,28 @@ export class InspectorRenderer {
   appendTransformScaleFields(panel, placement, screen) {
     const { services } = this;
     const scale = getScaleComponents(placement.scale ?? 1);
-    for (const axis of ["x", "y"]) {
-      services.appendEditableField(
-        panel,
-        `Transform scale ${axis.toUpperCase()}`,
-        scale[axis],
-        (value) => {
-          if (value === undefined) return;
-          if (value <= 0) {
-            services.showEditorMessage(
-              "Invalid scale",
-              "Transform scale factors must be greater than zero."
-            );
-            return;
-          }
+    this.appendEditableFieldRow(panel, ["x", "y"].map((axis) => ({
+      label: `Transform scale ${axis.toUpperCase()}`,
+      value: scale[axis],
+      onChange: (value) => {
+        if (value === undefined) return;
+        if (value <= 0) {
+          services.showEditorMessage(
+            "Invalid scale",
+            "Transform scale factors must be greater than zero."
+          );
+          return;
+        }
 
-          const updated = getScaleComponents(placement.scale ?? 1);
-          updated[axis] = value;
-          placement.scale = serializeScale(updated);
-          services.persistPlacementState(placement);
-          services.markEdited(screen.file);
-          services.refreshActiveView();
-        },
-        { numberFormat: "decimal" }
-      );
-    }
+        const updated = getScaleComponents(placement.scale ?? 1);
+        updated[axis] = value;
+        placement.scale = serializeScale(updated);
+        services.persistPlacementState(placement);
+        services.markEdited(screen.file);
+        services.refreshActiveView();
+      },
+      options: { numberFormat: "decimal" }
+    })));
   }
 
   /** Renders the material file details from the current editor data. */
@@ -1799,6 +1890,28 @@ export class InspectorRenderer {
     if (value === undefined || value === null || value === "") return;
     parent.append(this.services.element("div", "detail-label", label));
     parent.append(this.services.element("div", "detail-value", String(value)));
+  }
+
+  /** Adds compact placement metadata in an accessible label/value table. */
+  appendPlacementPropertiesTable(parent, properties) {
+    const table = this.services.element("table", "placement-properties-table");
+    table.setAttribute("aria-label", "Placement properties");
+    const body = this.services.element("tbody");
+    for (const [label, value] of properties) {
+      const row = this.services.element("tr");
+      const heading = this.services.element("th", "", label);
+      heading.setAttribute("scope", "row");
+      const valueCell = this.services.element("td");
+      if (typeof value === "string" || typeof value === "number") {
+        valueCell.textContent = String(value);
+      } else {
+        valueCell.append(value);
+      }
+      row.append(heading, valueCell);
+      body.append(row);
+    }
+    table.append(body);
+    parent.append(table);
   }
 
   /** Adds the note for the current editor state. */

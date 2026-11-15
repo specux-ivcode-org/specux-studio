@@ -5,7 +5,6 @@ import {
   isValidAffineMatrix,
   isValidScale
 } from "../../shared/ScreenGroups.mjs";
-import { getMaterialDefaultSize } from "./MaterialDefaults.mjs";
 
 /** Validates the Element spec target and returns its current placement path. */
 function validateElementSpecTarget(repository, references, screen, elementId, filePath) {
@@ -536,7 +535,6 @@ export class ProjectRepository {
 
     const materialFiles = this.createMaterialFileMap(loadedMaterials);
     this.materialFiles = materialFiles;
-    this.validateProjectMaterialPreviews(project, materialFiles);
     for (const screen of screens) this.validateScreenMaterials(screen, materialFiles);
     const { specSources, elementSpecOwners } =
       await this.loadSpecs(project, screens, projectFilePaths);
@@ -584,77 +582,13 @@ export class ProjectRepository {
   validateProjectProperties(project) {
     const supportedProjectProperties = new Set([
       "name", "description", "specux", "screens", "theme", "spec", "workflows",
+      // Older project files may retain this metadata; selector previews ignore it.
       "material-previews"
     ]);
     for (const property of Object.keys(project)) {
       if (!supportedProjectProperties.has(property)) {
         throw new Error(`project.yml has unsupported property "${property}".`);
       }
-    }
-  }
-
-  /** Validates project-level selector framing without changing Material source data. */
-  validateProjectMaterialPreviews(project, materialFiles) {
-    const previews = project["material-previews"];
-    if (previews === undefined) return;
-    if (!this.validation.isMapping(previews)) {
-      throw new Error("project.yml material-previews must be a mapping.");
-    }
-    const materialsById = new Map(
-      [...materialFiles.values()].map((material) => [material.id, material])
-    );
-    for (const [materialId, frame] of Object.entries(previews)) {
-      this.validateProjectMaterialPreview(materialId, frame, materialsById);
-    }
-  }
-
-  /** Validates one Material's selector frame. */
-  validateProjectMaterialPreview(materialId, frame, materialsById) {
-    const material = materialsById.get(materialId);
-    if (!material) {
-      throw new Error(`project.yml material-previews references unknown Material "${materialId}".`);
-    }
-    if (!this.validation.isMapping(frame)) {
-      throw new Error(`project.yml material-previews.${materialId} must be a mapping.`);
-    }
-    for (const property of Object.keys(frame)) {
-      if (!["x", "y", "width", "height"].includes(property)) {
-        throw new Error(
-          `project.yml material-previews.${materialId} has unsupported property "${property}".`
-        );
-      }
-    }
-    this.validateProjectMaterialPreviewBounds(materialId, frame, material);
-  }
-
-  /** Validates the coordinates and size of one Material selector frame. */
-  validateProjectMaterialPreviewBounds(materialId, frame, material) {
-    for (const property of ["x", "y"]) {
-      if (!Number.isInteger(frame[property]) || frame[property] < 0) {
-        throw new Error(
-          `project.yml material-previews.${materialId}.${property} must be a non-negative integer.`
-        );
-      }
-    }
-    for (const property of ["width", "height"]) {
-      if (!Number.isInteger(frame[property]) || frame[property] < 24) {
-        throw new Error(
-          `project.yml material-previews.${materialId}.${property} must be an integer of at least 24.`
-        );
-      }
-    }
-    this.validateProjectMaterialPreviewFits(materialId, frame, material);
-  }
-
-  /** Ensures the selector frame stays within the preview canvas. */
-  validateProjectMaterialPreviewFits(materialId, frame, material) {
-    const dimensions = material.data["preview-size"] ||
-      getMaterialDefaultSize(material.data.type);
-    if (!dimensions || frame.x + frame.width > dimensions.width ||
-        frame.y + frame.height > dimensions.height) {
-      throw new Error(
-        `project.yml material-previews.${materialId} must fit inside the Material preview bounds.`
-      );
     }
   }
 

@@ -113,11 +113,16 @@ export class SpecEditor {
   }
 
   /** Renders the selected editor view and refreshes its dependent preview and controls. */
-  async render(filePath, instancePath = this.state.activeInstancePath, owner = "instance") {
+  async render(
+    filePath,
+    instancePath = this.state.activeInstancePath,
+    owner = "instance",
+    workflowContext = null
+  ) {
     const { state, services } = this;
     services.hidePreviewStateControls();
     services.validation.validateSpecPath(filePath);
-    const context = this.getSpecRenderContext(filePath, instancePath, owner);
+    const context = this.getSpecRenderContext(filePath, instancePath, owner, workflowContext);
     state.activeProjectFilePath = filePath;
     if (!state.specSources.has(filePath)) {
       state.specSources.set(filePath, await services.loadText(filePath));
@@ -133,30 +138,123 @@ export class SpecEditor {
     await this.setPreviewReferences(filePath, services.byId("spec-source").value, true);
   }
 
-  /** Returns the spec render context. */
-  getSpecRenderContext(filePath, instancePath, owner) {
+  /** Renders a Workflow node spec editor in the main Screen preview. */
+  async renderWorkflowNodeSpecInMainView(filePath, workflowPath, nodeId) {
     const { state, services } = this;
-    const screen = state.screens[state.activeScreenIndex];
+    services.validation.validateSpecPath(filePath);
+    const context = this.getSpecRenderContext(
+      filePath,
+      [],
+      "workflow-node",
+      { workflowPath, nodeId }
+    );
+    if (!state.specSources.has(filePath)) {
+      state.specSources.set(filePath, await services.loadText(filePath));
+    }
+
+    state.activeSpecPath = filePath;
+    state.activeSpecScreenFile = context.screen.file;
+    state.activeSpecOwner = "workflow-node";
+    state.activeSpecWorkflowPath = workflowPath;
+    state.activeSpecWorkflowNodeId = nodeId;
+    state.activeSpecInstancePath = [];
+
+    const preview = services.byId("screen-preview");
+    const editor = preview.ownerDocument.createElement("section");
+    editor.className = "workflow-node-spec-main-editor";
+    editor.setAttribute("aria-label", `Editing behavior spec for Workflow node "${nodeId}"`);
+    const header = preview.ownerDocument.createElement("header");
+    header.className = "workflow-node-spec-main-header";
+    const heading = preview.ownerDocument.createElement("h2");
+    heading.className = "workflow-node-spec-main-heading";
+    heading.textContent = filePath;
+    const closeButton = preview.ownerDocument.createElement("button");
+    closeButton.className = "screen-view-button workflow-node-spec-main-close";
+    closeButton.type = "button";
+    closeButton.setAttribute("aria-label", "Return to Screen and Workflow");
+    closeButton.title = "Return to Screen and Workflow";
+    closeButton.textContent = "×";
+    closeButton.addEventListener("click", () => {
+      Promise.resolve(services.returnToWorkflowAfterSpec?.()).catch((error) =>
+        services.showEditorMessage(
+          "Could not return to Workflow",
+          error.message || String(error)
+        )
+      );
+    });
+    header.append(heading, closeButton);
+    editor.append(header, services.byId("spec-source-container"));
+    preview.replaceChildren(editor);
+    preview.classList.add("workflow-node-spec-main-active");
+    services.byId("main").classList.add("workflow-node-spec-main-active");
+    preview.setAttribute(
+      "aria-label",
+      `Editing behavior spec for Workflow node "${nodeId}"`
+    );
+    services.byId("spec-editor-panel").hidden = true;
+    services.byId("screen-stage").setAttribute(
+      "aria-label",
+      `Workflow node "${nodeId}" behavior spec editor`
+    );
+    services.hideEditorMessage();
+    this.specValidationErrorFile = null;
+    this.renderSpecSource(context);
+    this.renderSourceHighlight(null);
+    services.byId("spec-source").focus();
+  }
+
+  /** Returns the spec render context. */
+  getSpecRenderContext(filePath, instancePath, owner, workflowContext = null) {
+    const { state, services } = this;
+    const isWorkflowNodeSpec = owner === "workflow-node";
+    const workflowPath = workflowContext?.workflowPath || null;
+    const nodeId = workflowContext?.nodeId || null;
+    const screen = isWorkflowNodeSpec
+      ? state.screens.find((entry) =>
+        workflowPath?.startsWith(`screens/${entry.id}/workflows/`)
+      )
+      : state.screens[state.activeScreenIndex];
     const draft = state.createdSpecDrafts.get(filePath);
     const isProjectSpec = owner === "project";
     const isScreenSpec = owner === "screen";
-    const instance = !isProjectSpec && !isScreenSpec && screen
+    const instance = !isProjectSpec && !isScreenSpec && !isWorkflowNodeSpec && screen
       ? services.getInstanceAtPath(screen, instancePath)
       : null;
     const elementSpecOwner = state.elementSpecOwners.get(filePath);
-    this.validateSpecAttachment(filePath, owner, screen, draft, instance, elementSpecOwner, instancePath);
+    this.validateSpecAttachment(
+      filePath,
+      owner,
+      screen,
+      draft,
+      instance,
+      elementSpecOwner,
+      instancePath,
+      { workflowPath, nodeId }
+    );
     return {
       filePath,
       screen,
       instancePath,
       isProjectSpec,
       isScreenSpec,
+      isWorkflowNodeSpec,
+      workflowPath,
+      nodeId,
       owner
     };
   }
 
   /** Validates the spec attachment before it is applied or saved. */
-  validateSpecAttachment(filePath, owner, screen, draft, instance, elementSpecOwner, instancePath) {
+  validateSpecAttachment(
+    filePath,
+    owner,
+    screen,
+    draft,
+    instance,
+    elementSpecOwner,
+    instancePath,
+    workflowContext = {}
+  ) {
     if (owner === "project") {
       if (this.state.project.spec !== filePath && draft?.owner !== "project") {
         throw new Error(`Behavior spec "${filePath}" is not attached to the project.`);
@@ -167,6 +265,19 @@ export class SpecEditor {
       const isScreenDraft = draft?.owner === "screen" && draft.screenFile === screen?.file;
       if (!screen || (screen.data.spec !== filePath && !isScreenDraft)) {
         throw new Error(`Behavior spec "${filePath}" is not attached to the selected Screen.`);
+      }
+      return;
+    }
+    if (owner === "workflow-node") {
+      const { workflowPath, nodeId } = workflowContext;
+      const source = this.state.specSources.get(filePath);
+      if (!screen || !this.state.workflowSources.has(workflowPath) ||
+          !nodeId ||
+          !parseWorkflowSpecReferences(source || "", workflowPath)
+            .some((reference) => reference.nodeId === nodeId)) {
+        throw new Error(
+          `Behavior spec "${filePath}" is not linked to Workflow node "${nodeId}".`
+        );
       }
       return;
     }
@@ -185,7 +296,17 @@ export class SpecEditor {
   /** Updates the spec view for the current editor state. */
   configureSpecView(context) {
     const { state, services } = this;
-    const { filePath, screen, instancePath, isProjectSpec, isScreenSpec, owner } = context;
+    const {
+      filePath,
+      screen,
+      instancePath,
+      isProjectSpec,
+      isScreenSpec,
+      isWorkflowNodeSpec,
+      workflowPath,
+      nodeId,
+      owner
+    } = context;
     const main = services.byId("main");
     main.classList.remove("material-editing");
     main.classList.add("spec-editing");
@@ -201,6 +322,8 @@ export class SpecEditor {
     state.activeSpecPath = filePath;
     state.activeSpecOwner = owner;
     state.activeSpecScreenFile = isProjectSpec ? null : screen?.file || null;
+    state.activeSpecWorkflowPath = isWorkflowNodeSpec ? workflowPath : null;
+    state.activeSpecWorkflowNodeId = isWorkflowNodeSpec ? nodeId : null;
     state.activeSpecInstancePath = isProjectSpec || isScreenSpec ? [] : [...instancePath];
     state.activeInstancePath = isProjectSpec || isScreenSpec ? [] : [...instancePath];
     this.updatePreviewFocus(null);
@@ -214,10 +337,10 @@ export class SpecEditor {
         ? "Project overview linked to its behavior spec"
         : isScreenSpec
           ? "Screen preview linked to its behavior spec"
-          : "Screen preview linked to the selected placement behavior spec"
+          : isWorkflowNodeSpec
+            ? `Screen preview linked to Workflow node "${nodeId}" behavior spec`
+            : "Screen preview linked to the selected placement behavior spec"
     );
-    services.byId("screen-heading").textContent = `Spec: ${filePath}`;
-    services.byId("breadcrumb").textContent = "Behavior spec";
     services.byId("spec-editor-heading").textContent = filePath;
   }
 

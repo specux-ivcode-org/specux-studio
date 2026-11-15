@@ -111,6 +111,41 @@ test("writes primary, linked, node, and complete canvas contexts to separate URL
   );
 });
 
+test("keeps a Workflow node spec linked to its owning Workflow in the URL", async () => {
+  const windowObject = createWindow("http://localhost/");
+  const options = {
+    selection: {
+      view: "spec",
+      screen: { id: "home", file: "screens/home/screen.yml" },
+      spec: {
+        file: "screens/home/specs/workflow-checkout-save.md",
+        owner: "workflow-node",
+        workflowPath: "screens/home/workflows/checkout.mmd",
+        nodeId: "save"
+      }
+    },
+    workspaceContext: {
+      dock: {
+        primary: { view: "workflow", file: "screens/home/workflows/checkout.mmd" },
+        linked: [{
+          view: "spec",
+          file: "screens/home/specs/workflow-checkout-save.md",
+          nodeId: "save"
+        }]
+      }
+    }
+  };
+  const controller = await createController(windowObject, options);
+  controller.sync();
+
+  const url = new URL(windowObject.history.calls[0].url);
+  assert.equal(url.searchParams.get("file"), options.selection.spec.file);
+  assert.equal(url.searchParams.get("view"), "spec");
+  assert.equal(url.searchParams.get("owner"), "workflow-node");
+  assert.equal(url.searchParams.get("linked"), options.selection.spec.workflowPath);
+  assert.equal(url.searchParams.get("node"), "save");
+});
+
 test("pushes history only when the displayed Screen changes", async () => {
   const windowObject = createWindow("http://localhost/");
   const options = {

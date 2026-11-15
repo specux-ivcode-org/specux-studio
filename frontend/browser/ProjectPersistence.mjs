@@ -251,33 +251,31 @@ export class ProjectPersistence {
     this.updateSaveControls();
   }
 
-  /** Updates the save controls to reflect the latest editor state. */
+  /** Updates the autosave status indicator and project history controls. */
   updateSaveControls() {
-    const saveButton = this.services.byId("save-project");
-    if (!saveButton) return;
-    const { state } = this;
-    const invalidYamlMessage = state.invalidYamlFiles.values().next().value;
-    const invalidWorkflowMessage = state.invalidWorkflowFiles.values().next().value;
-    saveButton.disabled = state.isSaving || state.dirtyFiles.size === 0 ||
-      state.invalidYamlFiles.size > 0 || state.invalidWorkflowFiles.size > 0;
-    saveButton.textContent = state.isSaving
-      ? "Saving..."
-      : state.dirtyFiles.size > 0
-        ? `Save (${state.dirtyFiles.size})`
-        : "Save";
-    saveButton.title = invalidYamlMessage
-      ? `Fix invalid YAML before saving: ${invalidYamlMessage}`
-      : invalidWorkflowMessage
-        ? `Fix invalid Mermaid before saving: ${invalidWorkflowMessage}`
-        : "";
-    const status = this.services.byId("save-status");
-    if (status) {
-      status.dataset.state = this.status.state;
-      status.textContent = this.status.message;
-      status.title = this.status.message;
-    }
+    this.updateAutosaveIndicator();
     this.updateHistoryControls();
     this.resumeAutosaveAfterValidation();
+  }
+
+  /** Displays persistence state without a manual Save control or status text. */
+  updateAutosaveIndicator() {
+    const indicator = this.services.byId("autosave-status");
+    if (!indicator) return;
+    const labels = {
+      saved: "All changes saved",
+      pending: "Changes queued for autosave",
+      saving: "Saving changes",
+      error: `Autosave needs attention: ${this.status.message}`
+    };
+    const label = labels[this.status.state] || this.status.message;
+    indicator.dataset.state = this.status.state;
+    indicator.setAttribute("aria-label", label);
+    indicator.setAttribute("aria-busy", String(
+      this.status.state === "pending" || this.status.state === "saving"
+    ));
+    indicator.title = label;
+    indicator.textContent = "";
   }
 
   /** Resumes pending autosave after an invalid source has been corrected. */
@@ -318,15 +316,10 @@ export class ProjectPersistence {
     }, delay);
   }
 
-  /** Updates the persistence status shown next to the save control. */
+  /** Updates the persistence status exposed by the autosave indicator. */
   setPersistenceStatus(state, message) {
     this.status = { state, message };
-    const status = this.services.byId("save-status");
-    if (status) {
-      status.dataset.state = state;
-      status.textContent = message;
-      status.title = message;
-    }
+    this.updateAutosaveIndicator();
   }
 
   /** Cancels scheduled saves and resets the status for a newly loaded project. */
@@ -591,7 +584,6 @@ export class ProjectPersistence {
     this.state.isSaving = isSaving;
     if (isSaving) this.setPersistenceStatus("saving", "Saving changes");
     this.services.byId("spec-source").disabled = isSaving;
-    this.services.byId("reset-project").disabled = isSaving;
     this.updateSaveControls();
   }
 

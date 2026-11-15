@@ -324,6 +324,7 @@ test("parses explicit SpecUX workflow links", async () => {
       ["workflow-spec-section-previous", noopControl],
       ["workflow-spec-section-next", noopControl],
       ["workflow-linked-back", { ...noopControl, hidden: true }],
+      ["workflow-mode-exit", noopControl],
       ["workflow-spec-file-select", noopControl],
       ["workflow-diagram", { querySelectorAll: () => [], replaceChildren() {} }],
       ["workflow-node-spec-preview", {
@@ -566,6 +567,7 @@ test("parses explicit SpecUX workflow links", async () => {
               textContent: "",
               addEventListener() {}
             }
+            : id === "workflow-mode-exit" ? noopElement
           : id === "spec-editor-panel" ? { hidden: false }
           : id === "workflow-spec-section-navigation" ? sectionNav
             : id === "workflow-spec-section-position" ? sectionPosition
@@ -1049,6 +1051,47 @@ test("pushes and pops linked dock documents without losing the parent context", 
   assert.deepEqual(navigation.getWorkspaceContext(), parent);
 });
 
+/** Material-workspace Escape restores the current Screen. */
+test("handles workspace Escape from Material authoring by returning to Screen", async () => {
+  const { EditorNavigation } = await import(
+    "../frontend/browser/EditorNavigation.mjs"
+  );
+  const screen = { id: "home", file: "screens/home/screen.yml", data: { name: "Home" } };
+  const state = {
+    screens: [screen],
+    activeScreenIndex: 0,
+    activeInstancePath: [],
+    activeInstancePaths: [],
+    activePreviewStateIds: new Map(),
+    workflowScreenIndex: 0,
+    viewingWorkflow: false,
+    viewingProject: false,
+    viewingTheme: false,
+    viewingSpec: false,
+    viewingMaterialFile: true,
+    materialFiles: new Map(),
+    activeMaterialFilePath: "materials/button.stml"
+  };
+  let renderedScreen = null;
+  const navigation = new EditorNavigation({
+    state,
+    services: {
+      async renderScreen(index) {
+        renderedScreen = index;
+        state.activeScreenIndex = index;
+        state.viewingMaterialFile = false;
+      }
+    }
+  });
+
+  assert.deepEqual(await navigation.handleWorkspaceEscape(), {
+    handled: true,
+    action: "exit-material"
+  });
+  assert.equal(renderedScreen, 0);
+  assert.equal(state.viewingMaterialFile, false);
+});
+
 /** Checks that Escape unwinds linked views before closing their primary document. */
 test("handles workspace Escape after local interactions and in dock order", async () => {
   const { EditorNavigation } = await import(
@@ -1210,8 +1253,6 @@ test("keeps the workflow layout active while rerendering a linked Screen preview
     ["material-document-source", createElement()],
     ["spec-editor-panel", createElement()],
     ["spec-source", createElement()],
-    ["screen-heading", createElement()],
-    ["breadcrumb", createElement()],
     ["screen-stage", createElement()],
     ["screen-preview", createElement()]
   ]);

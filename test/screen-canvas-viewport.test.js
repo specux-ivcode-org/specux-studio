@@ -65,9 +65,6 @@ function createViewportHarness() {
   const elements = new Map([
     ["screen-preview", preview],
     ["main", main],
-    ["topbar-canvas-zoom-out", new FakeElement()],
-    ["topbar-canvas-zoom-reset", new FakeElement()],
-    ["topbar-canvas-zoom-in", new FakeElement()],
     ["screen-canvas-zoom-out", new FakeElement()],
     ["screen-canvas-zoom-reset", new FakeElement()],
     ["screen-canvas-zoom-in", new FakeElement()],
@@ -329,9 +326,8 @@ test("controls spec preview zoom and synchronizes its grid toggle", async () => 
   assert.equal(harness.preview.styleValues.get("--screen-canvas-zoom"), "1.1");
   assert.equal(specZoomReset.textContent, "110%");
   assert.equal(harness.elements.get("screen-canvas-zoom-reset").textContent, "110%");
-  assert.equal(harness.elements.get("topbar-canvas-zoom-reset").textContent, "110%");
 
-  harness.elements.get("topbar-canvas-zoom-in").dispatch("click");
+  harness.elements.get("screen-canvas-zoom-in").dispatch("click");
   assert.equal(harness.preview.styleValues.get("--screen-canvas-zoom"), "1.2");
   assert.equal(specZoomReset.textContent, "120%");
 

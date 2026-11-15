@@ -54,7 +54,11 @@ export class EditorNavigation {
         owner: state.activeSpecOwner,
         ...(state.activeSpecOwner === "instance"
           ? { instancePath: state.activeSpecInstancePath }
-          : {})
+          : {}),
+        ...(state.activeSpecOwner === "workflow-node" ? {
+          workflowPath: state.activeSpecWorkflowPath,
+          nodeId: state.activeSpecWorkflowNodeId
+        } : {})
       } : null
     };
   }
@@ -287,6 +291,16 @@ export class EditorNavigation {
     if (localInteractionActive) {
       return { handled: false, reason: "local-interaction" };
     }
+    const selection = this.currentSelection();
+    if (selection.view === "material-file") {
+      const screenIndex = this.state.activeScreenIndex;
+      if (this.state.screens[screenIndex]) {
+        await this.selectScreenManually(screenIndex);
+      } else {
+        await this.services.renderProjectOverview();
+      }
+      return { handled: true, action: "exit-material" };
+    }
     if (this.linkedDockStack.length) {
       return {
         handled: true,
@@ -294,7 +308,6 @@ export class EditorNavigation {
         parentContext: this.popLinkedDock()
       };
     }
-    const selection = this.currentSelection();
     if (["spec", "workflow"].includes(selection.view)) {
       await this.closePrimaryDock();
       return { handled: true, action: "close-primary" };
@@ -429,6 +442,13 @@ export class EditorNavigation {
   /** Translates URL parameters into the editor selection and opens the referenced view. */
   async restoreUrlSelection(selection) {
     const { state, services } = this;
+    if (selection.requestedView === "spec" &&
+        selection.owner === "workflow-node" &&
+        selection.linkedFile &&
+        selection.nodeId) {
+      await services.restoreWorkflowNodeSpec(selection);
+      return;
+    }
     const action = services.getProjectFileAction(selection.file);
     if (action) {
       await this.restoreUrlFileAction(selection, action);

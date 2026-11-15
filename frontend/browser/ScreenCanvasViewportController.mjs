@@ -1,5 +1,4 @@
 const CANVAS_ZOOM_CONTROL_SETS = [
-  ["topbar-canvas-zoom-out", "topbar-canvas-zoom-reset", "topbar-canvas-zoom-in"],
   ["screen-canvas-zoom-out", "screen-canvas-zoom-reset", "screen-canvas-zoom-in"],
   ["workflow-canvas-zoom-out", "workflow-canvas-zoom-reset", "workflow-canvas-zoom-in"],
   ["spec-canvas-zoom-out", "spec-canvas-zoom-reset", "spec-canvas-zoom-in"]

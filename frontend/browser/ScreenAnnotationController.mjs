@@ -512,6 +512,9 @@ export class ScreenAnnotationController {
   /** Updates the editor overlay for the current editor state. */
   configureEditorOverlay(target, overlay) {
     const { id, element, width, height, scrollElement } = target;
+    const isWorkflowNodeSpecEditor =
+      target.hostElement?.classList?.contains("workflow-node-spec-main-active");
+    const annotationEnabled = this.enabled && !isWorkflowNodeSpecEditor;
     overlay.hidden = false;
     overlay.setAttribute("viewBox", `0 0 ${width} ${height}`);
     overlay.setAttribute("width", String(width));
@@ -519,8 +522,8 @@ export class ScreenAnnotationController {
     overlay.style.width = `${width}px`;
     overlay.style.height = `${height}px`;
     overlay.style.zIndex = String(this.getEditorOverlayZIndex(id, element));
-    overlay.style.pointerEvents = this.enabled ? "all" : "none";
-    scrollElement?.classList?.toggle("annotation-mode", this.enabled);
+    overlay.style.pointerEvents = annotationEnabled ? "all" : "none";
+    scrollElement?.classList?.toggle("annotation-mode", annotationEnabled);
     this.configureEditorOverflow(target);
     overlay.replaceChildren();
   }

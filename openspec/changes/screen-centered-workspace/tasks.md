@@ -5,7 +5,7 @@
 - [x] 1.3 Define and verify a Mermaid-compatible multi-placement link convention, source-order entry extraction, and invalid-target canvas behavior; update the design/specs before parser changes.
 - [x] 1.4 Define URL serialization for primary/linked editor context and multi-placement focus while retaining a canonical `specux` fragment and legacy query-only links.
 - [x] 1.5 Confirm invalid-source recovery, external-write conflict handling, undo/redo autosave/history lifetime, and text/gesture/creation/deletion transaction boundaries before replacing current persistence behavior.
-- [x] 1.6 Confirm Material click/drop defaults, thumbnail-frame storage/defaults, Material source/preview arrangement, and small-window/panel sizing behavior before their dependent UI/schema work.
+- [x] 1.6 Confirm Material click/drop defaults, full-preview selector sizing, Material source/preview arrangement, and small-window/panel sizing behavior before their dependent UI/schema work.
 
 ## 2. Separate navigation context
 
@@ -42,11 +42,14 @@
 
 ## 6. Integrate Material selection and authoring
 
-- [x] 6.1 Provide selector tiles using existing Material preview/default-size behavior; integrate the selected click-to-add interaction from 1.6.
+- [x] 6.1 Provide selector tiles using existing Material preview/default-size behavior; integrate click-to-edit and retain drag/editor-action placement interactions.
 - [x] 6.2 Implement Material-to-Screen dragging with a known-size outline in zoom/pan-adjusted Screen coordinates and the confirmed drop defaults, without altering the Material template or using thumbnail display size.
-- [x] 6.3 Provide dedicated Material preview and integrated STML source with a clear return-to-Screen action that retains pending edits.
-- [x] 6.4 Implement resizable/repositionable selector framing, its chosen storage, and backward-compatible default behavior without modifying Material HTML or existing placement geometry.
-- [x] 6.5 Test drag outline geometry under zoom, created placement independence, frame-only changes, and Material workspace return; update `schema/material.md` and validators/examples together if framing adds serialized metadata.
+- [x] 6.3 Provide dedicated Material preview and integrated STML source with clear return-to-Screen and Escape actions that retain pending edits.
+- [x] 6.4 Display each Material's complete preview-size or type-default bounds in the selector; ignore legacy crop metadata without changing placement geometry.
+- [x] 6.5 Test drag outline geometry under zoom, created placement independence, full-preview selector sizing, ignored legacy metadata, and Escape-based Material workspace return; update Material schemas and validators/examples together.
+- [x] 6.6 Keep the selector's Edit Material context-menu action from changing Project navigation; cover the behavior with a focused test and update the living requirements.
+- [x] 6.7 Ensure Escape returns to the active Screen from Material authoring regardless of entry path; handle the key before focused controls and cover Project-navigation entry with a regression test.
+- [x] 6.8 Keep selector click-to-add in Screen mode; open or switch Materials from the selector while Material authoring is active, without creating placements; cover both modes with focused tests and update the Material requirements.
 
 ## 7. Implement URL restoration and browser history
 

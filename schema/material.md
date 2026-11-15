@@ -38,9 +38,7 @@ The HTML body must contain one balanced root element. Use `${attributes.<name>}`
 
 A Screen references the Material file and stores instance attribute overrides and placement-specific transform. The same file can be referenced by multiple placements or Screens; each placement has its own `id`, optional `attributes`, position, size, rotation, and optional visibility.
 
-The STML `preview-size` controls only the Material file editor's preview and does not change Screen placement sizes.
-
-The selector's crop frame is presentation metadata in `project.yml`, under `material-previews`, keyed by Material ID. Its `x`, `y`, `width`, and `height` are coordinates in the Material preview canvas. This frame does not modify the STML document or any Screen placement geometry; without an entry, the selector shows the full preview.
+The STML `preview-size` controls the Material file editor's preview and the full preview shown in the Material selector; it does not change Screen placement sizes. When `preview-size` is omitted, the selector uses the default dimensions for the Material type. Older `material-previews` crop metadata in `project.yml` is ignored for compatibility.
 
 ```yaml
 materials:

@@ -113,6 +113,47 @@ test("clicking in Drag to select clears the selection", async () => {
   assert.deepEqual(selected, [[]]);
 });
 
+/** A normal canvas click clears selection only when it does not hit a placement. */
+test("clicking empty Screen canvas space clears placement selection", async () => {
+  const { ScreenSelectionController } =
+    await import("../frontend/browser/ScreenSelectionController.mjs");
+  const selected = [];
+  const placementFrame = {
+    classList: { contains: (name) => name === "material-frame" },
+    dataset: { instancePath: "[1]" }
+  };
+  const document = { elementsFromPoint: () => [] };
+  const controller = new ScreenSelectionController({
+    state: {},
+    services: {
+      document,
+      selectInstances: (paths) => selected.push(paths)
+    }
+  });
+  controller.screenId = "home";
+
+  controller.onClick({
+    button: 0,
+    clientX: 20,
+    clientY: 30,
+    composedPath: () => []
+  });
+  controller.onClick({
+    button: 0,
+    clientX: 20,
+    clientY: 30,
+    composedPath: () => [placementFrame]
+  });
+  controller.onClick({
+    button: 2,
+    clientX: 20,
+    clientY: 30,
+    composedPath: () => []
+  });
+
+  assert.deepEqual(selected, [[]]);
+});
+
 /** Scale mode updates the active toolbar control without permanently replacing the selected tool. */
 test("scale mode is temporary and updates the active toolbar control", async () => {
   const { ScreenSelectionController } =

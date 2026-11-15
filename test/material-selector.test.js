@@ -34,7 +34,7 @@ function createDocument() {
   };
 }
 
-test("Material selector tiles preview and add on click, and edit from the context menu", async () => {
+test("Material selector clicks place in Screen mode and open in Material mode", async () => {
   const { ProjectFileNavigator } = await import("../frontend/browser/ProjectFileNavigator.mjs");
   const list = createElement("div");
   const menu = createElement("div");
@@ -49,6 +49,19 @@ test("Material selector tiles preview and add on click, and edit from the contex
   const mounted = [];
   const added = [];
   const opened = [];
+  const selectedTabs = [];
+  const revealedFiles = [];
+  const state = {
+    materialFiles: new Map(),
+    activeProjectFilePath: null,
+    viewingSpec: false,
+    viewingTheme: false,
+    viewingProject: false,
+    viewingMaterialFile: false,
+    viewingWorkflow: false,
+    activeMaterialFilePath: null,
+    screens: []
+  };
   let resizePreviews;
   class ResizeObserverMock {
     constructor(callback) {
@@ -70,17 +83,9 @@ test("Material selector tiles preview and add on click, and edit from the contex
     },
     html: "<button>${attributes.label}</button>"
   };
+  state.materialFiles.set(material.file, material);
   const navigator = new ProjectFileNavigator({
-    state: {
-      materialFiles: new Map([[material.file, material]]),
-      activeProjectFilePath: null,
-      viewingSpec: false,
-      viewingTheme: false,
-      viewingProject: false,
-      viewingMaterialFile: false,
-      viewingWorkflow: false,
-      screens: []
-    },
+    state,
     services: {
       document,
       window: {
@@ -100,8 +105,13 @@ test("Material selector tiles preview and add on click, and edit from the contex
       showEditorMessage() {},
       updateNavigationSelection() {}
     },
-    projectFileTree: { expandPath() {}, render() {} }
+    projectFileTree: {
+      expandPath() {},
+      render() {},
+      reveal(filePath) { revealedFiles.push(filePath); }
+    }
   });
+  navigator.setSidebarTab = (tabName) => selectedTabs.push(tabName);
 
   navigator.bindMaterialContextMenu();
   navigator.renderMaterialSelector();
@@ -123,6 +133,7 @@ test("Material selector tiles preview and add on click, and edit from the contex
   assert.equal(viewport.style.width, "160px");
   assert.equal(viewport.style.height, "53.333333333333336px");
   assert.equal(previewCanvas.style.transform, "scale(0.5333333333333333)");
+  assert.equal(addButton.attributes.get("aria-label"), "Add Material Action to the current Screen");
 
   preview.clientWidth = 100;
   resizePreviews([{ target: preview }]);
@@ -132,10 +143,23 @@ test("Material selector tiles preview and add on click, and edit from the contex
 
   await addButton.click();
   assert.deepEqual(added, ["materials/action.stml"]);
+  assert.deepEqual(opened, []);
 
-  assert.equal(item.children.length, 1);
+  state.viewingMaterialFile = true;
+  state.activeMaterialFilePath = "materials/other.stml";
+  navigator.renderMaterialSelector();
+  const editorItem = list.children[0];
+  const editorButton = editorItem.children[0];
+  assert.equal(editorButton.attributes.get("aria-label"), "Edit Material Action");
+  await editorButton.click();
+  assert.deepEqual(opened, ["materials/action.stml"]);
+  state.activeMaterialFilePath = "materials/action.stml";
+  await editorButton.click();
+  assert.deepEqual(opened, ["materials/action.stml"]);
+
+  assert.equal(editorItem.children.length, 1);
   let prevented = false;
-  item.click("contextmenu", {
+  editorItem.click("contextmenu", {
     clientX: 120,
     clientY: 220,
     preventDefault() { prevented = true; }
@@ -143,12 +167,16 @@ test("Material selector tiles preview and add on click, and edit from the contex
   assert.equal(prevented, true);
   assert.equal(menu.hidden, false);
   assert.equal(editMenuItem.focused, true);
+  state.activeMaterialFilePath = "materials/other.stml";
   await editMenuItem.click();
-  assert.deepEqual(opened, ["materials/action.stml"]);
+  assert.deepEqual(opened, ["materials/action.stml", "materials/action.stml"]);
+  assert.deepEqual(added, ["materials/action.stml"]);
+  assert.deepEqual(revealedFiles, []);
+  assert.deepEqual(selectedTabs, []);
   assert.equal(menu.hidden, true);
 });
 
-test("Material selector crops to project framing metadata without changing placement size", async () => {
+test("Material selector shows the full preview-size regardless of legacy framing metadata", async () => {
   const { ProjectFileNavigator } = await import("../frontend/browser/ProjectFileNavigator.mjs");
   const list = createElement("div");
   const material = {
@@ -193,80 +221,13 @@ test("Material selector crops to project framing metadata without changing place
   const viewport = addButton.children[0].children[0];
   const previewCanvas = viewport.children[0];
   assert.equal(viewport.style.width, "160px");
-  assert.equal(viewport.style.height, "32px");
-  assert.equal(previewCanvas.style.left, "-16px");
-  assert.equal(previewCanvas.style.top, "-8px");
-  assert.equal(previewCanvas.style.transform, "scale(0.8)");
+  assert.equal(viewport.style.height, "53.333333333333336px");
+  assert.equal(previewCanvas.style.left, "0px");
+  assert.equal(previewCanvas.style.top, "0px");
+  assert.equal(previewCanvas.style.transform, "scale(0.5333333333333333)");
   assert.equal(previewCanvas.style.width, "300px");
   assert.equal(previewCanvas.style.height, "100px");
   assert.deepEqual(draggedPlacementSize, { width: 160, height: 48 });
-});
-
-test("selector frame edits persist only project presentation metadata", async () => {
-  const { MaterialFileEditor } = await import("../frontend/browser/MaterialFileEditor.mjs");
-  const material = {
-    id: "action",
-    file: "materials/action.stml",
-    documentSource: "unchanged STML",
-    data: { id: "action", "preview-size": { width: 300, height: 100 } }
-  };
-  const placement = { position: { x: 30, y: 40 }, size: { width: 160, height: 48 } };
-  const state = { project: {} };
-  const marked = [];
-  let rendered = false;
-  const editor = Object.create(MaterialFileEditor.prototype);
-  editor.state = state;
-  editor.services = {
-    markEdited: (filePath) => marked.push(filePath),
-    renderNavigation: () => { rendered = true; }
-  };
-  const frame = { x: 20, y: 10, width: 100, height: 40 };
-  editor.finishSelectorFrameGesture(
-    { pointerId: 7 },
-    {
-      pointerId: 7,
-      target: { hasPointerCapture: () => false },
-      material,
-      changed: true,
-      currentFrame: frame
-    }
-  );
-
-  assert.deepEqual(state.project["material-previews"].action, frame);
-  assert.equal(material.documentSource, "unchanged STML");
-  assert.deepEqual(placement, { position: { x: 30, y: 40 }, size: { width: 160, height: 48 } });
-  assert.deepEqual(marked, ["project.yml"]);
-  assert.equal(rendered, true);
-});
-
-test("selector frame can move and resize within the Material preview canvas", async () => {
-  const { MaterialFileEditor } = await import("../frontend/browser/MaterialFileEditor.mjs");
-  const editor = Object.create(MaterialFileEditor.prototype);
-  const gesture = {
-    frame: { x: 20, y: 10, width: 100, height: 40 },
-    size: { width: 300, height: 100 },
-    direction: "move"
-  };
-  assert.deepEqual(editor.getUpdatedSelectorFrame(gesture, 25, 15), {
-    x: 45,
-    y: 25,
-    width: 100,
-    height: 40
-  });
-
-  gesture.direction = "se";
-  assert.deepEqual(editor.getUpdatedSelectorFrame(gesture, 30, 20), {
-    x: 20,
-    y: 10,
-    width: 130,
-    height: 60
-  });
-  assert.deepEqual(editor.getUpdatedSelectorFrame(gesture, 500, 500), {
-    x: 20,
-    y: 10,
-    width: 280,
-    height: 90
-  });
 });
 
 test("Material selector uses the type's default preview size when no override exists", async () => {

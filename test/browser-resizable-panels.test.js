@@ -182,7 +182,9 @@ test("places icon-only sidebar controls at opposite topbar edges with accessible
   assert.ok(sidebarButton);
   assert.ok(inspectorButton);
   assert.ok(html.indexOf('id="sidebar-mode"') < html.indexOf('<div class="brand"'));
-  assert.ok(html.indexOf('id="inspector-mode"') > html.indexOf('id="reset-project"'));
+  assert.ok(html.indexOf('id="inspector-mode"') > html.indexOf('id="autosave-status"'));
+  assert.match(html, /id="autosave-status"[^>]*role="status"[^>]*aria-live="polite"/);
+  assert.doesNotMatch(html, /id="(?:save-project|reset-project|save-status)"/);
   for (const button of [sidebarButton, inspectorButton]) {
     assert.match(button, /aria-controls="[^"]+"/);
     assert.match(button, /data-mode="show"/);
@@ -197,8 +199,7 @@ test("places icon-only sidebar controls at opposite topbar edges with accessible
   assert.match(inspectorButton, /data-side="right"/);
   assert.ok(html.indexOf('id="screen-quick-selector"') < html.indexOf("</header>"));
   assert.ok(html.indexOf('id="create-screen"') < html.indexOf("</header>"));
-  assert.ok(html.indexOf('id="topbar-canvas-zoom-controls"') < html.indexOf("</header>"));
-  assert.match(html, /id="workspace-mode-label"/);
+  assert.doesNotMatch(html, /id="(?:breadcrumb|screen-heading|workspace-mode-label|topbar-canvas-zoom[^"]*)"/);
   const styles = fs.readFileSync(path.join(__dirname, "../frontend/styles.css"), "utf8");
   assert.match(styles, /data-mode="hover"\]\s+\.panel-mode-icon__show\s*\{\s*display:\s*none/);
   assert.match(styles, /data-side="right"\]\s+\.panel-mode-icon\s*\{\s*transform:\s*scaleX\(-1\)/);

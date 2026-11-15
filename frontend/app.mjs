@@ -90,6 +90,9 @@ let activeSpecPath = null;
 let activeSpecScreenFile = null;
 let activeSpecInstancePath = [];
 let activeSpecOwner = "instance";
+let activeSpecWorkflowPath = null;
+let activeSpecWorkflowNodeId = null;
+let workflowSpecReturnContext = null;
 let activeProjectFilePath = null;
 let specIndicatorsEnabled = false;
 let editorMessageTimer = null;
@@ -222,6 +225,10 @@ const specEditor = new SpecEditor({
     set activeSpecScreenFile(value) { activeSpecScreenFile = value; },
     get activeSpecOwner() { return activeSpecOwner; },
     set activeSpecOwner(value) { activeSpecOwner = value; },
+    get activeSpecWorkflowPath() { return activeSpecWorkflowPath; },
+    set activeSpecWorkflowPath(value) { activeSpecWorkflowPath = value; },
+    get activeSpecWorkflowNodeId() { return activeSpecWorkflowNodeId; },
+    set activeSpecWorkflowNodeId(value) { activeSpecWorkflowNodeId = value; },
     get activeSpecInstancePath() { return activeSpecInstancePath; },
     set activeSpecInstancePath(value) { activeSpecInstancePath = value; },
     get activeInstancePath() { return activeInstancePath; },
@@ -259,7 +266,8 @@ const specEditor = new SpecEditor({
     showSpecWorkflowReference: (reference, filePath) =>
       showSpecWorkflowDock(reference, filePath),
     showWorkflowNodeSpec: (spec, nodeId) =>
-      workflowEditor.showSpecPreview([spec], nodeId),
+      openWorkflowNodeSpecInMainView(spec, nodeId),
+    returnToWorkflowAfterSpec: () => returnToWorkflowAfterSpec(),
     clearSpecWorkflowPreview: () => clearSpecWorkflowDock(),
     publishSelection
   }
@@ -528,6 +536,8 @@ const editorNavigation = new EditorNavigation({
     get activeSpecPath() { return activeSpecPath; },
     get activeSpecScreenFile() { return activeSpecScreenFile; },
     get activeSpecInstancePath() { return activeSpecInstancePath; },
+    get activeSpecWorkflowPath() { return activeSpecWorkflowPath; },
+    get activeSpecWorkflowNodeId() { return activeSpecWorkflowNodeId; },
     get workflowSources() { return workflowSources; },
     get materialFiles() { return materialFiles; },
     get viewingMaterialFile() { return viewingMaterialFile; },
@@ -560,6 +570,7 @@ const editorNavigation = new EditorNavigation({
     renderWorkflowEditor,
     restoreWorkflowNodeSelection: (nodeId) =>
       workflowEditor.restoreNodeSelection(nodeId),
+    restoreWorkflowNodeSpec: (selection) => restoreWorkflowNodeSpecFromUrl(selection),
     showLinkedWorkflowPreview: (reference, specPath) =>
       showSpecWorkflowDock(reference, specPath),
     showWorkflowNodeSpecPreview: (filePath, nodeId) =>
@@ -776,13 +787,21 @@ workflowEditor = new WorkflowEditor({
     renderInspector,
     markEdited,
     markDeleted,
+    exitWorkflowMode: async () => {
+      if (workflowSpecReturnContext) await returnToWorkflowAfterSpec();
+      await editorNavigation.closePrimaryDock();
+    },
     updateSaveControls,
     renderWorkflowEditor,
     returnToScreen: () => editorNavigation.selectScreenManually(activeScreenIndex),
     showWorkflowNode,
     openWorkflowNodeSpec: (workflowPath, nodeId) =>
       specEditor.createForWorkflowNode(workflowPath, nodeId),
-    closeWorkflowDockView: () => {
+    closeWorkflowDockView: async () => {
+      if (workflowSpecReturnContext) {
+        await returnToWorkflowAfterSpec();
+        return;
+      }
       if (editorNavigation.linkedDockStack.length) clearSpecWorkflowDock();
       else workflowEditor.closeWorkflowNodeSpecPreview();
     },
@@ -811,7 +830,8 @@ workflowEditor = new WorkflowEditor({
         }
         return { ...linkedSpec, source };
       }));
-      workflowEditor.showSpecPreview(specs, nodeId);
+      if (!specs.length) throw new Error("No behavior spec is linked to this workflow node.");
+      await openWorkflowNodeSpecInMainView(specs[0], nodeId);
     }
   }
 });
@@ -891,6 +911,8 @@ const inspectorRenderer = new InspectorRenderer({
     get activeSpecPath() { return activeSpecPath; },
     get activeSpecScreenFile() { return activeSpecScreenFile; },
     get activeSpecInstancePath() { return activeSpecInstancePath; },
+    get activeSpecWorkflowPath() { return activeSpecWorkflowPath; },
+    get activeSpecWorkflowNodeId() { return activeSpecWorkflowNodeId; },
     get workflowSources() { return workflowSources; },
     get viewingPreviewState() { return viewingPreviewState; },
     get viewingProject() { return viewingProject; },
@@ -1509,6 +1531,9 @@ function applyLoadedProject(loaded) {
   activeSpecScreenFile = null;
   activeSpecInstancePath = [];
   activeSpecOwner = "instance";
+  activeSpecWorkflowPath = null;
+  activeSpecWorkflowNodeId = null;
+  workflowSpecReturnContext = null;
   hasEdits = false;
   dirtyFiles.clear();
   deletedFiles.clear();
@@ -2145,8 +2170,6 @@ async function showSpecReference(reference, filePath) {
   activeSpecPath = filePath;
   activeProjectFilePath = filePath;
   hidePreviewStateControls();
-  byId("screen-heading").textContent = `Spec: ${filePath}`;
-  byId("breadcrumb").textContent = "Behavior spec";
   byId("screen-stage").setAttribute(
     "aria-label",
     `Screen preview linked from behavior spec "${filePath}"`
@@ -2311,12 +2334,121 @@ function getStatePlacementVisibility(
 }
 
 /** Renders the spec editor from the current editor data. */
-async function renderSpecEditor(filePath, instancePath = activeInstancePath, owner = "instance") {
-  clearSpecWorkflowDock();
+async function renderSpecEditor(
+  filePath,
+  instancePath = activeInstancePath,
+  owner = "instance",
+  options = {}
+) {
+  if (!options.preserveWorkflowDock) clearSpecWorkflowDock();
   await screenAnnotationController?.fileLoaded(filePath);
   workflowEditor?.deactivate();
   screenAnnotationController?.setEnabled(false);
-  return specEditor.render(filePath, instancePath, owner);
+  return specEditor.render(filePath, instancePath, owner, options.workflowContext);
+}
+
+/** Opens a Workflow node spec in the main editor and remembers the Workflow view. */
+async function openWorkflowNodeSpecInMainView(spec, nodeId) {
+  if (!viewingWorkflow || !activeWorkflowPath) {
+    throw new Error("Open the owning Workflow before opening a node spec.");
+  }
+  const workflowPath = activeWorkflowPath;
+  if (!workflowSpecReturnContext) {
+    workflowSpecReturnContext = {
+      workflowPath,
+      workflowScreenIndex,
+      activeScreenIndex,
+      activePreviewStateIds: [...activePreviewStateIds],
+      activeInstancePath: [...activeInstancePath],
+      activeInstancePaths: activeInstancePaths.map((path) => [...path]),
+      selectedWorkflowNodeId,
+      workflowViewMode
+    };
+  } else {
+    workflowSpecReturnContext.selectedWorkflowNodeId = selectedWorkflowNodeId;
+  }
+  while (editorNavigation.linkedDockStack.at(-1)?.document.view === "spec") {
+    editorNavigation.popLinkedDock();
+  }
+  editorNavigation.pushLinkedDock({
+    view: "spec",
+    file: spec.filePath,
+    nodeId
+  });
+  try {
+    await specEditor.renderWorkflowNodeSpecInMainView(spec.filePath, workflowPath, nodeId);
+    updateNavigationSelection();
+  } catch (error) {
+    await returnToWorkflowAfterSpec();
+    throw error;
+  }
+}
+
+/** Restores the Screen preview and Workflow after leaving its node spec. */
+async function returnToWorkflowAfterSpec() {
+  const context = workflowSpecReturnContext;
+  if (!context) return false;
+  if (editorNavigation.linkedDockStack.at(-1)?.document.view === "spec") {
+    editorNavigation.popLinkedDock();
+  }
+  restoreWorkflowNodeSpecEditorHost();
+  clearSpecSelectionView();
+  activePreviewStateIds.clear();
+  for (const [screenId, stateId] of context.activePreviewStateIds) {
+    activePreviewStateIds.set(screenId, stateId);
+  }
+  activeScreenIndex = context.activeScreenIndex;
+  activeInstancePath = [...context.activeInstancePath];
+  activeInstancePaths = context.activeInstancePaths.map((path) => [...path]);
+  activeWorkflowPath = context.workflowPath;
+  workflowScreenIndex = context.workflowScreenIndex;
+  selectedWorkflowNodeId = null;
+  workflowViewMode = context.workflowViewMode;
+  viewingWorkflow = true;
+  await renderScreen(activeScreenIndex, { preserveWorkflow: true });
+  await renderWorkflowEditor(context.workflowPath, context.workflowScreenIndex);
+  if (context.selectedWorkflowNodeId) {
+    await workflowEditor.restoreNodeSelection(context.selectedWorkflowNodeId);
+  }
+  workflowSpecReturnContext = null;
+  updateNavigationSelection();
+  return true;
+}
+
+/** Returns the shared Spec source editor to its dock before restoring the Screen. */
+function restoreWorkflowNodeSpecEditorHost() {
+  const preview = byId("screen-preview");
+  preview.classList.remove("workflow-node-spec-main-active");
+  byId("main").classList.remove("workflow-node-spec-main-active");
+  byId("spec-editor-panel").append(byId("spec-source-container"));
+  byId("workflow-linked-back").hidden = true;
+}
+
+/** Restores a Workflow node spec opened directly from a shared editor URL. */
+async function restoreWorkflowNodeSpecFromUrl(selection) {
+  const workflowPath = selection.linkedFile;
+  if (typeof workflowPath !== "string" || !selection.nodeId ||
+      typeof selection.file !== "string") {
+    throw new Error("The Workflow node spec URL is missing its Workflow, node, or spec path.");
+  }
+  const workflowScreenIndex = screens.findIndex((screen) =>
+    workflowPath.startsWith(`screens/${screen.id}/workflows/`)
+  );
+  if (workflowScreenIndex < 0 || !workflowSources.has(workflowPath)) {
+    throw new Error(`Workflow "${workflowPath}" is not available.`);
+  }
+  await renderScreen(workflowScreenIndex);
+  await renderWorkflowEditor(workflowPath, workflowScreenIndex);
+  await workflowEditor.restoreNodeSelection(selection.nodeId);
+  let source = specSources.get(selection.file);
+  if (source === undefined) {
+    source = await loadText(selection.file);
+    specSources.set(selection.file, source);
+  }
+  await openWorkflowNodeSpecInMainView({
+    filePath: selection.file,
+    source
+  }, selection.nodeId);
 }
 
 /** Updates the unedited active spec draft for the current editor state. */
@@ -2413,6 +2545,10 @@ function clearSpecSelectionView() {
   activeSpecPath = null;
   activeSpecScreenFile = null;
   activeSpecInstancePath = [];
+  activeSpecOwner = "instance";
+  activeSpecWorkflowPath = null;
+  activeSpecWorkflowNodeId = null;
+  workflowSpecReturnContext = null;
   byId("main").classList.remove("spec-editing");
   byId("spec-editor-panel").hidden = true;
   byId("spec-source").oninput = null;
@@ -2643,8 +2779,6 @@ function updateWorkspaceToolbarContext() {
             : "Screen";
   const topbar = byId("workspace-toolbar");
   topbar.dataset.mode = mode.toLocaleLowerCase();
-  byId("workspace-mode-label").textContent = mode;
-  byId("topbar-canvas-zoom-controls").hidden = mode === "Project" || mode === "Material";
   byId("theme-mode-exit").hidden = mode !== "Theme";
 }
 
@@ -3005,11 +3139,6 @@ function updateSaveControls() {
   projectPersistence.updateSaveControls();
 }
 
-/** Persists the project changes to the project. */
-async function saveProjectChanges() {
-  return projectPersistence.save();
-}
-
 /** Renders the active Material or Screen again and restores selected placement paths. */
 async function refreshActiveView() {
   try {
@@ -3030,23 +3159,20 @@ async function refreshActiveView() {
 // Bind global controls after their view controllers and shared actions are available.
 const editorEventController = new EditorEventController({
   state: {
-    get hasEdits() { return hasEdits; },
     get historyUpdateSuppressed() { return historyUpdateSuppressed; },
     get specIndicatorsEnabled() { return specIndicatorsEnabled; },
+    get viewingMaterialFile() { return viewingMaterialFile; },
     set historyUpdateSuppressed(value) { historyUpdateSuppressed = value; }
   },
   services: {
     byId,
     window,
     document,
-    confirm: (message) => window.confirm(message),
-    loadProject,
     createScreen,
     openScreenPreview,
     setScreenViewMode,
     setScreenSelectorOpen,
     renderScreenSelector,
-    saveProjectChanges,
     canDeleteSelectedPlacements: () => !isRenderOnly &&
       !viewingProject && !viewingMaterialFile && !viewingSpec && !viewingTheme &&
       !viewingWorkflow && activeInstancePaths.length > 0 &&
@@ -3069,8 +3195,15 @@ const editorEventController = new EditorEventController({
     },
     exitTheme: () => editorNavigation.selectScreenManually(activeScreenIndex),
     hasWorkspaceEscapeView: () =>
-      viewingTheme || viewingSpec || viewingWorkflow || editorNavigation.linkedDockStack.length > 0,
+      viewingMaterialFile || viewingTheme || viewingSpec || viewingWorkflow ||
+      editorNavigation.linkedDockStack.length > 0,
+    shouldCloseWorkflowNodeSpecOnEscape: () => Boolean(workflowSpecReturnContext),
     handleWorkspaceEscape: async () => {
+      if (workflowSpecReturnContext &&
+          editorNavigation.linkedDockStack.at(-1)?.document.view !== "workflow") {
+        await returnToWorkflowAfterSpec();
+        return { handled: true, action: "return-to-workflow" };
+      }
       if (viewingWorkflow && workflowEditor.closeWorkflowNodeSpecPreview()) {
         return { handled: true, action: "close-linked-spec" };
       }
@@ -3387,7 +3520,6 @@ function setPreviewMessage(state, message) {
 /** Shows the fatal error for the current editor state. */
 function showFatalError(error) {
   setPreviewMessage("error", error.message || String(error));
-  byId("screen-heading").textContent = "Could not load project";
   byId("inspector-content").replaceChildren(
     element("h2", "panel-heading", "Project load error"),
     element("div", "error-message", error.message || String(error)),

@@ -420,6 +420,14 @@ export class WorkflowEditor {
     services.byId("workflow-linked-back").addEventListener("click", () =>
       services.closeWorkflowDockView?.()
     );
+    services.byId("workflow-mode-exit").addEventListener("click", () =>
+      Promise.resolve(services.exitWorkflowMode?.()).catch((error) =>
+        services.showEditorMessage(
+          "Could not exit Workflow mode",
+          error.message || String(error)
+        )
+      )
+    );
     services.byId("workflow-spec-file-select").addEventListener("change", (event) =>
       this.selectSpecFile(event.target.value)
     );

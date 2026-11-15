@@ -2,34 +2,49 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 /** Creates an Escape event and captures the document-level key handler. */
-async function createEscapeHarness({ activeElement = null, dialogOpen = false, localEscape = false } = {}) {
+async function createEscapeHarness({
+  activeElement = null,
+  dialogOpen = false,
+  localEscape = false,
+  closeWorkflowNodeSpec = false,
+  viewingMaterialFile = false
+} = {}) {
   const { EditorEventController } = await import(
     "../frontend/browser/EditorEventController.mjs"
   );
   let keydownHandler;
+  let captureKeydownHandler;
   const workspaceEscapes = [];
   const services = {
     document: {
       activeElement,
-      addEventListener(type, handler) {
-        if (type === "keydown") keydownHandler = handler;
+      addEventListener(type, handler, capture) {
+        if (type !== "keydown") return;
+        if (capture) captureKeydownHandler = handler;
+        else keydownHandler = handler;
       },
       querySelector: () => dialogOpen ? {} : null
     },
     handleLocalEscape: () => localEscape,
+    shouldCloseWorkflowNodeSpecOnEscape: () => closeWorkflowNodeSpec,
     hasWorkspaceEscapeView: () => true,
     handleWorkspaceEscape: async () => workspaceEscapes.push("handled"),
     showFatalError: (error) => { throw error; }
   };
-  const controller = new EditorEventController({ state: {}, services });
+  const controller = new EditorEventController({
+    state: { viewingMaterialFile },
+    services
+  });
   controller.bindWorkspaceEscape();
   const event = {
     key: "Escape",
     defaultPrevented: false,
-    preventDefault() { this.defaultPrevented = true; }
+    propagationStopped: false,
+    preventDefault() { this.defaultPrevented = true; },
+    stopPropagation() { this.propagationStopped = true; }
   };
 
-  return { event, keydownHandler, workspaceEscapes };
+  return { event, keydownHandler, captureKeydownHandler, workspaceEscapes };
 }
 
 /** Local UI interactions consume Escape before it can exit the active editor mode. */
@@ -54,6 +69,47 @@ test("workspace Escape blurs a transient text editor first", async () => {
   assert.equal(harness.event.defaultPrevented, true);
   assert.equal(blurred, true);
   assert.deepEqual(harness.workspaceEscapes, []);
+});
+
+test("Escape leaves the Material workspace even when its source editor has focus", async () => {
+  let blurred = false;
+  const harness = await createEscapeHarness({
+    activeElement: { tagName: "TEXTAREA", blur() { blurred = true; } },
+    viewingMaterialFile: true
+  });
+
+  harness.captureKeydownHandler(harness.event);
+  await Promise.resolve();
+
+  assert.equal(harness.event.defaultPrevented, true);
+  assert.equal(blurred, false);
+  assert.deepEqual(harness.workspaceEscapes, ["handled"]);
+});
+
+test("Material Escape is handled before focused project-file controls", async () => {
+  const harness = await createEscapeHarness({ viewingMaterialFile: true });
+
+  harness.captureKeydownHandler(harness.event);
+  await Promise.resolve();
+
+  assert.equal(harness.event.defaultPrevented, true);
+  assert.equal(harness.event.propagationStopped, true);
+  assert.deepEqual(harness.workspaceEscapes, ["handled"]);
+});
+
+test("Escape closes a focused Workflow node spec editor", async () => {
+  let blurred = false;
+  const harness = await createEscapeHarness({
+    activeElement: { tagName: "TEXTAREA", blur() { blurred = true; } },
+    closeWorkflowNodeSpec: true
+  });
+
+  harness.keydownHandler(harness.event);
+  await Promise.resolve();
+
+  assert.equal(harness.event.defaultPrevented, true);
+  assert.equal(blurred, false);
+  assert.deepEqual(harness.workspaceEscapes, ["handled"]);
 });
 
 /** Native dialogs retain their own Escape handling. */

@@ -91,11 +91,11 @@ Alternative: reuse a node's Screen/Element spec. Rejected because the user chose
 
 Reuse `MaterialDefaults.mjs`, STML `preview-size`, and the Material preview controllers for the known Material preview dimensions. Convert drag outlines into canvas-space geometry accounting for zoom and pan. Creating a placement must not use the scaled selector tile size.
 
-Thumbnail framing is independently resizable/repositionable in Material authoring and transformed to fit each selector tile. Store the frame as project presentation metadata in a `material-previews` mapping in `project.yml`, keyed by Material ID and expressed in Material canvas coordinates; do not modify Material STML or HTML for selector framing. When no frame is stored, use the full `preview-size` rectangle, falling back to the type's default dimensions when `preview-size` is absent, so the complete Material is shown. Preserve legacy Material rendering when metadata is absent.
+Each selector tile shows the complete Material preview, scaled to fit the tile using the STML `preview-size` or the type's default dimensions when omitted. Ignore legacy `material-previews` crop metadata so older projects remain readable without preserving the removed crop behavior. Selector thumbnail scaling remains independent of placed geometry.
 
 Keep the Material editing workspace in its existing resizable split layout, with the preview canvas above the STML source editor. On narrow viewports, retain that vertical split and allow the workspace to scroll; the Material selector and Details become overlay panels rather than reducing the canvas width. Follow the existing responsive panel sizing and keep their persistent toolbar controls available.
 
-The only new selector drag interaction is Material-to-Screen placement; Theme editing remains click-based. Clicking a Material adds it at the center of the visible canvas using the current default state/layer rules. Dragging shows the known-size outline centered under the pointer and uses the same default state/layer rules at drop.
+In Screen mode, clicking a Material selector tile creates a placement on the current Screen using the existing default position, state, and layer rules. In the Material authoring workspace, clicking a tile opens that Material for editing, and clicking another tile switches the active Material without creating a placement. Material-to-Screen dragging and the Material editor's Place action also create placements; dragging shows the known-size outline centered under the pointer.
 
 ### 6. Give URL fields separate responsibilities
 

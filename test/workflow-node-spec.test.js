@@ -16,9 +16,11 @@ async function createSpecEditor({ specSources = new Map(), fetchStatus = 404 } =
     activeWorkflowPath: workflowPath,
     workflowSources: new Map([[workflowPath, "flowchart TD\n  saveItem[Save item]"]]),
     screens: [{ id: "home", file: "screens/home/screen.yml", data: {} }],
+    activeScreenIndex: 0,
     specSources,
     createdSpecDrafts: new Map(),
-    createdSpecFiles: new Set()
+    createdSpecFiles: new Set(),
+    elementSpecOwners: new Map()
   };
   const services = {
     validation,
@@ -68,6 +70,108 @@ test("validates deterministic Workflow node spec paths", () => {
     ),
     /must be named/
   );
+});
+
+test("builds a main-editor context for a Workflow node spec", async () => {
+  const harness = await createSpecEditor();
+  await harness.editor.createForWorkflowNode(workflowPath, "saveItem");
+
+  const context = harness.editor.getSpecRenderContext(
+    nodeSpecPath,
+    [],
+    "workflow-node",
+    { workflowPath, nodeId: "saveItem" }
+  );
+
+  assert.equal(context.owner, "workflow-node");
+  assert.equal(context.isWorkflowNodeSpec, true);
+  assert.equal(context.screen.id, "home");
+  assert.equal(context.workflowPath, workflowPath);
+  assert.equal(context.nodeId, "saveItem");
+});
+
+test("mounts the editable node spec source inside the main Screen preview", async () => {
+  const { SpecEditor } = await import("../frontend/browser/SpecEditor.mjs");
+  const createElement = (tagName) => ({
+    tagName,
+    children: [],
+    attributes: new Map(),
+    setAttribute(name, value) { this.attributes.set(name, value); },
+    addEventListener(name, handler) { this.listeners[name] = handler; },
+    listeners: {},
+    append(...children) { this.children.push(...children); }
+  });
+  const sourceEditor = {
+    setAttribute() {},
+    focus() { this.focused = true; }
+  };
+  const sourceContainer = createElement("div");
+  const preview = createElement("article");
+  preview.ownerDocument = { createElement };
+  preview.classList = { add: (value) => preview.classes.add(value) };
+  preview.classes = new Set();
+  preview.replaceChildren = (...children) => { preview.children = children; };
+  const specPanel = { hidden: false, append(child) { this.child = child; } };
+  const mainClasses = new Set();
+  const main = { classList: { add: (value) => mainClasses.add(value) } };
+  const screenStage = { setAttribute() {} };
+  let returnCount = 0;
+  const elements = new Map([
+    ["main", main],
+    ["screen-preview", preview],
+    ["spec-source-container", sourceContainer],
+    ["spec-source", sourceEditor],
+    ["spec-editor-panel", specPanel],
+    ["screen-stage", screenStage]
+  ]);
+  const source = "# Save item behavior\n";
+  const state = {
+    specSources: new Map([[nodeSpecPath, source]]),
+    activeSpecPath: null,
+    activeSpecScreenFile: null,
+    activeSpecOwner: "instance",
+    activeSpecWorkflowPath: null,
+    activeSpecWorkflowNodeId: null,
+    activeSpecInstancePath: [],
+    viewingSpec: false
+  };
+  const editor = Object.create(SpecEditor.prototype);
+  editor.state = state;
+  editor.services = {
+    validation,
+    byId: (id) => elements.get(id),
+    hideEditorMessage() {},
+    returnToWorkflowAfterSpec: async () => { returnCount += 1; }
+  };
+  editor.getSpecRenderContext = (filePath, instancePath, owner, workflowContext) => ({
+    filePath,
+    screen: { file: "screens/home/screen.yml" },
+    instancePath,
+    owner,
+    workflowPath: workflowContext.workflowPath,
+    nodeId: workflowContext.nodeId
+  });
+  editor.renderSpecSource = () => { sourceEditor.value = source; };
+  editor.renderSourceHighlight = () => {};
+
+  await editor.renderWorkflowNodeSpecInMainView(nodeSpecPath, workflowPath, "saveItem");
+
+  assert.equal(preview.children[0].className, "workflow-node-spec-main-editor");
+  const header = preview.children[0].children[0];
+  assert.equal(header.className, "workflow-node-spec-main-header");
+  assert.equal(header.children[0].className, "workflow-node-spec-main-heading");
+  assert.equal(header.children[1].textContent, "×");
+  await header.children[1].listeners.click();
+  assert.equal(returnCount, 1);
+  assert.equal(preview.children[0].children[1], sourceContainer);
+  assert.equal(preview.classes.has("workflow-node-spec-main-active"), true);
+  assert.equal(mainClasses.has("workflow-node-spec-main-active"), true);
+  assert.equal(specPanel.hidden, true);
+  assert.equal(sourceEditor.focused, true);
+  assert.equal(state.activeSpecOwner, "workflow-node");
+  assert.equal(state.activeSpecWorkflowPath, workflowPath);
+  assert.equal(state.activeSpecWorkflowNodeId, "saveItem");
+  assert.equal(state.viewingSpec, false);
 });
 
 test("double-click creates a separate node spec and reopens its existing draft", async () => {

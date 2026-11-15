@@ -777,6 +777,40 @@ test("places the annotation overlay above material layers and captures the canva
   assert.equal(overlay.style.pointerEvents, "all");
 });
 
+test("keeps inline Workflow spec controls above annotation input", async () => {
+  const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");
+  const classes = new Set(["workflow-node-spec-main-active"]);
+  const target = {
+    id: "screen",
+    width: 800,
+    height: 600,
+    element: { querySelectorAll: () => [] },
+    hostElement: { classList: { contains: (name) => classes.has(name) } },
+    scrollElement: {
+      classList: {
+        toggle(name, enabled) {
+          if (enabled) classes.add(name);
+          else classes.delete(name);
+        }
+      }
+    }
+  };
+  const overlay = {
+    style: {},
+    setAttribute() {},
+    replaceChildren() {}
+  };
+  const controller = Object.create(ScreenAnnotationController.prototype);
+  controller.enabled = true;
+  controller.getEditorOverlayZIndex = () => 30;
+  controller.configureEditorOverflow = () => {};
+
+  controller.configureEditorOverlay(target, overlay);
+
+  assert.equal(overlay.style.pointerEvents, "none");
+  assert.equal(classes.has("annotation-mode"), false);
+});
+
 /** Annotation target metadata identifies the Material instance under the pointer. */
 test("records Material identity as the target of an annotation", async () => {
   const { ScreenAnnotationController } = await import("../frontend/browser/ScreenAnnotationController.mjs");

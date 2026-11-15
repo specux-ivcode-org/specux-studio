@@ -36,7 +36,7 @@ export class WorkspaceViewRenderer {
     services.renderScreenSelector();
     services.projectFileTree.reveal(selected.file);
     this.setScreenViewState(selected, preserveTheme, preserveSpec, options);
-    this.updateScreenViewPresentation(selected, preserveTheme, preserveSpec);
+    this.updateScreenViewPresentation(selected);
   }
 
   /** Resets the screen view ui for the current editor state. */
@@ -86,14 +86,8 @@ export class WorkspaceViewRenderer {
   }
 
   /** Applies the selected Screen preview or YAML presentation mode. */
-  updateScreenViewPresentation(selected, preserveTheme, preserveSpec) {
-    const { state, services } = this;
-    services.byId("screen-heading").textContent = preserveTheme
-      ? "Theme"
-      : preserveSpec ? `Spec: ${state.activeSpecPath}` : selected.data.name || selected.id;
-    services.byId("breadcrumb").textContent = preserveTheme
-      ? "Project theme"
-      : preserveSpec ? "Behavior spec" : "Screens";
+  updateScreenViewPresentation(selected) {
+    const { services } = this;
     services.renderPreviewStateControls(selected.data);
     services.configureScreenYamlEditor(selected);
     services.syncScreenViewMode();
@@ -223,8 +217,6 @@ export class WorkspaceViewRenderer {
     services.updateNavigationSelection();
     services.updateScreenDomContext(null);
     services.byId("screen-stage").setAttribute("aria-label", "Project overview");
-    services.byId("screen-heading").textContent = "Overview";
-    services.byId("breadcrumb").textContent = "Project";
     const preview = services.byId("screen-preview");
     preview.className = "screen-preview project-overview-preview";
     preview.setAttribute("aria-label", "Project overview");

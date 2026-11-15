@@ -150,7 +150,7 @@ async function withServer(run) {
     "export function getMaterialDefaultSize() { return null; }\n"
   );
   await fs.writeFile(
-    path.join(rootDirectory, "browser", "MaterialPreviewFrame.mjs"),
+    path.join(rootDirectory, "browser", "MaterialPreviewSize.mjs"),
     "export function getMaterialPreviewSize() { return null; }\n"
   );
   await fs.writeFile(path.join(rootDirectory, "specux", "project.yml"), "name: Example\n");
@@ -228,7 +228,7 @@ test("serves the editor root and the example project", async () => {
     const screenMaterialControllerModule = await fetch(`${baseUrl}/browser/ScreenMaterialController.mjs`);
     const screenMaterialRendererModule = await fetch(`${baseUrl}/browser/ScreenMaterialRenderer.mjs`);
     const materialDefaultsModule = await fetch(`${baseUrl}/browser/MaterialDefaults.mjs`);
-    const materialPreviewFrameModule = await fetch(`${baseUrl}/browser/MaterialPreviewFrame.mjs`);
+    const materialPreviewSizeModule = await fetch(`${baseUrl}/browser/MaterialPreviewSize.mjs`);
     const project = await fetch(`${baseUrl}/specux/project.yml`);
     const encodedResource = await fetch(`${baseUrl}/specux/materials/preview%20image.png`);
     const material = await fetch(`${baseUrl}/specux/materials/demo.stml`);
@@ -321,7 +321,7 @@ test("serves the editor root and the example project", async () => {
     assert.equal(screenMaterialControllerModule.status, 200);
     assert.equal(screenMaterialRendererModule.status, 200);
     assert.equal(materialDefaultsModule.status, 200);
-    assert.equal(materialPreviewFrameModule.status, 200);
+    assert.equal(materialPreviewSizeModule.status, 200);
     assert.equal(project.status, 200);
     assert.deepEqual(YAML.parse(await project.text()), { name: "Example" });
     assert.equal(encodedResource.status, 200);

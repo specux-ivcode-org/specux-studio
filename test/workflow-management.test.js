@@ -14,9 +14,13 @@ async function createEditor(overrides = {}) {
     "workflow-spec-section-previous",
     "workflow-spec-section-next",
     "workflow-linked-back",
+    "workflow-mode-exit",
     "workflow-spec-file-select"
   ]) {
-    controls.set(id, { addEventListener() {} });
+    controls.set(id, {
+      listeners: {},
+      addEventListener(name, listener) { this.listeners[name] = listener; }
+    });
   }
   const state = {
     screens: [{ id: "home", file: "screens/home/screen.yml", data: {} }],
@@ -57,8 +61,19 @@ async function createEditor(overrides = {}) {
     deleteWorkflowFile: async (filePath) => calls.deleted.push(filePath),
     ...overrides.services
   };
-  return { editor: new WorkflowEditor({ state, services }), state, services, calls };
+  return { editor: new WorkflowEditor({ state, services }), state, services, calls, controls };
 }
+
+test("Workflow header close delegates to the primary mode exit", async () => {
+  let exitCount = 0;
+  const { controls } = await createEditor({
+    services: { exitWorkflowMode: async () => { exitCount += 1; } }
+  });
+
+  await controls.get("workflow-mode-exit").listeners.click();
+
+  assert.equal(exitCount, 1);
+});
 
 test("creates a Screen-owned workflow and tracks it as a new project file", async () => {
   const { editor, state, calls } = await createEditor();
@@ -301,21 +316,38 @@ test("saves newly created workflows with create=true and clears the marker on ac
   assert.equal(state.dirtyFiles.has(filePath), false);
 });
 
-test("renders workflow creation and per-workflow deletion controls in Specs & Workflows", async () => {
+test("renders workflows in a Screen State-style selector", async () => {
   const { InspectorRenderer } = await import("../frontend/browser/InspectorRenderer.mjs");
   const panel = {
     children: [],
     append(...children) { this.children.push(...children); }
   };
-  const createElement = (tagName, className, textContent) => ({
-    tagName,
-    className,
-    textContent,
-    children: [],
-    append(...children) { this.children.push(...children); },
-    setAttribute() {},
-    addEventListener() {}
-  });
+  const createElement = (tagName, className, textContent) => {
+    const attributes = new Map();
+    const listeners = new Map();
+    const classes = new Set(className.split(/\s+/).filter(Boolean));
+    return {
+      tagName,
+      className,
+      textContent,
+      children: [],
+      attributes,
+      listeners,
+      dataset: {},
+      classes,
+      classList: {
+        toggle(name, force) {
+          if (force) classes.add(name);
+          else classes.delete(name);
+        }
+      },
+      append(...children) { this.children.push(...children); },
+      setAttribute(name, value) { attributes.set(name, value); },
+      addEventListener(type, listener) { listeners.set(type, listener); }
+    };
+  };
+  const workflowDeletes = [];
+  const workflowOpens = [];
   const renderer = new InspectorRenderer({
     state: {
       screens: [{ id: "home", file: "screens/home/screen.yml", data: {} }],
@@ -330,20 +362,57 @@ test("renders workflow creation and per-workflow deletion controls in Specs & Wo
       element: createElement,
       createSpecForScreen: async () => {},
       createWorkflowForScreen: async () => {},
-      deleteWorkflow: async () => {},
-      renderWorkflowEditor: async () => {},
+      deleteWorkflow: async (filePath) => {
+        workflowDeletes.push(filePath);
+        return false;
+      },
+      renderWorkflowEditor: async (...args) => { workflowOpens.push(args); },
       showFatalError() {}
     }
   });
 
   renderer.renderSpecsWorkflowsDetails(panel, {}, null);
 
-  const controls = panel.children.flatMap((child) => [
-    child,
-    ...(child.children || [])
-  ]);
-  assert.ok(controls.some((element) => element.textContent === "Create workflow"));
-  assert.ok(controls.some((element) => element.textContent === "add-item"));
-  assert.ok(controls.some((element) => element.textContent === "Delete"));
-  assert.equal(controls.some((element) => element.textContent === "ignored"), false);
+  const workflowsSeparator = panel.children.find((child) =>
+    child.className === "section-title" && child.textContent === "Workflows"
+  );
+  const workflowBox = panel.children.find((child) =>
+    child.className === "screen-property-box"
+  );
+  assert.ok(workflowsSeparator);
+  assert.ok(panel.children.indexOf(workflowsSeparator) < panel.children.indexOf(workflowBox));
+  assert.ok(workflowBox);
+  assert.equal(workflowBox.children[0].children[0].textContent, "Workflows");
+  const [createButton, deleteButton] = workflowBox.children[0].children[1].children;
+  assert.equal(createButton.textContent, "Create");
+  assert.equal(createButton.attributes.get("aria-label"), "Create workflow");
+  assert.equal(deleteButton.textContent, "Delete");
+  assert.equal(deleteButton.attributes.get("aria-label"), "Delete selected workflow");
+  assert.equal(deleteButton.disabled, true);
+
+  const workflowList = workflowBox.children[1];
+  assert.equal(workflowList.className, "screen-state-list");
+  assert.equal(workflowList.attributes.get("aria-label"), "Screen workflows");
+  assert.equal(workflowList.children.length, 1);
+  const [workflowRow] = workflowList.children;
+  assert.equal(workflowRow.className, "screen-state-row workflow-selector-row");
+  assert.equal(workflowRow.attributes.get("role"), "listitem");
+  assert.equal(workflowRow.children[0].className, "screen-state-select");
+  assert.equal(workflowRow.children[0].textContent, "add-item");
+  assert.equal(workflowRow.children[0].attributes.get("aria-pressed"), "false");
+  assert.equal(workflowRow.children.length, 1);
+
+  workflowRow.children[0].listeners.get("click")();
+  assert.equal(workflowRow.classes.has("selected"), true);
+  assert.equal(workflowRow.children[0].attributes.get("aria-pressed"), "true");
+  assert.equal(deleteButton.disabled, false);
+  assert.equal(deleteButton.title, "Delete screens/home/workflows/add-item.mmd");
+  assert.equal(renderer.keepScreenDetails, true);
+  assert.deepEqual(workflowOpens, [[
+    "screens/home/workflows/add-item.mmd",
+    0
+  ]]);
+  deleteButton.listeners.get("click")();
+  await Promise.resolve();
+  assert.deepEqual(workflowDeletes, ["screens/home/workflows/add-item.mmd"]);
 });

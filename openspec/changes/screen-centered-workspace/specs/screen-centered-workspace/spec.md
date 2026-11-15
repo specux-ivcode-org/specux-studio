@@ -17,7 +17,7 @@ The Studio SHALL retain the Screen canvas as the primary editing workspace in Sc
 - **THEN** the project spec opens without requiring or implicitly selecting a Screen
 
 ### Requirement: Persistent workspace controls
-The workspace SHALL provide a top toolbar with Screen selection/creation, zoom controls, active-mode indication, and controls to reopen closed panels. The Material selector SHALL default to the left and Details SHALL default to the right. The canvas SHALL use a subtle dot grid instead of continuous grid lines.
+The workspace SHALL provide a top toolbar with Screen selection/creation, controls to reopen closed panels, and autosave status. The toolbar SHALL NOT display a breadcrumb, Screen heading, active-mode label, or canvas zoom controls. Screen, Workflow, and Spec canvas views SHALL retain their own zoom controls. The Material selector SHALL default to the left and Details SHALL default to the right. The canvas SHALL use a subtle dot grid instead of continuous grid lines.
 
 #### Scenario: Close and reopen side panels
 - **WHEN** the user closes the Material selector or Details
@@ -30,12 +30,13 @@ The workspace SHALL provide a top toolbar with Screen selection/creation, zoom c
 - **AND** persistent toolbar controls remain available to open or close them
 
 ### Requirement: Contextual Details tabs
-Details SHALL provide Properties, States, Layers, and Specs & Workflows tabs. Properties SHALL retain the current selection's property editing, while States and Layers SHALL expose the displayed Screen's state and placement/layer controls.
+Details SHALL provide Properties and Layers tabs. Properties SHALL expose the selected Screen, Screen State, or placement's editable details. When a Screen or Screen State is selected, Properties SHALL expose Screen specs, Screen-owned workflows, and Screen State controls. When a placement is selected, Properties SHALL expose only its placement details and placement spec, with placement metadata in a compact two-column table that keeps each label and value on the same row. The Edit shared Material action SHALL appear in the File row, and the placement-spec action SHALL appear under a `PLACEMENT SPEC` header directly below the table in Material placement. In Placement Transformation, Position X/Y, Width/Height, and Transform X/Y SHALL each appear together in one row, with Rotation last. Placement Transformation SHALL appear before Instance Variables, and Remove placement SHALL appear after the other placement properties. Layers SHALL expose the displayed Screen's placement and layer controls.
 
 #### Scenario: Inspect a selected placement
 - **WHEN** the user selects a placement on the displayed Screen
-- **THEN** Properties exposes that placement's details
-- **AND** States and Layers remain associated with the displayed Screen
+- **THEN** Properties exposes that placement's details and placement spec
+- **AND** Screen specs, Screen-owned workflows, and Screen State controls are not shown
+- **AND** Layers remains associated with the displayed Screen
 
 ### Requirement: Resizable dock and mode exits
 Workflow and Spec views SHALL use a resizable bottom dock that keeps the Screen visible above it. Closing the active dock view through its close control or Escape SHALL reveal its parent if it is linked, or exit to Screen mode if it is primary.

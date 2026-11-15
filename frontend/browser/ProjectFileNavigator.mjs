@@ -1,8 +1,5 @@
 import { getMaterialDefaultSize } from "./MaterialDefaults.mjs";
-import {
-  getMaterialPreviewFrame,
-  getMaterialPreviewSize
-} from "./MaterialPreviewFrame.mjs";
+import { getMaterialPreviewSize } from "./MaterialPreviewSize.mjs";
 
 /** Builds and updates navigation for files in the loaded project. */
 export class ProjectFileNavigator {
@@ -63,7 +60,7 @@ export class ProjectFileNavigator {
       const filePath = this.materialContextMenuFile;
       this.closeMaterialContextMenu();
       if (!filePath) return;
-      this.services.renderMaterialFile(filePath).catch((error) =>
+      return this.services.renderMaterialFile(filePath).catch((error) =>
         this.services.showEditorMessage("Could not open Material", error.message || String(error))
       );
     });
@@ -124,11 +121,6 @@ export class ProjectFileNavigator {
   /** Renders the navigation from the current editor data. */
   renderNavigation() {
     const { state, services } = this;
-    if (!state.viewingMaterialFile &&
-        !state.viewingTheme && !state.viewingProject && !state.viewingSpec &&
-        !state.viewingWorkflow) {
-      services.byId("breadcrumb").textContent = "Screens";
-    }
     this.renderMaterialSelector();
     this.setSidebarTab(this.sidebarTab);
     const activeFilePath = this.activeFilePath();
@@ -162,27 +154,28 @@ export class ProjectFileNavigator {
       addButton.type = "button";
       addButton.setAttribute(
         "aria-label",
-        `Add Material ${material.data.name || material.id} to the current Screen`
+        state.viewingMaterialFile
+          ? `Edit Material ${material.data.name || material.id}`
+          : `Add Material ${material.data.name || material.id} to the current Screen`
       );
       const preview = services.element("div", "material-selector-preview");
       const previewCanvas = services.element("div", "material-selector-preview-canvas");
       const size = getMaterialPreviewSize(material);
       if (!size) throw new Error(`Material "${material.file}" has no supported preview size.`);
-      const frame = getMaterialPreviewFrame(state.project, material);
       const placementSize = getMaterialDefaultSize(material.data.type);
       if (!placementSize) {
         throw new Error(`Material "${material.file}" has no supported placement size.`);
       }
-      const scale = Math.min(1, 160 / frame.width, 68 / frame.height);
+      const scale = Math.min(1, 160 / size.width, 68 / size.height);
       const viewport = services.element("div", "material-selector-preview-viewport");
-      viewport.style.width = `${frame.width * scale}px`;
-      viewport.style.height = `${frame.height * scale}px`;
+      viewport.style.width = `${size.width * scale}px`;
+      viewport.style.height = `${size.height * scale}px`;
       previewCanvas.id = `material-selector-preview-${index}`;
       previewCanvas.classList.add("material-instance");
       previewCanvas.style.width = `${size.width}px`;
       previewCanvas.style.height = `${size.height}px`;
-      previewCanvas.style.left = `${-frame.x * scale}px`;
-      previewCanvas.style.top = `${-frame.y * scale}px`;
+      previewCanvas.style.left = "0px";
+      previewCanvas.style.top = "0px";
       previewCanvas.style.transform = `scale(${scale})`;
       const attributes = Object.fromEntries(
         Object.entries(material.data.attributes || {})
@@ -207,7 +200,7 @@ export class ProjectFileNavigator {
       );
       this.bindMaterialDragButton(addButton, material.file, placementSize);
       addButton.append(preview, heading);
-      previewLayouts.push({ preview, viewport, previewCanvas, frame });
+      previewLayouts.push({ preview, viewport, previewCanvas, size });
       addButton.addEventListener("click", () =>
         this.handleMaterialSelectorClick(material.file)
       );
@@ -236,13 +229,13 @@ export class ProjectFileNavigator {
   }
 
   /** Scales a selector preview to fit its available width and height. */
-  fitMaterialSelectorPreview({ preview, viewport, previewCanvas, frame }) {
+  fitMaterialSelectorPreview({ preview, viewport, previewCanvas, size }) {
     const availableWidth = Math.min(160, preview.clientWidth || 160);
-    const scale = Math.min(1, availableWidth / frame.width, 68 / frame.height);
-    viewport.style.width = `${frame.width * scale}px`;
-    viewport.style.height = `${frame.height * scale}px`;
-    previewCanvas.style.left = `${-frame.x * scale}px`;
-    previewCanvas.style.top = `${-frame.y * scale}px`;
+    const scale = Math.min(1, availableWidth / size.width, 68 / size.height);
+    viewport.style.width = `${size.width * scale}px`;
+    viewport.style.height = `${size.height * scale}px`;
+    previewCanvas.style.left = "0px";
+    previewCanvas.style.top = "0px";
     previewCanvas.style.transform = `scale(${scale})`;
   }
 
@@ -336,14 +329,20 @@ export class ProjectFileNavigator {
     outline.hidden = true;
   }
 
-  /** Handles a click that adds the selected Material at the visible canvas center. */
+  /** Places a Material on the Screen or opens it when Material authoring is active. */
   handleMaterialSelectorClick(filePath) {
     if (this.suppressNextMaterialClick) {
       this.suppressNextMaterialClick = false;
       return;
     }
-    this.services.placeMaterialFile(filePath).catch((error) =>
-      this.services.showEditorMessage("Could not add Material", error.message || String(error))
+    if (!this.state.viewingMaterialFile) {
+      return this.services.placeMaterialFile(filePath).catch((error) =>
+        this.services.showEditorMessage("Could not add Material", error.message || String(error))
+      );
+    }
+    if (this.state.activeMaterialFilePath === filePath) return;
+    return this.services.renderMaterialFile(filePath).catch((error) =>
+      this.services.showEditorMessage("Could not open Material", error.message || String(error))
     );
   }
 

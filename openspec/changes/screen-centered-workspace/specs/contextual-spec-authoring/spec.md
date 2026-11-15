@@ -16,12 +16,13 @@ In Screen mode, double-clicking a placement SHALL open its Element spec, creatin
 - **THEN** it has the same ownership and open/create outcome as the double-click shortcut
 
 ### Requirement: Node-specific specs
-A workflow node SHALL have at most one contextual spec at `screens/<screen-id>/specs/workflow-<workflow-id>-<node-id>.md`. It SHALL belong to that workflow node, separately from its target Screen or placement spec, and associate using the existing Markdown workflow-node link shape. Double-clicking a node in Workflow mode SHALL open its node-specific spec, creating it if absent, without entering Spec mode. Renaming a node SHALL rename its spec file and update its association. Deleting a node SHALL preserve its spec as unlinked documentation instead of deleting it.
+A workflow node SHALL have at most one contextual spec at `screens/<screen-id>/specs/workflow-<workflow-id>-<node-id>.md`. It SHALL belong to that workflow node, separately from its target Screen or placement spec, and associate using the existing Markdown workflow-node link shape. Double-clicking a node in Workflow mode SHALL open its node-specific spec for editing in the main Screen preview area while keeping the Workflow editor visible in the dock; it SHALL NOT enter Spec mode. While this editor is open, the Screen rulers and Workflow layout toolbar SHALL be hidden. Its preview-header close control or Escape SHALL restore the Screen preview and Workflow graph. A separate close control in the Workflow header SHALL exit Workflow mode, including when a node spec is open. Renaming a node SHALL rename its spec file and update its association. Deleting a node SHALL preserve its spec as unlinked documentation instead of deleting it.
 
 #### Scenario: Create node spec
 - **WHEN** the user double-clicks a workflow node that targets a placement already having an Element spec
 - **THEN** a separate node-specific spec is opened or created
 - **AND** Workflow mode remains active
+- **AND** the editable Markdown source appears in the main Screen preview area while the graph remains in the dock
 
 #### Scenario: Reopen node spec
 - **WHEN** the user repeats the action on a node with an existing contextual spec
@@ -53,6 +54,12 @@ Spec-mode link navigation SHALL traverse Screen and workflow links in document o
 #### Scenario: View spec from workflow
 - **WHEN** a node-specific spec opens from Workflow mode
 - **THEN** the primary workflow context is retained and closing the spec returns to its graph
+
+#### Scenario: Close node spec or Workflow mode
+- **WHEN** the user closes the node-spec editor from its preview header
+- **THEN** the Screen preview and Workflow graph are restored with Workflow mode still active
+- **WHEN** the user closes Workflow from its header while a node spec is open
+- **THEN** the node spec and primary Workflow dock are closed and the workspace returns to Screen mode
 
 ### Requirement: Optional spec indicators
 Screens and placements with associated specs SHALL have optional indicators controlled by a persistent toolbar toggle. Indicators SHALL be hidden by default, and the toggle SHALL control visibility on both the canvas and Layers list.

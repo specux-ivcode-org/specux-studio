@@ -158,13 +158,6 @@
       font-weight: 800;
     }
 
-    .workspace-context {
-      display: flex;
-      align-items: center;
-      min-width: 0;
-    }
-
-    .context-title { min-width: 0; }
     .screen-quick-selector { position: relative; flex: none; }
     .topbar-screen-controls {
       display: flex;
@@ -287,61 +280,56 @@
       font-size: 11px;
     }
     #screen-selector-current { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .workspace-mode-label {
-      display: inline-flex;
-      align-items: center;
-      width: fit-content;
-      margin-top: 3px;
-      padding: 2px 6px;
-      border-radius: 999px;
-      color: var(--ui-primary-strong);
-      background: var(--ui-primary-soft-bg);
-      font-size: 9px;
-      font-weight: 750;
-      letter-spacing: .04em;
-      text-transform: uppercase;
-    }
     .theme-mode-exit { flex: none; margin-left: 8px; padding: 5px 8px; }
 
     .topbar-spacer { flex: 1; min-width: 8px; }
-    .topbar-canvas-zoom-controls { gap: 0; }
 
-    .reset-button {
-      padding: 7px 10px;
-      border: 1px solid var(--ui-border-strong);
-      border-radius: 7px;
-      color: var(--ui-text-medium);
-      background: var(--panel);
-      font-family: inherit;
-      font-size: 11px;
-      font-weight: 650;
-      cursor: pointer;
+    .autosave-indicator {
+      display: grid;
+      width: 18px;
+      height: 18px;
+      flex: none;
+      place-items: center;
+      color: var(--ui-text-soft);
     }
-
-    .reset-button:hover { border-color: var(--ui-primary-hover-border); color: var(--ui-primary-strong); }
-
-    .save-button {
-      padding: 8px 12px;
-      border: 1px solid var(--blue);
-      border-radius: 7px;
-      color: var(--studio-on-primary);
-      background: var(--studio-primary);
-      font-family: inherit;
-      font-size: 11px;
-      font-weight: 700;
-      cursor: pointer;
+    .autosave-indicator::before {
+      box-sizing: border-box;
+      width: 13px;
+      height: 13px;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      content: "";
     }
-    .save-button:hover:not(:disabled) { border-color: var(--ui-primary-strong); background: var(--ui-primary-strong); }
-    .save-button:disabled { border-color: var(--line); color: var(--ui-disabled-text); background: var(--ui-disabled-bg); cursor: default; }
-    .save-status {
-      max-width: 240px;
-      overflow: hidden;
-      color: var(--muted);
-      font-size: 12px;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+    .autosave-indicator[data-state="pending"],
+    .autosave-indicator[data-state="saving"] {
+      color: var(--studio-primary);
     }
-    .save-status[data-state="error"] { color: var(--danger); }
+    .autosave-indicator[data-state="pending"]::before,
+    .autosave-indicator[data-state="saving"]::before {
+      animation: autosave-spin .8s linear infinite;
+    }
+    .autosave-indicator[data-state="saved"]::before {
+      width: 7px;
+      height: 4px;
+      border: solid var(--ui-success);
+      border-width: 0 0 2px 2px;
+      border-radius: 0;
+      transform: translateY(-1px) rotate(-45deg);
+    }
+    .autosave-indicator[data-state="error"] { color: var(--ui-danger); }
+    .autosave-indicator[data-state="error"]::before {
+      width: auto;
+      height: auto;
+      border: 0;
+      border-radius: 0;
+      content: "!";
+      font-size: 14px;
+      font-weight: 750;
+    }
+    @keyframes autosave-spin {
+      to { transform: rotate(360deg); }
+    }
     .panel-mode-button {
       display: grid;
       place-items: center;
@@ -574,7 +562,11 @@
     }
     .sidebar-tab:focus-visible { outline: 2px solid var(--studio-focus); outline-offset: 1px; }
     .sidebar-panel-content[hidden] { display: none; }
-    .material-selector-list { display: grid; gap: 8px; }
+    .material-selector-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 125px), 1fr));
+      gap: 8px;
+    }
     .material-selector-item {
       display: grid;
       gap: 6px;
@@ -1404,16 +1396,15 @@
     .canvas.material-editing .screen-preview.is-panning { cursor: grabbing; }
     .canvas.material-editing.material-grid-visible .screen-preview {
       background-image:
-        linear-gradient(to right, color-mix(in srgb, currentColor 6%, transparent) 1px, transparent 1px),
-        linear-gradient(to bottom, color-mix(in srgb, currentColor 6%, transparent) 1px, transparent 1px),
-        linear-gradient(to right, color-mix(in srgb, currentColor 12%, transparent) 1px, transparent 1px),
-        linear-gradient(to bottom, color-mix(in srgb, currentColor 12%, transparent) 1px, transparent 1px);
+        radial-gradient(circle, color-mix(in srgb, currentColor 6%, transparent) 1px, transparent 1.2px),
+        radial-gradient(circle, color-mix(in srgb, currentColor 12%, transparent) 1.3px, transparent 1.6px);
       background-position:
-        var(--material-canvas-pan-x, 0px) var(--material-canvas-pan-y, 0px);
+        calc(var(--material-canvas-pan-x, 0px) - 10px * var(--material-canvas-zoom, 1))
+          calc(var(--material-canvas-pan-y, 0px) - 10px * var(--material-canvas-zoom, 1)),
+        calc(var(--material-canvas-pan-x, 0px) - 50px * var(--material-canvas-zoom, 1))
+          calc(var(--material-canvas-pan-y, 0px) - 50px * var(--material-canvas-zoom, 1));
       background-size:
         calc(20px * var(--material-canvas-zoom, 1)) calc(20px * var(--material-canvas-zoom, 1)),
-        calc(20px * var(--material-canvas-zoom, 1)) calc(20px * var(--material-canvas-zoom, 1)),
-        calc(100px * var(--material-canvas-zoom, 1)) calc(100px * var(--material-canvas-zoom, 1)),
         calc(100px * var(--material-canvas-zoom, 1)) calc(100px * var(--material-canvas-zoom, 1));
       background-repeat: repeat;
     }
@@ -1746,6 +1737,28 @@
       margin: 0;
       padding: 0;
     }
+    .canvas.workflow-editing.workflow-node-spec-main-active {
+      grid-template-rows:
+        0
+        minmax(180px, var(--workflow-preview-track, 2fr))
+        12px
+        minmax(220px, var(--workflow-diagram-track, 3fr))
+        auto;
+    }
+    .canvas.workflow-editing.workflow-node-spec-main-active > .workflow-view-toolbar,
+    .canvas.workflow-editing.workflow-node-spec-main-active .screen-ruler,
+    .canvas.workflow-editing.workflow-node-spec-main-active .screen-ruler-corner {
+      display: none;
+    }
+    .canvas.workflow-editing.workflow-node-spec-main-active .screen-canvas-viewport {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr);
+    }
+    .canvas.workflow-editing.workflow-node-spec-main-active
+      .screen-canvas-viewport > .screen-preview {
+      grid-column: 1;
+      grid-row: 1;
+    }
     .workflow-spec-preview {
       position: relative;
       display: block;
@@ -1893,6 +1906,15 @@
     .workflow-linked-readonly .workflow-panel-selector,
     .workflow-node-spec-active .workflow-panel-selector { display: none; }
     .workflow-linked-back[hidden] { display: none; }
+    .workflow-linked-readonly .workflow-mode-exit { display: none; }
+    .workflow-mode-exit {
+      width: 30px;
+      min-width: 30px;
+      height: 30px;
+      padding: 0;
+      font-size: 18px;
+      line-height: 1;
+    }
     .workflow-editor-panel[hidden] { display: none; }
     .workflow-editor-heading {
       min-height: 40px;
@@ -2086,20 +2108,6 @@
     }
     .spec-action-button:hover { border-color: var(--studio-focus); }
     .spec-action-button:focus-visible { outline: 2px solid var(--studio-focus); outline-offset: 2px; }
-    .workflow-list-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 8px;
-    }
-    .workflow-open-button {
-      min-width: 0;
-      flex: 1;
-      margin-top: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
     .workflow-delete-button {
       flex: none;
       padding: 7px 8px;
@@ -2159,13 +2167,60 @@
       pointer-events: none;
     }
     .screen-preview > .form-content { position: relative; }
+    .screen-preview.workflow-node-spec-main-active {
+      display: flex;
+      flex-direction: column;
+      background-image: none;
+    }
+    .workflow-node-spec-main-editor {
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      display: flex;
+      min-width: 0;
+      min-height: 0;
+      flex-direction: column;
+      color: var(--theme-ink, var(--ui-text-strong));
+      background: var(--theme-panel, var(--panel));
+    }
+    .workflow-node-spec-main-header {
+      flex: none;
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px 8px 16px;
+      border-bottom: 1px solid var(--theme-border, var(--line));
+    }
+    .workflow-node-spec-main-heading {
+      min-width: 0;
+      flex: 1;
+      margin: 0;
+      color: var(--theme-ink, var(--ui-text-strong));
+      font-size: 12px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+    .workflow-node-spec-main-close {
+      width: 30px;
+      min-width: 30px;
+      height: 30px;
+      padding: 0;
+      font-size: 18px;
+      line-height: 1;
+    }
+    .workflow-node-spec-main-editor .spec-source-container {
+      flex: 1;
+    }
     .canvas.screen-editing.screen-grid-visible .screen-preview {
       background-image:
         radial-gradient(circle, color-mix(in srgb, currentColor 6%, transparent) 1px, transparent 1.2px),
         radial-gradient(circle, color-mix(in srgb, currentColor 12%, transparent) 1.3px, transparent 1.6px);
       background-position:
-        var(--screen-canvas-pan-x, 0px) var(--screen-canvas-pan-y, 0px),
-        var(--screen-canvas-pan-x, 0px) var(--screen-canvas-pan-y, 0px);
+        calc(var(--screen-canvas-pan-x, 0px) - 10px * var(--screen-canvas-zoom, 1))
+          calc(var(--screen-canvas-pan-y, 0px) - 10px * var(--screen-canvas-zoom, 1)),
+        calc(var(--screen-canvas-pan-x, 0px) - 50px * var(--screen-canvas-zoom, 1))
+          calc(var(--screen-canvas-pan-y, 0px) - 50px * var(--screen-canvas-zoom, 1));
       background-size:
         var(--screen-canvas-grid-minor-size, 20px) var(--screen-canvas-grid-minor-size, 20px),
         var(--screen-canvas-grid-major-size, 100px) var(--screen-canvas-grid-major-size, 100px);
@@ -2187,40 +2242,6 @@
       display: block;
       pointer-events: auto;
     }
-    .material-selector-frame-selection {
-      position: absolute;
-      z-index: 21;
-      inset: 0;
-      pointer-events: none;
-    }
-    .material-selector-frame {
-      position: absolute;
-      box-sizing: border-box;
-      border: 2px solid var(--studio-focus);
-      background: color-mix(in srgb, var(--studio-focus) 8%, transparent);
-      cursor: move;
-      pointer-events: auto;
-      touch-action: none;
-    }
-    .material-selector-frame-handle {
-      position: absolute;
-      width: 10px;
-      height: 10px;
-      padding: 0;
-      border: 1px solid var(--panel);
-      border-radius: 50%;
-      background: var(--studio-focus);
-      transform: translate(-50%, -50%);
-      touch-action: none;
-    }
-    .material-selector-frame-handle[data-direction="n"],
-    .material-selector-frame-handle[data-direction="s"] { cursor: ns-resize; }
-    .material-selector-frame-handle[data-direction="e"],
-    .material-selector-frame-handle[data-direction="w"] { cursor: ew-resize; }
-    .material-selector-frame-handle[data-direction="ne"],
-    .material-selector-frame-handle[data-direction="sw"] { cursor: nesw-resize; }
-    .material-selector-frame-handle[data-direction="nw"],
-    .material-selector-frame-handle[data-direction="se"] { cursor: nwse-resize; }
     .screen-preview.theme-material-preview {
       display: flex;
       align-items: center;
@@ -2694,7 +2715,6 @@
       border-radius: 8px;
       background: var(--ui-input-alt);
     }
-    .inspector-tabs[data-tab-count="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .inspector-tab {
       min-width: 0;
       padding: 7px 8px;
@@ -3071,7 +3091,53 @@
       line-height: 1.5;
     }
 
-    .editor-field { margin: 12px 0; }
+    .placement-properties-table {
+      width: 100%;
+      margin: 0 0 10px;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    .placement-properties-table th,
+    .placement-properties-table td {
+      padding: 5px 4px;
+      border-bottom: 1px solid var(--line);
+      font-size: 11px;
+      line-height: 1.35;
+      text-align: left;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+    }
+    .placement-properties-table th {
+      width: 36%;
+      color: var(--ui-text-soft);
+      font-weight: 600;
+    }
+    .placement-properties-table td { color: var(--ui-text-strong); }
+    .placement-properties-file {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .placement-properties-file > span {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .spec-action-button.placement-properties-edit-button {
+      width: auto;
+      flex: none;
+      margin: 0;
+      padding: 3px 7px;
+      white-space: nowrap;
+    }
+
+    .editor-field-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      column-gap: 10px;
+    }
+    .editor-field-row > .editor-field { margin: 4px 0; }
+    .editor-field { margin: 12px 0; min-width: 0; }
     .editor-field label {
       display: block;
       margin-bottom: 5px;
@@ -3355,13 +3421,8 @@
       .topbar { height: 58px; gap: 8px; padding: 0 10px; overflow-x: auto; }
       .brand { min-width: 30px; gap: 0; }
       .brand > span:not(.brand-mark) { display: none; }
-      .workspace-context { flex: 1; }
-      .workspace-context .eyebrow,
-      .workspace-mode-label { display: none; }
-      h1 { max-width: 120px; font-size: 14px; }
       .topbar-screen-controls { gap: 4px; }
       .screen-selector-toggle { max-width: 150px; gap: 7px; padding: 0 7px; }
-      .topbar-canvas-zoom-controls .screen-zoom-button { width: 27px; }
       .topbar-spacer { display: none; }
       .panel-mode-button { width: 34px; height: 34px; }
       .reset-button { padding: 6px 7px; }
@@ -3404,9 +3465,6 @@
 
     @media (max-width: 400px) {
       .topbar { gap: 6px; padding: 0 8px; }
-      h1 { max-width: 90px; }
-      .reset-button, .save-button { padding: 6px; font-size: 10px; }
-      .save-status { max-width: 88px; font-size: 10px; }
       .screen-selector-toggle { max-width: 120px; }
     }
 

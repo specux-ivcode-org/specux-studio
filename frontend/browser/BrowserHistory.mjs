@@ -73,7 +73,11 @@ export class BrowserHistory {
     url.searchParams.delete("instancePath");
     const context = this.getWorkspaceContext();
     const linked = context?.dock?.linked?.at(-1);
-    if (linked?.file) url.searchParams.set("linked", linked.file);
+    const linkedFile = selection.view === "spec" &&
+      selection.spec?.owner === "workflow-node"
+      ? selection.spec.workflowPath
+      : linked?.file;
+    if (linkedFile) url.searchParams.set("linked", linkedFile);
     else url.searchParams.delete("linked");
     const nodeId = this.getSelectedWorkflowNodeId(context, selection);
     if (nodeId) url.searchParams.set("node", nodeId);
@@ -83,6 +87,9 @@ export class BrowserHistory {
 
   /** Returns the selected node from the active linked or primary workflow. */
   getSelectedWorkflowNodeId(context, selection) {
+    if (selection.view === "spec" && selection.spec?.owner === "workflow-node") {
+      return selection.spec.nodeId || null;
+    }
     const linkedWorkflow = [...(context?.dock?.linked || [])]
       .reverse()
       .find((document) => document.view === "workflow" && document.nodeId);
